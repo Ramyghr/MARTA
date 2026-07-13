@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# OS / editor
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# histdata source ZIPs — never track (large binaries; cached as 1-min parquets,
+# archived outside the repo, re-downloadable via pipeline/fetch.py:fetch_histdata)
+DAT_ASCII_*.zip
+
+# MARTA generated artifacts — regenerate from pipeline
+mlruns/
+data/raw/
+data/processed/
+data/validated/
+encoder/checkpoints/
+encoder/plots/
+regime/checkpoints/
+regime/plots/
+rl/checkpoints/
+models/
+node_modules/
+**/node_modules/
+dashboard/frontend/node_modules.tar.gz
+node_modules/
+node_modules.tar.gz
+node_modules/
+dashboard/backend/pip-cache/
+dashboard/backend/pip-cache/

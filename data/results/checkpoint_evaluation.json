@@ -1,0 +1,80 @@
+{
+  "ppo_best.zip": {
+    "sharpe": 0.4488430222403538,
+    "sortino": 0.1295435654238805,
+    "max_drawdown": 0.013270493693830977,
+    "calmar": 0.6887187903929803,
+    "total_return": 0.004861490694095805,
+    "n_trades": 90,
+    "n_meaningful_trades": 24,
+    "mean_turnover": 0.001965170289108591,
+    "hold_ratio": 0.983392894681522,
+    "mean_trade_duration_hours": 7.181818181818182,
+    "median_trade_duration_hours": 1.0
+  },
+  "ppo_final.zip": {
+    "sharpe": -1.3087068033416787,
+    "sortino": -0.2162589907338421,
+    "max_drawdown": 0.012718659402755293,
+    "calmar": -1.8206024042408946,
+    "total_return": -0.012577008583487759,
+    "n_trades": 55,
+    "n_meaningful_trades": 23,
+    "mean_turnover": 0.00047696752143166864,
+    "hold_ratio": 0.9888585242800084,
+    "mean_trade_duration_hours": 26.5,
+    "median_trade_duration_hours": 26.5
+  },
+  "ppo_phase_1.zip": {
+    "sharpe": 0.0,
+    "sortino": 0.0,
+    "max_drawdown": 0.0,
+    "calmar": 0.0,
+    "total_return": 0.0,
+    "n_trades": 0,
+    "n_meaningful_trades": 0,
+    "mean_turnover": 0.0,
+    "hold_ratio": 1.0,
+    "mean_trade_duration_hours": 0.0,
+    "median_trade_duration_hours": 0.0
+  },
+  "ppo_phase_2.zip": {
+    "sharpe": 0.4488430222403538,
+    "sortino": 0.1295435654238805,
+    "max_drawdown": 0.013270493693830977,
+    "calmar": 0.6887187903929803,
+    "total_return": 0.004861490694095805,
+    "n_trades": 90,
+    "n_meaningful_trades": 24,
+    "mean_turnover": 0.001965170289108591,
+    "hold_ratio": 0.983392894681522,
+    "mean_trade_duration_hours": 7.181818181818182,
+    "median_trade_duration_hours": 1.0
+  },
+  "ppo_phase_3.zip": {
+    "sharpe": 0.8864855841071743,
+    "sortino": 0.16412859560711107,
+    "max_drawdown": 0.005980364274005351,
+    "calmar": 2.2504095385309832,
+    "total_return": 0.007270561352885396,
+    "n_trades": 43,
+    "n_meaningful_trades": 4,
+    "mean_turnover": 0.0004155323899423906,
+    "hold_ratio": 0.9913811225562329,
+    "mean_trade_duration_hours": 20.5,
+    "median_trade_duration_hours": 20.5
+  },
+  "ppo_phase_4.zip": {
+    "sharpe": 1.3703460016770364,
+    "sortino": 0.35989661174935517,
+    "max_drawdown": 0.007402306085948606,
+    "calmar": 4.584117401550836,
+    "total_return": 0.018424462698340305,
+    "n_trades": 83,
+    "n_meaningful_trades": 6,
+    "mean_turnover": 0.0006216329195802206,
+    "hold_ratio": 0.9831826781585032,
+    "mean_trade_duration_hours": 26.666666666666668,
+    "median_trade_duration_hours": 37.0
+  }
+}

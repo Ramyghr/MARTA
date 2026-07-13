@@ -1,0 +1,19 @@
+{
+  "run_id": "69390e7e6acf4987b0af92fea1ca3729",
+  "validation_passed": true,
+  "total_duration_s": 484.21,
+  "assets": {
+    "BTC_USDT": {
+      "rows": 52253,
+      "features": 13,
+      "start": "2018-01-09 18:00:00+00:00",
+      "end": "2023-12-31 23:00:00+00:00"
+    },
+    "ETH_USDT": {
+      "rows": 52253,
+      "features": 13,
+      "start": "2018-01-09 18:00:00+00:00",
+      "end": "2023-12-31 23:00:00+00:00"
+    }
+  }
+}

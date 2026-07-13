@@ -1,0 +1,313 @@
+{
+  "generated_at": "2026-05-25T19:46:04.584192",
+  "summary": {
+    "total_checks": 48,
+    "passed": 27,
+    "critical_failures": 0,
+    "warnings": 21,
+    "pipeline_ok": true
+  },
+  "critical_failures": [],
+  "warnings": [
+    {
+      "check": "BTC_USDT gap check (>2h)",
+      "status": "FAIL",
+      "detail": "18 gaps. Top 5: 2018-02-09 10:00:00+00:00: 1 days 10:00:00, 2018-06-26 12:00:00+00:00: 0 days 11:00:00, 2019-05-15 13:00:00+00:00: 0 days 11:00:00, 2019-08-15 10:00:00+00:00: 0 days 09:00:00, 2018-07-04 08:00:00+00:00: 0 days 08:00:00",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT gap check (>2h)",
+      "status": "FAIL",
+      "detail": "18 gaps. Top 5: 2018-02-09 10:00:00+00:00: 1 days 10:00:00, 2018-06-26 12:00:00+00:00: 0 days 11:00:00, 2019-05-15 13:00:00+00:00: 0 days 11:00:00, 2019-08-15 10:00:00+00:00: 0 days 09:00:00, 2018-07-04 08:00:00+00:00: 0 days 08:00:00",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/atr distribution",
+      "status": "FAIL",
+      "detail": "134 values (0.26%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/bb_width distribution",
+      "status": "FAIL",
+      "detail": "207 values (0.40%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/macd_histogram distribution",
+      "status": "FAIL",
+      "detail": "126 values (0.24%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/obv_zscore distribution",
+      "status": "FAIL",
+      "detail": "7 values (0.01%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/realized_vol distribution",
+      "status": "FAIL",
+      "detail": "181 values (0.35%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/vol_ratio distribution",
+      "status": "FAIL",
+      "detail": "7 values (0.01%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/return_skew distribution",
+      "status": "FAIL",
+      "detail": "17 values (0.03%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/return_kurtosis distribution",
+      "status": "FAIL",
+      "detail": "133 values (0.25%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/autocorr_lag1 distribution",
+      "status": "FAIL",
+      "detail": "2 values (0.00%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "BTC_USDT/close_return distribution",
+      "status": "FAIL",
+      "detail": "235 values (0.45%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/atr distribution",
+      "status": "FAIL",
+      "detail": "74 values (0.14%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/bb_width distribution",
+      "status": "FAIL",
+      "detail": "181 values (0.35%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/macd_histogram distribution",
+      "status": "FAIL",
+      "detail": "77 values (0.15%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/obv_zscore distribution",
+      "status": "FAIL",
+      "detail": "10 values (0.02%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/realized_vol distribution",
+      "status": "FAIL",
+      "detail": "95 values (0.18%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/vol_ratio distribution",
+      "status": "FAIL",
+      "detail": "7 values (0.01%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/return_skew distribution",
+      "status": "FAIL",
+      "detail": "30 values (0.06%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/return_kurtosis distribution",
+      "status": "FAIL",
+      "detail": "188 values (0.36%) beyond 5.0\u03c3",
+      "critical": false
+    },
+    {
+      "check": "ETH_USDT/close_return distribution",
+      "status": "FAIL",
+      "detail": "222 values (0.42%) beyond 5.0\u03c3",
+      "critical": false
+    }
+  ],
+  "passed": [
+    {
+      "check": "BTC_USDT row count",
+      "status": "PASS",
+      "detail": "52,253 >= 35,000"
+    },
+    {
+      "check": "BTC_USDT column count",
+      "status": "PASS",
+      "detail": "13 columns"
+    },
+    {
+      "check": "BTC_USDT monotonic index",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT no duplicate timestamps",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT row count",
+      "status": "PASS",
+      "detail": "52,253 >= 35,000"
+    },
+    {
+      "check": "ETH_USDT column count",
+      "status": "PASS",
+      "detail": "13 columns"
+    },
+    {
+      "check": "ETH_USDT monotonic index",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT no duplicate timestamps",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "all assets share identical timestamp index",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT no NaN values",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT no Inf values",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT no NaN values",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT no Inf values",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: high >= close",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: high >= open",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: low <= close",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: low <= open",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: volume >= 0",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "BTC_USDT OHLCV: no zero prices",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: high >= close",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: high >= open",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: low <= close",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: low <= open",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: volume >= 0",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "ETH_USDT OHLCV: no zero prices",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "check": "cross-asset timestamp overlap",
+      "status": "PASS",
+      "detail": "99.6% >= 80%"
+    },
+    {
+      "check": "all assets have identical column order",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "metrics": {
+    "BTC_USDT_row_count": 52253.0,
+    "ETH_USDT_row_count": 52253.0,
+    "BTC_USDT_nan_count": 0.0,
+    "BTC_USDT_inf_count": 0.0,
+    "ETH_USDT_nan_count": 0.0,
+    "ETH_USDT_inf_count": 0.0,
+    "BTC_USDT_gap_count": 18.0,
+    "ETH_USDT_gap_count": 18.0,
+    "BTC_USDT_atr_flagged_pct": 0.2564446060513272,
+    "BTC_USDT_adx_flagged_pct": 0.0,
+    "BTC_USDT_rsi_flagged_pct": 0.0,
+    "BTC_USDT_bb_width_flagged_pct": 0.3961495033777965,
+    "BTC_USDT_macd_histogram_flagged_pct": 0.2411344803169196,
+    "BTC_USDT_obv_zscore_flagged_pct": 0.013396360017606645,
+    "BTC_USDT_vol_zscore_flagged_pct": 0.0,
+    "BTC_USDT_realized_vol_flagged_pct": 0.3463915947409718,
+    "BTC_USDT_vol_ratio_flagged_pct": 0.013396360017606645,
+    "BTC_USDT_return_skew_flagged_pct": 0.03253401718561614,
+    "BTC_USDT_return_kurtosis_flagged_pct": 0.2545308403345263,
+    "BTC_USDT_autocorr_lag1_flagged_pct": 0.0038275314336018986,
+    "BTC_USDT_close_return_flagged_pct": 0.44973494344822307,
+    "ETH_USDT_atr_flagged_pct": 0.14161866304327025,
+    "ETH_USDT_adx_flagged_pct": 0.0,
+    "ETH_USDT_rsi_flagged_pct": 0.0,
+    "ETH_USDT_bb_width_flagged_pct": 0.3463915947409718,
+    "ETH_USDT_macd_histogram_flagged_pct": 0.1473599601936731,
+    "ETH_USDT_obv_zscore_flagged_pct": 0.01913765716800949,
+    "ETH_USDT_vol_zscore_flagged_pct": 0.0,
+    "ETH_USDT_realized_vol_flagged_pct": 0.18180774309609016,
+    "ETH_USDT_vol_ratio_flagged_pct": 0.013396360017606645,
+    "ETH_USDT_return_skew_flagged_pct": 0.05741297150402847,
+    "ETH_USDT_return_kurtosis_flagged_pct": 0.35978795475857844,
+    "ETH_USDT_autocorr_lag1_flagged_pct": 0.0,
+    "ETH_USDT_close_return_flagged_pct": 0.4248559891298107,
+    "btc_timestamp_overlap_pct": 99.60161640806679
+  }
+}

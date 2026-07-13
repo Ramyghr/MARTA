@@ -1,0 +1,8 @@
+artifact_location: /home/ramy/Documents/MARTA/marta/mlruns/928314078748258479
+creation_time: 1779757921519
+experiment_id: '928314078748258479'
+last_update_time: 1779757921519
+lifecycle_stage: active
+name: marta_encoder_pretraining_test
+trace_location: null
+workspace: default

@@ -1,0 +1,100 @@
+{
+  "marta_ppo": {
+    "sharpe": 1.3703460016770364,
+    "sortino": 0.35989661174935517,
+    "max_drawdown": 0.007402306085948606,
+    "calmar": 4.584117401550836,
+    "total_return": 0.018424462698340305,
+    "n_trades": 83,
+    "n_meaningful_trades": 6,
+    "mean_turnover": 0.0006216329195802206,
+    "hold_ratio": 0.9831826781585032,
+    "mean_trade_duration_hours": 26.666666666666668,
+    "median_trade_duration_hours": 37.0
+  },
+  "per_regime": {
+    "regime_0": {
+      "n_steps": 968,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    },
+    "regime_1": {
+      "n_steps": 813,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    },
+    "regime_2": {
+      "n_steps": 35,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    },
+    "regime_3": {
+      "n_steps": 786,
+      "n_meaningful_trades": 6,
+      "sharpe": 3.3727556972446617,
+      "avg_position_size": 0.049877170577607384,
+      "avg_return": 2.3438971517455505e-05
+    },
+    "regime_4": {
+      "n_steps": 953,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    },
+    "regime_5": {
+      "n_steps": 414,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    },
+    "regime_6": {
+      "n_steps": 787,
+      "n_meaningful_trades": 0,
+      "sharpe": 0.0,
+      "avg_position_size": 0.0,
+      "avg_return": 0.0
+    }
+  },
+  "baselines": {
+    "buy_and_hold_btc": {
+      "sharpe": 1.3881318901087263,
+      "sortino": 1.7313435912002904,
+      "max_drawdown": 0.2627736173702536,
+      "calmar": 2.3745676103612188,
+      "total_return": 0.3283261158766566,
+      "n_trades": 0,
+      "n_meaningful_trades": 0,
+      "mean_turnover": 0.0,
+      "hold_ratio": 0.0,
+      "mean_trade_duration_hours": 4758.0,
+      "median_trade_duration_hours": 4758.0
+    },
+    "ppo_no_regime": {
+      "sharpe": 0.0,
+      "sortino": 0.0,
+      "max_drawdown": 0.0,
+      "calmar": 0.0,
+      "total_return": 0.0,
+      "n_trades": 0,
+      "n_meaningful_trades": 0,
+      "mean_turnover": 0.0,
+      "hold_ratio": 1.0,
+      "mean_trade_duration_hours": 0.0,
+      "median_trade_duration_hours": 0.0
+    }
+  },
+  "n_val_steps": 4756,
+  "final_portfolio_value": 10184.244626983404,
+  "val_window": {
+    "start": "2023-01-01",
+    "end": "2023-12-31"
+  }
+}

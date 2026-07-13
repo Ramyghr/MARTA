@@ -1,0 +1,331 @@
+"""BaseAgent — parent class for all MARTA deliberation agents."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from typing import Any
+
+from langchain_ollama import ChatOllama
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel
+
+from agents.context import RegimeContext, serialize_context_for_prompt
+from agents.schemas import AgentRebuttal, AgentThesis
+from utils.logger import logger
+
+_DEFAULT_MODEL = "mistral:7b-instruct"
+_TIMEOUT_SECONDS = 300
+
+# Allow overriding the Ollama base URL via env var so Docker containers can
+# reach an Ollama instance running on the host (host.docker.internal).
+_OLLAMA_BASE_URL: str | None = os.environ.get("OLLAMA_HOST")  # e.g. http://host.docker.internal:11434
+
+# Mistral frequently invents agent name variants — map them back to canonical names.
+# None means "unknown, leave as-is".
+_AGENT_NAME_ALIASES: dict[str, str | None] = {
+    "macro correlation agent": "MacroAgent",
+    "macro agent": "MacroAgent",
+    "macroagent": "MacroAgent",
+    "technical pattern agent": "TechnicalAgent",
+    "technical agent": "TechnicalAgent",
+    "tfa": "TechnicalAgent",
+    "technicalagent": "TechnicalAgent",
+    "sentiment agent": "SentimentAgent",
+    "sentimentagent": "SentimentAgent",
+    "finbert": "SentimentAgent",
+    "contrarian agent": "ContrarianAgent",
+    "devil's advocate": "ContrarianAgent",
+    "contrarian": "ContrarianAgent",
+    "fund manager": "FundManagerAgent",
+}
+
+
+_THREAD_POOL = ThreadPoolExecutor(max_workers=4)
+
+
+class BaseAgent:
+    name: str = "base"
+
+    def __init__(
+        self,
+        model: str = _DEFAULT_MODEL,
+        temperature: float = 0.4,
+        timeout_seconds: int = _TIMEOUT_SECONDS,
+        max_attempts: int = 2,
+    ) -> None:
+        kwargs: dict = dict(model=model, temperature=temperature, num_predict=600,format="json")
+        if _OLLAMA_BASE_URL:
+            kwargs["base_url"] = _OLLAMA_BASE_URL
+        self.llm = ChatOllama(**kwargs)
+        self._token_count: int = 0
+        # Per-agent overridable timeout/retry budget — see ContrarianAgent for an
+        # example that widens both (its prompt + historical-analogue context makes
+        # slow responses more likely, and losing it to a timeout is more costly:
+        # the fallback neutral thesis silences the one agent whose whole job is to
+        # catch groupthink).
+        self._timeout_seconds = timeout_seconds
+        self._max_attempts = max_attempts
+    @staticmethod
+    def _repair_invalid_escapes(text: str) -> str:
+        """Mistral sometimes emits Python-style \\' inside JSON strings, which is invalid JSON
+        (only \\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX are legal escapes). Un-escape stray \\'."""
+        return re.sub(r"\\'", "'", text)
+    @property
+    def tokens_used(self) -> int:
+        return self._token_count
+
+    def _build_system_prompt(self, ctx: RegimeContext) -> str:
+        """Prepend regime context + agent-specific instructions. Override in subclasses."""
+        return serialize_context_for_prompt(ctx)
+
+    def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
+        """Call LLM with timeout guard and up to self._max_attempts tries. Returns raw
+        string or empty string once attempts are genuinely exhausted (the empty string
+        is what makes _try_parse_json fall back to _safe_default — never fall back early).
+        """
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
+        ]
+
+        def _invoke() -> str:
+            response = self.llm.invoke(messages)
+            content = response.content if hasattr(response, "content") else str(response)
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                self._token_count += response.usage_metadata.get("total_tokens", 0)
+            else:
+                self._token_count += len(content) // 4
+            return content
+
+        for attempt in range(self._max_attempts):
+            try:
+                future = _THREAD_POOL.submit(_invoke)
+                return future.result(timeout=self._timeout_seconds)
+            except FuturesTimeoutError:
+                future.cancel()
+                if attempt < self._max_attempts - 1:
+                    logger.warning(
+                        f"[{self.name}] LLM timed out (attempt {attempt + 1}/{self._max_attempts}) — retrying"
+                    )
+                else:
+                    logger.warning(
+                        f"[{self.name}] LLM timed out after {self._max_attempts} attempts — returning empty"
+                    )
+                    return ""
+            except Exception as e:
+                logger.error(f"[{self.name}] LLM call failed: {e}")
+                return ""
+        return ""
+
+    def _normalize_agent_name(self, name: str) -> str:
+        """Map Mistral's invented agent name variations to canonical names."""
+        resolved = _AGENT_NAME_ALIASES.get(name.lower().strip())
+        return resolved if resolved is not None else name
+
+    def _normalize_agent_fields(self, result: BaseModel) -> BaseModel:
+        """Normalize agent_name / target_agent fields to canonical names after any parse."""
+        if isinstance(result, AgentThesis):
+            result.agent_name = self._normalize_agent_name(result.agent_name)
+        elif isinstance(result, AgentRebuttal):
+            # agent_name for rebuttals is forced in post_rebuttal; normalize target only
+            result.target_agent = self._normalize_agent_name(result.target_agent)
+        return result
+
+    def _parse_json_response(self, response: str, schema: type[BaseModel]) -> BaseModel:
+        """Parse LLM response into Pydantic schema, then normalize agent names. Never raises."""
+        result = self._try_parse_json(response, schema)
+        return self._normalize_agent_fields(result)
+
+    def _try_parse_json(self, response: str, schema: type[BaseModel]) -> BaseModel:
+        if not response:
+            return _safe_default(schema, self.name)
+        response = self._repair_invalid_escapes(response)
+
+        # 1. Try direct JSON parse
+        try:
+            return schema.model_validate_json(response.strip())
+        except Exception:
+            pass
+
+        # 2. Extract JSON from markdown code fence ```json ... ``` or ``` ... ```
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL)
+        if fence_match:
+            try:
+                return schema.model_validate_json(fence_match.group(1))
+            except Exception:
+                pass
+
+        # 3. Extract first JSON object found anywhere in the response
+        brace_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}", response, re.DOTALL)
+        if brace_match:
+            try:
+                return schema.model_validate_json(brace_match.group(0))
+            except Exception:
+                pass
+
+        # 4. Greedy extraction: find outermost {} block + trailing-comma repair
+        start = response.find("{")
+        end = response.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = response[start : end + 1]
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                return schema.model_validate_json(candidate)
+            except Exception:
+                pass
+
+        # 5. Last-resort: collapse literal newlines inside the extracted block
+        start = response.find("{")
+        end = response.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = response[start : end + 1]
+            candidate = re.sub(r"(?<!\\)\n", " ", candidate)
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                return schema.model_validate_json(candidate)
+            except Exception:
+                pass
+
+        # 5b. AgentThesis field repair — fill missing required fields before Pydantic validation
+        if schema is AgentThesis:
+            start = response.find("{")
+            end = response.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    candidate = response[start : end + 1]
+                    candidate = re.sub(r"(?<!\\)\n", " ", candidate)
+                    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+                    d = json.loads(candidate)
+                    d.setdefault("regime_alignment", "neutral")
+                    d.setdefault("round", 1)
+                    d.setdefault("key_factors", [])
+                    return schema.model_validate(d)
+                except Exception:
+                    pass
+        # 5c. AgentRebuttal field repair — fill missing required fields before Pydantic validation
+        if schema is AgentRebuttal:
+            start = response.find("{")
+            end = response.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    candidate = response[start : end + 1]
+                    candidate = re.sub(r"(?<!\\)\n", " ", candidate)
+                    candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+                    d = json.loads(candidate)
+                    d.setdefault("round", 2)
+                    d.setdefault("target_agent", "unknown")
+                    d.setdefault("maintains_bias", True)
+                    d.setdefault("updated_confidence", 0.5)
+                    return schema.model_validate(d)
+                except Exception:
+                    pass
+
+        # 6. Truncation repair: response cut off mid-string — close the string and brace.
+        start = response.find("{")
+        if start != -1:
+            candidate = response[start:]
+            # Count unescaped quotes; if odd, we're mid-string — close it.
+            quote_count = len(re.findall(r'(?<!\\)"', candidate))
+            if quote_count % 2 == 1:
+                candidate += '"'
+            # Balance braces.
+            open_braces = candidate.count("{")
+            close_braces = candidate.count("}")
+            candidate += "}" * max(0, open_braces - close_braces)
+            candidate = re.sub(r",\s*([}\]])", r"\1", candidate)
+            try:
+                d = json.loads(candidate)
+                if schema is AgentThesis:
+                    d.setdefault("regime_alignment", "neutral")
+                    d.setdefault("round", 1)
+                    d.setdefault("key_factors", [])
+                elif schema is AgentRebuttal:
+                    d.setdefault("round", 2)
+                    d.setdefault("target_agent", "unknown")
+                    d.setdefault("maintains_bias", True)
+                    d.setdefault("updated_confidence", 0.5)
+                return schema.model_validate(d)
+            except Exception:
+                pass
+
+        logger.warning(
+            f"[{self.name}] JSON parse failed — using safe default for {schema.__name__}. "
+            f"Raw response (first 500 chars): {response[:500]!r}"
+        )
+        return _safe_default(schema, self.name)
+
+    def post_thesis(self, ctx: RegimeContext) -> AgentThesis:
+        """Round 1 — post independent thesis. Override in subclasses."""
+        raise NotImplementedError
+
+    def post_rebuttal(
+        self,
+        ctx: RegimeContext,
+        other_theses: list[AgentThesis],
+        my_r1_thesis: AgentThesis | None = None,
+    ) -> AgentRebuttal | None:
+        """Round 2 — rebuttal against a single opposing thesis. Return None to abstain.
+
+        Pass my_r1_thesis to avoid a redundant post_thesis() LLM call.
+        """
+        if not other_theses:
+            return None
+
+        my_thesis = my_r1_thesis or self.post_thesis(ctx)
+        opposing = [t for t in other_theses if t.directional_bias != my_thesis.directional_bias]
+        if not opposing:
+            return None
+        target = max(opposing, key=lambda t: t.confidence)
+
+        system_prompt = self._build_system_prompt(ctx) + (
+            f"\n\nRound 2 rebuttal. Your view: {my_thesis.directional_bias} (conf={my_thesis.confidence:.2f}).\n"
+            f"{target.agent_name} argues {target.directional_bias}.\n"
+            "Reply ONLY with this JSON (fill rebuttal_point and updated_confidence):\n"
+            
+            + '{"agent_name":"'
+            + self.name
+            + '","round":2,"target_agent":"'
+            + target.agent_name
+            + '","rebuttal_point":"<30 words>",'
+            + '"maintains_bias":<true if you still hold your original view, false if the rebuttal changed your mind>,'
+            + '"updated_confidence":<your updated confidence as a float between 0.0 and 1.0>}'
+        )
+        user_prompt = f"Rebut {target.agent_name}."
+
+        raw = self._call_llm(system_prompt, user_prompt)
+        result = self._parse_json_response(raw, AgentRebuttal)
+        if isinstance(result, AgentRebuttal):
+            result.agent_name = self.name  # always canonical — LLM may output wrong name
+            return result
+        return None
+
+
+def _safe_default(schema: type[BaseModel], agent_name: str) -> BaseModel:
+    """Return a minimal valid instance of a schema as a fallback."""
+    if schema is AgentThesis:
+        return AgentThesis(
+            agent_name=agent_name,
+            round=1,
+            directional_bias="neutral",
+            confidence=0.1,
+            reasoning="LLM response unavailable — defaulting to neutral.",
+            key_factors=["system_error"],
+            regime_alignment="neutral",
+        )
+    if schema is AgentRebuttal:
+        return AgentRebuttal(
+            agent_name=agent_name,
+            round=2,
+            target_agent="unknown",
+            rebuttal_point="LLM response unavailable.",
+            maintains_bias=True,
+            updated_confidence=0.1,
+        )
+    # Generic fallback: try to construct with minimal fields
+    try:
+        return schema.model_construct()
+    except Exception:
+        raise ValueError(f"Cannot construct safe default for {schema.__name__}")

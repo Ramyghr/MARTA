@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"http://localhost:8001/api/system/test-source?source=binance\" --max-time 15)",
+      "Bash(curl -s \"http://localhost:8001/api/system/test-source?source=rss\" --max-time 15)",
+      "Bash(curl -s \"http://localhost:8001/api/system/test-source?source=alpha_vantage\" --max-time 10)",
+      "Bash(curl -s \"http://localhost:8001/api/system/ping\" --max-time 5)"
+    ]
+  }
+}

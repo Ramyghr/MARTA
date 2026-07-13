@@ -1,0 +1,49 @@
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  # Layer 1 v2 real split: train 2018-01 → 2022-12-31, val 2023 (data ends 2023-12-01).
+  # Test (2024) is SACRED and not present in this dataset.
+  train_end: "2020-12-31"
+  val_start: "2021-01-01"
+
+data:
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+  processed_dir: "data/processed"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "week2_encoder"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"

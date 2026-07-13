@@ -1,0 +1,14 @@
+artifact_uri: /home/ramy/Documents/MARTA/marta/mlruns/457028512802380033/69390e7e6acf4987b0af92fea1ca3729/artifacts
+end_time: 1779738364599
+entry_point_name: ''
+experiment_id: '457028512802380033'
+lifecycle_stage: active
+run_id: 69390e7e6acf4987b0af92fea1ca3729
+run_name: week1_pipeline
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1779737880482
+status: 3
+tags: []
+user_id: ramy

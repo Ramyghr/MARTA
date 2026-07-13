@@ -1,0 +1,49 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+ccxt>=4.3.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+scipy>=1.11.0
+httpx>=0.27.0
+# Agent debate (for live debate via /ws/debate?mode=live)
+langgraph>=1.0.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langchain-community>=0.3.0
+# Quant / stats
+arch>=7.0.0
+hmmlearn>=0.3.0
+# CLI / logging (used by utils/logger.py which is imported by every agent)
+rich>=13.0.0
+# Autonomous signal scheduler
+apscheduler>=3.10.0
+slowapi>=0.1.9
+# ONNX encoder inference (replaces torch for TechnicalAgent + ppo_inference embedding)
+onnxruntime>=1.16.0
+# PPO inference (rl/policy.py + ppo_inference.py) — CPU-only, no GPU in the container.
+# stable-baselines3==2.3.0 is yanked upstream ("Loading broken with PyTorch 1.13") —
+# 2.8.0 matches the version the checkpoints were actually trained/saved with (conda env `marta`).
+torch==2.3.0+cpu
+stable-baselines3==2.8.0
+# FinBERT sentiment (agents/sentiment_agent.py) — was missing entirely, so the agent
+# silently fell back to "neutral (disabled)" for every debate. Pinned exactly to 4.49.0:
+# transformers>=4.5x added a hard guard (CVE-2025-32434) that refuses to torch.load() a
+# legacy pickle checkpoint (models/finbert/pytorch_model.bin, not safetensors) unless
+# torch>=2.6 — but torch is pinned to 2.3.0+cpu above to match the trained PPO
+# checkpoints, and upgrading it is out of scope here. 4.49.0 is the last version before
+# that guard was added; verified end-to-end against the real mounted FinBERT checkpoint.
+transformers==4.49.0
+# EURUSD/GOLD historical extension fetch (historical.py _fetch_extension_yfinance) — was
+# missing entirely, so the traditional-asset full-history chart data silently stalled at
+# whatever date the parquet cache ends (2024-12-31), caught by a try/except and logged
+# as "no extension data returned" rather than crashing. Distinct from the live WS candle
+# feed (live_feed.py), which uses Twelve Data.
+yfinance>=1.5.0
+# Alpaca paper trading (alpaca_service.py) — practice-account order execution when
+# ALPACA_API_KEY/SECRET are configured in Settings; falls back to the existing
+# Binance-testnet / SQLite paper_db chain when they're empty.
+alpaca-py>=0.28.0

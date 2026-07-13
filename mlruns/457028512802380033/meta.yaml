@@ -1,0 +1,8 @@
+artifact_location: /home/ramy/Documents/MARTA/marta/mlruns/457028512802380033
+creation_time: 1779737880372
+experiment_id: '457028512802380033'
+last_update_time: 1779737880372
+lifecycle_stage: active
+name: marta_data_pipeline
+trace_location: null
+workspace: default

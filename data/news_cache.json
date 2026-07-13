@@ -1,0 +1,658 @@
+{
+  "headlines": [
+    {
+      "timestamp": "2018-01-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges past $14,000 on renewed institutional interest and ETF speculation",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-01-22T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin corrects sharply from January highs, drops below $10,000 on profit-taking",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-02-06T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Crypto markets recover from February selloff, Bitcoin finds support near $7,000",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-02-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin stabilizes above $10,000 as institutional investors signal long-term confidence",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-03-01T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin holds $10,500 support as crypto markets recover from February correction",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-03-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Institutional investors eye Bitcoin ETF as custody solutions mature and regulation clarifies",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-03-10T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve signals gradual rate hikes in 2018 amid steady US economic expansion",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-03-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "CME Bitcoin futures open interest reaches six-week high as institutional demand grows steadily",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-03-18T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin holds $8,000 support as SEC postpones ETF ruling, analysts remain cautiously optimistic",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-03-20T00:00:00Z",
+      "asset": "ETH_USDT",
+      "headline": "Ethereum developer activity surges despite price weakness, EIP improvements progressing",
+      "source": "CoinTelegraph"
+    },
+    {
+      "timestamp": "2018-03-25T00:00:00Z",
+      "asset": "macro",
+      "headline": "G20 summit: global regulators agree to monitor crypto assets but stop short of blanket bans",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-03-28T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Goldman Sachs confirms plans to launch cryptocurrency trading desk, signals Wall Street acceptance",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-04-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin rebounds above $7,500 as oversold technical indicators attract value buyers",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-04-25T00:00:00Z",
+      "asset": "macro",
+      "headline": "US 10-year Treasury yield climbs above 3% for first time in four years, dollar strengthens",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-07-05T00:00:00Z",
+      "asset": "macro",
+      "headline": "US-China trade war escalates as $34 billion in tariffs take effect on both sides",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-07-06T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold rises to three-week high as trade war escalation drives safe-haven demand globally",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-07-10T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve minutes confirm two additional rate hikes planned for 2018, dollar firms",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-07-12T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold climbs above $1,260 per ounce as investors seek shelter from accelerating trade war uncertainty",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-07-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin struggles below $6,500 as regulatory uncertainty and crypto winter sentiment persist",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-07-18T00:00:00Z",
+      "asset": "ETH_USDT",
+      "headline": "Ethereum drops to eight-month low below $500 as developer departures and token sales weigh",
+      "source": "CoinTelegraph"
+    },
+    {
+      "timestamp": "2018-07-20T00:00:00Z",
+      "asset": "macro",
+      "headline": "Yuan weakens to 13-month low against dollar as trade war hits Chinese export sector hard",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-07-23T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold ETF inflows surge to six-month high as investors hedge against macro uncertainty and EM contagion",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-07-28T00:00:00Z",
+      "asset": "macro",
+      "headline": "IMF warns global growth at serious risk from escalating US-China trade tensions",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-08-15T00:00:00Z",
+      "asset": "macro",
+      "headline": "Turkish lira crisis spills into emerging markets as contagion fears grip global investors",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-08-20T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold falls to 18-month low near $1,175 as strong dollar overshadows safe-haven appeal",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-11-01T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin holds above $6,300 as markets await Bitcoin Cash hard fork decision next week",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-11-08T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops toward $6,000 as crypto market sentiment turns sharply negative ahead of BCH fork",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-11-14T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin Cash hard fork triggers massive crypto selloff, BTC collapses below $6,000 support",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-11-19T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin crashes through $5,000 support in worst single-week selloff since the 2017 peak",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-11-22T00:00:00Z",
+      "asset": "ETH_USDT",
+      "headline": "Ethereum collapses below $150 as crypto bear market accelerates across all assets",
+      "source": "CoinTelegraph"
+    },
+    {
+      "timestamp": "2018-11-25T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin touches $3,500 multi-year low as capitulation selling intensifies, miners shutting down",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2018-11-28T00:00:00Z",
+      "asset": "macro",
+      "headline": "Bitcoin mining revenues fall 85 percent from peak as hashrate decline signals capitulation",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2018-11-30T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Crypto market cap falls below $130 billion; analysts warn further 30 to 50 percent downside possible",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2018-12-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops below $3,500 as year-end tax-loss selling and sentiment at multi-year low",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2019-01-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin stabilizes near $3,500 as selling pressure finally subsides after brutal 2018 decline",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2019-01-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Fidelity Digital Assets to launch institutional Bitcoin custody in Q1 2019, major milestone",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2019-01-15T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve signals patience on further rate hikes as global growth concerns mount",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2019-01-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin tests $3,600 resistance as technical analysts begin identifying a bottoming pattern",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2019-01-28T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Grayscale Bitcoin Trust sees strongest monthly inflows in a year as institutional appetite returns",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2019-02-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bakkt Bitcoin futures exchange targets Q3 2019 launch, CFTC approval process advancing",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2019-02-15T00:00:00Z",
+      "asset": "macro",
+      "headline": "US-China trade talks resume constructively, risk appetite returns as deal prospects improve",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2019-02-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin breaks above $4,000 on Fidelity launch confirmation and improving market sentiment",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2019-06-25T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin rallies above $10,000 for first time in 15 months, breaking out of year-long accumulation",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2019-07-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges past $12,000 driven by Facebook Libra announcement and renewed institutional demand",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2020-03-15T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve cuts rates to zero, launches unlimited QE as COVID-19 triggers global recession fears",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2020-03-16T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin crashes below $5,000 in Black Thursday selloff as COVID-19 panic triggers crypto liquidations",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2020-10-20T00:00:00Z",
+      "asset": "macro",
+      "headline": "PayPal enables Bitcoin payments for 346 million users globally, mass adoption milestone reached",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2020-11-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin breaks above $15,000 for first time since January 2018 on institutional accumulation",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2020-11-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges past $18,000 as institutional demand from MicroStrategy and Square accelerates",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2020-11-25T00:00:00Z",
+      "asset": "macro",
+      "headline": "MicroStrategy doubles Bitcoin treasury position to $475 million, others expected to follow strategy",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2020-12-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin breaks all-time high above $20,000, bull cycle confirmed by multiple on-chain metrics",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2020-12-22T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin consolidates near $23,000 as miners hold coins anticipating further price appreciation",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2021-01-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges past $31,000 as new year rally continues with record on-chain transaction volumes",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-01-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin consolidates near $35,000 as institutional investors continue steady accumulation",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2021-02-10T00:00:00Z",
+      "asset": "macro",
+      "headline": "Tesla invests $1.5 billion in Bitcoin and plans to accept it as payment, corporate treasury adoption accelerating",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-02-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin tests $55,000 as BNY Mellon, Goldman Sachs, and Morgan Stanley announce crypto service plans",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2021-03-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin holds above $55,000 as US stimulus checks drive retail and institutional demand simultaneously",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-04-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin approaches $65,000 as Coinbase IPO marks historic institutional validation of crypto markets",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-05-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops 50 percent from April highs as China announces mining crackdown, Elon Musk reverses position",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2021-07-20T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve signals earlier than expected tapering as inflation proves more persistent than forecast",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-08-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin rebounds toward $45,000 as El Salvador Bitcoin legal tender law takes effect globally",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-09-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin climbs back above $50,000 on positive US regulatory signals and strong on-chain fundamentals",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2021-09-25T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin tests $44,000 after China declares all crypto transactions illegal, market absorbs shock quickly",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2021-10-05T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges above $55,000 as ProShares Bitcoin ETF launch expected imminently by SEC",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2022-01-08T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops below $42,000 as Fed minutes signal faster rate hikes than expected",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-01-10T00:00:00Z",
+      "asset": "macro",
+      "headline": "Federal Reserve prepares to hike rates aggressively; risk assets sell off across markets",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2022-01-22T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin falls to $35,000 in broad crypto market selloff amid macro uncertainty",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-02-16T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin recovers to $44,000 as traders buy the dip ahead of potential ETF news",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-02-24T00:00:00Z",
+      "asset": "macro",
+      "headline": "Russia invades Ukraine; global markets plunge, gold surges as safe-haven demand spikes",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-02-24T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold surges above $1,970 as Russia-Ukraine war triggers safe-haven rush",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2022-03-02T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin seen as digital safe haven; rallies to $45,000 as Ukraine conflict escalates",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-03-16T00:00:00Z",
+      "asset": "macro",
+      "headline": "Fed raises rates 25bps for first time since 2018; signals six more hikes this year",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2022-04-04T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops to $45,500; macro headwinds and rising inflation weigh on risk assets",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-05-09T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin plunges below $32,000 as TerraUST stablecoin loses peg in historic collapse",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-05-12T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "LUNA crashes 99%; Terra ecosystem collapse wipes $40B from crypto market cap in 48 hours",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-05-12T00:00:00Z",
+      "asset": "macro",
+      "headline": "Crypto contagion: Terra collapse triggers cascading liquidations across DeFi protocols",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2022-06-13T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin crashes below $23,000 for first time since December 2020 as Celsius freezes withdrawals",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-06-18T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin falls to $17,600 \u2014 lowest level since 2020; Three Arrows Capital insolvent",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-06-13T00:00:00Z",
+      "asset": "macro",
+      "headline": "US CPI hits 40-year high at 8.6%; Fed expected to hike 75bps in emergency move",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2022-07-13T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold falls below $1,700 as surging dollar crushes commodity prices across the board",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2022-07-20T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin rebounds to $24,000 on short-squeeze; market cautiously optimistic on macro pivot",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-09-06T00:00:00Z",
+      "asset": "ETH_USDT",
+      "headline": "Ethereum Merge countdown begins; ETH rises on anticipation of proof-of-stake transition",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-09-15T00:00:00Z",
+      "asset": "ETH_USDT",
+      "headline": "Ethereum Merge completes successfully; network transitions to proof-of-stake, energy use drops 99%",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-09-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin slips to $19,800 as Merge rally fails to hold; macro pressure dominates",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-11-08T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "FTX liquidity crisis deepens; Binance pulls out of rescue deal, BTC drops below $17,000",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2022-11-11T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "FTX files for bankruptcy; Sam Bankman-Fried resigns as crypto market suffers worst week since 2018",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2022-11-11T00:00:00Z",
+      "asset": "macro",
+      "headline": "FTX collapse sparks regulatory panic; lawmakers demand emergency hearings on crypto oversight",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2022-12-14T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin ends 2022 near $16,500 \u2014 down 65% on the year in worst annual performance since 2018",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-01-12T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin rises to $18,000 as US CPI cools more than expected; rate hike fears ease",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-01-21T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges past $22,000; crypto market starts new year with sharp recovery rally",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2023-02-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin holds $24,000 as institutional buying returns; Fidelity expands crypto services",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-03-10T00:00:00Z",
+      "asset": "macro",
+      "headline": "Silicon Valley Bank collapses; FDIC takeover triggers banking sector fears, crypto briefly rallies as alternative",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2023-03-10T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin climbs to $26,000 as banking crisis boosts digital asset narrative",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-03-10T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold jumps to $1,920 on safe-haven demand as SVB collapse rattles regional banks",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2023-04-11T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin consolidates around $30,000; market awaits US CPI data and SEC ETF ruling",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-05-08T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin dips to $27,500 as debt ceiling impasse weighs on risk appetite",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2023-06-15T00:00:00Z",
+      "asset": "macro",
+      "headline": "BlackRock files for spot Bitcoin ETF; largest asset manager's move seen as watershed moment for crypto",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2023-06-15T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges 20% to $30,500 after BlackRock spot ETF filing ignites institutional optimism",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-07-13T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Ripple wins partial court victory against SEC; XRP rallies 70%, broader crypto market follows",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2023-07-13T00:00:00Z",
+      "asset": "macro",
+      "headline": "US inflation cools to 3%; Fed signals potential pause in rate hikes as economy stabilises",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2023-08-17T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin drops to $26,000 on Evergrande bankruptcy filing and rising Treasury yields",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-08-17T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold holds above $1,900 as sticky core inflation supports safe-haven demand",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2023-10-16T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin climbs to $28,500 as spot ETF approval odds rise; Grayscale wins SEC court battle",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-10-23T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin surges above $34,000 on false ETF approval report; remains elevated on genuine optimism",
+      "source": "Reuters"
+    },
+    {
+      "timestamp": "2023-11-09T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin breaks $37,000 for first time in 18 months; ETF anticipation and halving narrative drive rally",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-11-09T00:00:00Z",
+      "asset": "macro",
+      "headline": "Fed holds rates steady; signals data-dependency as inflation continues to cool toward 2% target",
+      "source": "WSJ"
+    },
+    {
+      "timestamp": "2023-12-01T00:00:00Z",
+      "asset": "BTC_USDT",
+      "headline": "Bitcoin consolidates above $38,000 heading into year-end; spot ETF decision expected in January 2024",
+      "source": "CoinDesk"
+    },
+    {
+      "timestamp": "2023-12-01T00:00:00Z",
+      "asset": "GOLD",
+      "headline": "Gold tests record high near $2,050 as dollar weakens and Fed pivot expectations grow",
+      "source": "Bloomberg"
+    },
+    {
+      "timestamp": "2023-12-01T00:00:00Z",
+      "asset": "macro",
+      "headline": "2023 outlook: crypto recovers from FTX fallout, AI boom reshapes tech sector, soft landing in sight",
+      "source": "Reuters"
+    }
+  ]
+}

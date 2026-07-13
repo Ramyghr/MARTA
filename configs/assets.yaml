@@ -1,0 +1,109 @@
+assets:
+  crypto:
+    - symbol: "BTC/USDT"
+      exchange: "binance"
+      source: "ccxt"
+    - symbol: "ETH/USDT"
+      exchange: "binance"
+      source: "ccxt"
+  traditional:
+    - symbol: "EURUSD"
+      source: "histdata"
+      histdata_pair: "eurusd"
+    - symbol: "XAUUSD"
+      source: "histdata"
+      histdata_pair: "xauusd"
+
+date_range:
+  start: "2018-01-01"
+  end: "2025-01-01"
+  train_end: "2022-12-31"
+  val_start: "2023-01-01"
+  val_end: "2023-12-31"
+  test_start: "2024-01-01"
+  test_end: "2024-12-31"
+
+timeframe:
+  candle: "1h"
+  window_size: 60
+  step: 1
+
+features:
+  ohlcv: ["open", "high", "low", "close", "volume"]
+  indicators:
+    - atr
+    - adx
+    - rsi
+    - bb_width
+    - macd_histogram
+    - obv_raw
+    - vol_zscore
+    - realized_vol
+    - vol_ratio
+    - return_skew
+    - return_kurtosis
+    - autocorr_lag1
+    - realized_vol_raw
+
+normalization:
+  window_hours: 720
+  min_periods: 168
+
+validation:
+  max_gap_hours_crypto: 2
+  max_gap_hours_traditional: 72
+  # Forex/commodities (EURUSD/XAUUSD) do not trade weekends, so the
+  # crypto(24/7) ∩ forex intersection is capped at ~71% (5/7 days) and lands at
+  # ~63.6% after holidays — an 80% floor is mathematically unreachable for a
+  # crypto-vs-forex dataset. 0.60 is the realistic floor (actual: 63.6%).
+  min_timestamp_overlap_pct: 0.60
+  zscore_flag_threshold: 5.0
+
+mlflow:
+  experiment_name: "marta_data_pipeline"
+  run_name: "week1_pipeline"
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 0.001
+  weight_decay: 0.0001
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  # Encoder split: train < train_end (through 2022-12-31), val >= val_start.
+  # regime/hmm.py reads the same train_end for its PCA/HMM training cutoff.
+  # NOTE: 2024 must NOT reach encoder validation — the Kaggle upload is trimmed
+  # to <= 2023-12-31 (see kaggle_retrain_instructions.md) so 2024 stays untouched.
+  train_end: "2023-01-01"
+  val_start: "2023-01-01"
+
+data:
+  processed_dir: "data/processed"
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+
+visualization:
+  tsne_n_samples: 3000
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"

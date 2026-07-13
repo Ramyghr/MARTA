@@ -1,0 +1,48 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8000"
+    volumes:
+      - ../data:/app/data:ro
+      # Live debates need to append to debate_results.json — override the parent :ro
+      # mount for just this subdirectory (same pattern as paper_trading_db below) so
+      # the rest of data/ (raw parquet, results, etc.) stays protected from writes.
+      - ../data/debates:/app/data/debates
+      - ../encoder:/app/encoder:ro
+      - ../agents:/app/agents:ro
+      - ../rl:/app/rl:ro
+      - ../regime:/app/regime:ro
+      - ../models:/app/models:ro
+      - ../configs:/app/configs:ro
+      - ../utils:/app/utils:ro
+      - ../mlruns:/app/mlruns:ro
+      - ./backend:/dashboard_backend
+      - paper_trading_db:/app/paper_trading_db
+    environment:
+      - PYTHONPATH=/app
+      - MARTA_ROOT=/app
+      # Agents call Ollama — Docker can't use localhost, must go via host gateway
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      # Writable SQLite path (data/ is mounted read-only)
+      - PAPER_DB_PATH=/app/paper_trading_db/paper_trading.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8001
+        NEXT_PUBLIC_WS_URL: ws://localhost:8001
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8001
+    depends_on:
+      - backend
+
+volumes:
+  paper_trading_db:
