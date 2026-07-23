@@ -34,6 +34,9 @@ _encoder = None
 _regime_stream = None
 _aligned_cache: dict[str, "pd.DataFrame"] = {}
 
+_vol_cache: dict[str, tuple[float, "datetime"]] = {}  # asset -> (vol_forecast, fitted_at)
+_VOL_REFIT_HOURS = 168  # weekly — mirrors rl.env._GARCH_STRIDE
+
 
 def load_model() -> None:
     """Load ppo_best.zip and the frozen encoder. Called once at backend startup."""
@@ -209,15 +212,88 @@ def get_live_embedding(asset: str, timestamp: "pd.Timestamp") -> Optional[np.nda
     return emb if np.any(emb) else None
 
 
+def _live_vol_forecast(asset: str) -> float:
+    """Weekly-cached GARCH(1,1) 1-step volatility forecast for `asset`.
+
+    Reuses rl.env._fit_garch_vol (the fitting primitive) directly rather than
+    rl.env.precompute_vol_forecast — that wrapper's disk cache invalidates by
+    `len(df) == len(cached)`, an invariant built for a static training dataframe that
+    breaks for a live dataframe growing one row/hour (it would either refit on every
+    call or never hit its own cache). This keeps its own small time-based cache instead:
+    refit only when the last fit for `asset` is older than a week, else reuse the cached
+    scalar. In-memory only — losing it on a backend restart just costs one extra refit,
+    which self-heals.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+    cached = _vol_cache.get(asset)
+    if cached is not None and (now - cached[1]) < timedelta(hours=_VOL_REFIT_HOURS):
+        return cached[0]
+
+    df = _get_aligned_df(asset)
+    if df is None or "close_return" not in df.columns:
+        return 0.02
+    returns = df["close_return"].dropna().to_numpy(dtype=np.float64)
+    if len(returns) < 20:
+        return 0.02
+
+    try:
+        from rl.env import _fit_garch_vol, _GARCH_WINDOW
+        vol = _fit_garch_vol(returns[-_GARCH_WINDOW:])
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"ppo_inference: GARCH fit failed for {asset} — {exc}")
+        vol = float(np.std(returns)) if len(returns) > 1 else 0.02
+
+    _vol_cache[asset] = (vol, now)
+    return vol
+
+
+def _build_portfolio_vec(asset: str) -> np.ndarray:
+    """Build the 8-dim live portfolio vector from paper_db state.
+
+    Sourced from paper_db.get_portfolio_state_for_obs(), called before this tick's
+    paper_db.update() runs (predict() executes before update() inside
+    live_signal.get_live_signal()) — so this naturally reflects pre-decision state,
+    matching rl/env.py's training-time semantics.
+    """
+    import logging
+    vec = np.zeros(_PORTFOLIO_DIM, dtype=np.float32)
+    try:
+        import paper_db
+        state = paper_db.get_portfolio_state_for_obs(asset)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"ppo_inference: portfolio state read failed for {asset} — {exc}")
+        return vec
+
+    from rl.env import CANONICAL_ASSETS, N_POSITION_SLOTS
+    if asset in CANONICAL_ASSETS:
+        slot = min(CANONICAL_ASSETS.index(asset), N_POSITION_SLOTS - 1)
+        vec[slot] = state["signed_position"]
+    vec[4] = state["portfolio_return"]
+    vec[5] = state["drawdown"]
+    hours = state["hours_since_last_trade"]
+    # Never-traded asset reads as maximally idle (1.0), not "just traded" (0.0) — 0.0 is
+    # only a reset-boundary artifact of rl/env.py's episodic reset(); a live asset that's
+    # simply never opened a position is closer to the far end of the idle scale, which is
+    # also how this dim behaves during real sustained hold streaks in training (saturates
+    # at 1.0 after 100 steps of no trade).
+    steps_proxy = 1.0 if hours is None else min(hours / 100.0, 1.0)
+    vec[6] = steps_proxy
+    vec[7] = _live_vol_forecast(asset)
+    return vec
+
+
 def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
     """Build the 152-dim observation for PPO inference.
 
-    Consensus and portfolio slots are zero (no running position, no fresh debate).
-    The regime embedding carries the signal.
+    Consensus is still zero (wired in a later phase); portfolio reflects live paper_db
+    state (position, return, drawdown, idle time, vol forecast).
     """
     regime = _build_regime_embedding(asset, timestamp)
     consensus = np.zeros(_CONSENSUS_DIM, dtype=np.float32)
-    portfolio = np.zeros(_PORTFOLIO_DIM, dtype=np.float32)
+    portfolio = _build_portfolio_vec(asset)
     obs = np.concatenate([regime, consensus, portfolio])
     return np.clip(obs, -10.0, 10.0).astype(np.float32)
 
@@ -231,8 +307,8 @@ def predict(asset: str, timestamp: "pd.Timestamp") -> Optional[dict]:
     if _model is None:
         return None
 
-    obs = _build_observation(asset, timestamp)
     try:
+        obs = _build_observation(asset, timestamp)
         action_arr, _ = _model.predict(obs, deterministic=True)
         # Unflatten: action[0]=direction (0=long,1=short,2=hold), action[1]=fraction
         direction = int(round(float(np.clip(action_arr[0], 0, 2))))

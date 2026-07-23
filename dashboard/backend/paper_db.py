@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS trade_outcomes (
 CREATE TABLE IF NOT EXISTS shared_capital (
     id               INTEGER PRIMARY KEY CHECK (id = 1),
     capital          REAL NOT NULL DEFAULT 10000.0,
+    peak_capital     REAL NOT NULL DEFAULT 10000.0,
     updated_at       TEXT NOT NULL
 );
 
@@ -128,13 +129,42 @@ CREATE TABLE IF NOT EXISTS pending_trades (
 """
 
 
+_schema_migrated = False  # module-level flag — run the ALTER TABLE probe once per process
+
+
+def _migrate_schema(con: sqlite3.Connection) -> None:
+    """Additive, backward-compatible migration for DBs created before ``peak_capital``
+    existed. A no-op on any DB that already has the column (including brand-new ones,
+    which get it straight from `_DDL`) — the OperationalError is the "already migrated"
+    signal, not an error.
+    """
+    try:
+        con.execute(
+            "ALTER TABLE shared_capital ADD COLUMN peak_capital REAL NOT NULL DEFAULT 10000.0"
+        )
+    except sqlite3.OperationalError:
+        return
+    # Backfill from real history rather than blindly defaulting to INITIAL_CAPITAL, which
+    # would understate a genuine pre-existing peak and misreport drawdown for the DB's
+    # lifetime. MAX(...) never lowers the column below the column's own safe default.
+    con.execute(
+        """UPDATE shared_capital SET peak_capital = MAX(
+               peak_capital, capital, COALESCE((SELECT MAX(portfolio_value) FROM trades), 0)
+           ) WHERE id = 1"""
+    )
+
+
 @contextmanager
 def _conn():
+    global _schema_migrated
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(_DB_PATH))
     con.row_factory = sqlite3.Row
     try:
         con.executescript(_DDL)
+        if not _schema_migrated:
+            _migrate_schema(con)
+            _schema_migrated = True
         yield con
         con.commit()
     finally:
@@ -162,10 +192,14 @@ def _get_shared_capital(con: sqlite3.Connection) -> float:
 
 def _set_shared_capital(con: sqlite3.Connection, value: float) -> None:
     now = datetime.now(timezone.utc).isoformat()
+    v = round(value, 4)
     con.execute(
-        """INSERT INTO shared_capital (id, capital, updated_at) VALUES (1, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET capital=excluded.capital, updated_at=excluded.updated_at""",
-        (round(value, 4), now),
+        """INSERT INTO shared_capital (id, capital, peak_capital, updated_at) VALUES (1, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+               capital=excluded.capital,
+               peak_capital=MAX(shared_capital.peak_capital, excluded.capital),
+               updated_at=excluded.updated_at""",
+        (v, v, now),
     )
 
 
@@ -230,6 +264,49 @@ def get_account_state() -> dict:
         "total_return":    round(capital / INITIAL_CAPITAL - 1.0, 6),
         "total_exposure":  round(sum(p["exposure"] for p in positions), 4),
         "positions":       positions,
+    }
+
+
+def get_portfolio_state_for_obs(asset: str) -> dict:
+    """Read-only snapshot of everything ppo_inference._build_portfolio_vec needs for
+    `asset`. Called from inside ppo_inference._build_observation() -> predict(), itself
+    called from live_signal.get_live_signal() BEFORE this tick's paper_db.update() runs
+    — so this naturally returns PRE-decision state, matching rl/env.py's training-time
+    semantics where _signed_position/_steps_since_trade reflect state before the current
+    action, not after it.
+    """
+    with _conn() as con:
+        capital = _get_shared_capital(con)
+        peak_row = con.execute("SELECT peak_capital FROM shared_capital WHERE id=1").fetchone()
+        peak = float(peak_row["peak_capital"]) if peak_row and peak_row["peak_capital"] is not None else capital
+        pos_row = con.execute(
+            "SELECT prev_action, prev_size FROM portfolio WHERE asset=?", (asset,)
+        ).fetchone()
+        last_trade = con.execute(
+            "SELECT timestamp FROM trades WHERE asset=? ORDER BY id DESC LIMIT 1", (asset,)
+        ).fetchone()
+
+    signed_position = 0.0
+    if pos_row:
+        if pos_row["prev_action"] == "long":
+            signed_position = float(pos_row["prev_size"])
+        elif pos_row["prev_action"] == "short":
+            signed_position = -float(pos_row["prev_size"])
+
+    drawdown = max(0.0, (peak - capital) / peak) if peak > 0 else 0.0
+
+    hours_since_trade: Optional[float] = None
+    if last_trade and last_trade["timestamp"]:
+        delta = datetime.now(timezone.utc) - datetime.fromisoformat(last_trade["timestamp"])
+        hours_since_trade = max(0.0, delta.total_seconds() / 3600.0)
+
+    return {
+        "portfolio_value":        capital,
+        "portfolio_return":       capital / INITIAL_CAPITAL - 1.0,
+        "peak_capital":           peak,
+        "drawdown":               drawdown,
+        "signed_position":        signed_position,
+        "hours_since_last_trade": hours_since_trade,  # None => this asset has never traded
     }
 
 
