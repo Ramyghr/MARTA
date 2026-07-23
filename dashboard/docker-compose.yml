@@ -4,11 +4,7 @@ services:
     ports:
       - "8001:8000"
     volumes:
-      - ../data:/app/data:ro
-      # Live debates need to append to debate_results.json — override the parent :ro
-      # mount for just this subdirectory (same pattern as paper_trading_db below) so
-      # the rest of data/ (raw parquet, results, etc.) stays protected from writes.
-      - ../data/debates:/app/data/debates
+      - ../data:/app/data
       - ../encoder:/app/encoder:ro
       - ../agents:/app/agents:ro
       - ../rl:/app/rl:ro
@@ -16,7 +12,8 @@ services:
       - ../models:/app/models:ro
       - ../configs:/app/configs:ro
       - ../utils:/app/utils:ro
-      - ../mlruns:/app/mlruns:ro
+      - ../mlruns:/app/mlruns
+      - ../run_rl.py:/app/run_rl.py:ro
       - ./backend:/dashboard_backend
       - paper_trading_db:/app/paper_trading_db
     environment:
@@ -24,8 +21,11 @@ services:
       - MARTA_ROOT=/app
       # Agents call Ollama — Docker can't use localhost, must go via host gateway
       - OLLAMA_HOST=http://host.docker.internal:11434
-      # Writable SQLite path (data/ is mounted read-only)
+      # Paper trading DB lives in its own named volume, kept separate from data/
       - PAPER_DB_PATH=/app/paper_trading_db/paper_trading.db
+      # mlflow 3.x deprecated the local filesystem tracking store (mlruns/) by default;
+      # this dashboard has no tracking server, so opt back in explicitly.
+      - MLFLOW_ALLOW_FILE_STORE=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload

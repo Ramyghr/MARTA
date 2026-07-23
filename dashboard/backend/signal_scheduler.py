@@ -228,7 +228,7 @@ def _update_trade_outcomes(asset: str, current_price: float) -> None:
     if not open_trades:
         return
 
-    regime_label = regime_service.get_regime(asset, pd.Timestamp("now", tz="UTC")).get("regime_label")
+    regime_label = regime_service.get_live_regime(asset, pd.Timestamp("now", tz="UTC")).get("regime_label")
 
     for trade in open_trades:
         direction = 1 if trade["action"] == "long" else -1 if trade["action"] == "short" else 0

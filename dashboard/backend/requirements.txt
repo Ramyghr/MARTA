@@ -47,3 +47,7 @@ yfinance>=1.5.0
 # ALPACA_API_KEY/SECRET are configured in Settings; falls back to the existing
 # Binance-testnet / SQLite paper_db chain when they're empty.
 alpaca-py>=0.28.0
+# run_rl.py (invoked via /api/ablation/refresh) imports mlflow at module level to log
+# training/eval metrics to the mounted mlruns/ dir. mlflow-skinny (no server/UI deps)
+# is enough since the dashboard only calls log_param/log_metric/log_artifact.
+mlflow-skinny==3.14.0

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +18,10 @@ MARTA_ROOT  = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent
 _FRESHNESS  = MARTA_ROOT / "data" / "freshness.json"
 _RAW_DIR    = MARTA_ROOT / "data" / "raw"
 _STALE_HOURS = 26
+
+if str(MARTA_ROOT) not in sys.path:
+    sys.path.insert(0, str(MARTA_ROOT))
+from utils.assets import ASSET_FILE_STEM  # noqa: E402
 
 _ASSETS = [
     {"id": "BTC_USDT",  "label": "BTC/USDT",  "type": "crypto"},
@@ -29,7 +34,8 @@ _ASSETS = [
 def _last_raw_timestamp(asset_id: str) -> str | None:
     try:
         import pandas as pd
-        path = _RAW_DIR / f"{asset_id}_1h_raw.parquet"
+        file_stem = ASSET_FILE_STEM.get(asset_id, asset_id)
+        path = _RAW_DIR / f"{file_stem}_1h_raw.parquet"
         if not path.exists():
             return None
         df = pd.read_parquet(path, engine="pyarrow")

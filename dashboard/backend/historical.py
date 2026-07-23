@@ -86,6 +86,10 @@ def _fetch_extension_yfinance(ticker: str, since: pd.Timestamp) -> pd.DataFrame:
         if df.empty:
             return pd.DataFrame()
         df.index = pd.to_datetime(df.index, utc=True)
+        if isinstance(df.columns, pd.MultiIndex):
+            # yfinance now returns MultiIndex columns (Price, Ticker) even for a
+            # single ticker — flatten to the Price level before the rename below.
+            df.columns = df.columns.get_level_values(0)
         df.columns = [str(c).lower().replace(" ", "_") for c in df.columns]
         rename = {"adj_close": "close", "adj close": "close"}
         df = df.rename(columns=rename)

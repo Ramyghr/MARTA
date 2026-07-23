@@ -1,13 +1,14 @@
 """
 Month 2 Week 2 demo — run 4 debates across different regime states and log to MLflow.
 
-Regime availability note:
-  BTC_USDT only has regimes {0,1,4,5,6}. Regimes 2 (stress/crisis) and 3 (bear trend)
-  exist only in GOLD/EURUSD. Demo uses:
-    - BTC Regime 1 (calm bull)
-    - BTC Regime 4 (calm bear, Oct 2018-Jan 2019)
-    - GOLD Regime 2 (stress/crisis)
-    - BTC Regime 1 with high conviction (regime_prob > 0.80) — designed to trigger Contrarian
+Regime availability note (2026-07-14 walk-forward retrain — n_states=6, all assets
+now have rows in every regime; label semantics below per
+data/validated/regime_semantics.json):
+    - BTC Regime 4 (extreme bull/high-vol, global Sharpe 2.21, ann. ret +202%)
+    - BTC Regime 2 (bear/crash, global Sharpe -1.22, ann. ret -78% — BTC's single
+      most frequent regime post-retrain)
+    - GOLD Regime 2 (same bear/crash regime, GOLD's occurrence within it — stress proxy)
+    - BTC Regime 4 with high conviction (regime_prob > 0.80) — designed to trigger Contrarian
 
 Usage:
     python run_debate.py                         # 4 demo debates
@@ -108,10 +109,10 @@ def _select_demo_timestamps(
         return valid.iloc[0]["timestamp"] if not valid.empty else rows.iloc[0]["timestamp"]
 
     scenarios = [
-        ("BTC_USDT", 1, "BTC calm bull", None, None, False),
-        ("BTC_USDT", 4, "BTC calm bear", "2018-10-01", "2019-01-01", False),
+        ("BTC_USDT", 4, "BTC extreme bull/high-vol", None, None, False),
+        ("BTC_USDT", 2, "BTC bear/crash", None, None, False),
         ("GOLD", 2, "GOLD stress/crisis", None, None, False),
-        ("BTC_USDT", 1, "BTC high-conviction bull [Contrarian trigger]", None, None, True),
+        ("BTC_USDT", 4, "BTC high-conviction bull [Contrarian trigger]", None, None, True),
     ]
 
     picks: list[tuple[pd.Timestamp, str, int, str]] = []

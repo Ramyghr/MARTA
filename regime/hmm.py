@@ -6,7 +6,18 @@ PCA(16) on training embeddings → BIC-selected GaussianHMM → regime probabili
 BIC search strategy (fast):
   - diag covariance, 100 iters, tol=1e-3, 20K-sample subsample of training data
 Final refit (accurate):
-  - full covariance, 200 iters, tol=1e-4, all training + full dataset
+  - diag covariance, 200 iters, tol=1e-4, all training data
+
+Covariance type note (fixed 2026-07-20): the final refit previously used
+covariance_type="full" (136 free params/state in 16-dim space) while the BIC search
+above it, and _compute_bic's own parameter-count formula (n_states**2 + 2*n_states*
+pca_dim), both assume diagonal covariance (16 params/state). That mismatch let one
+state's full covariance run away unconstrained during EM — verified on the live model:
+one state's covariance trace was 20-250x every other state's, making it an "absorbing"
+catch-all that any live (non-full-history) HMM query collapsed into regardless of the
+actual input, because the model was never fit with any pressure keeping per-state
+covariances comparable. Diagonal covariance for both stages closes that gap and
+keeps the BIC formula's complexity accounting consistent with what's actually deployed.
 """
 from __future__ import annotations
 
@@ -272,13 +283,12 @@ def run_hmm_pipeline(config: dict) -> dict[str, Any]:
     # Step 2 — BIC selection (training data only)
     _train_model, best_n, bic_results = fit_hmm_bic(emb_reduced, train_mask)
 
-    # Step 3 — Refit winner on full dataset
-    logger.info(f"Refitting best HMM (n_states={best_n}) on full dataset …")
-    # Step 3 — Refit winner on TRAINING DATA ONLY (full covariance, more iterations)
+    # Step 3 — Refit winner on TRAINING DATA ONLY (diag covariance, more iterations —
+    # see module docstring for why this is diag, not full)
     logger.info(f"Refitting best HMM (n_states={best_n}) on training data only …")
     final_hmm = GaussianHMM(
         n_components=best_n,
-        covariance_type="full",
+        covariance_type="diag",
         n_iter=200,
         random_state=42,
         tol=1e-4,

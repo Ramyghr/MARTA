@@ -28,16 +28,66 @@ MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.
 _DEBATE_RESULTS_PATH = MARTA_ROOT / "data" / "debates" / "debate_results.json"
 _DEBATE_MATCH_WINDOW_DAYS = 7
 
-# Regime → (action, position_size)  — mirrors trained PPO behaviour
-_REGIME_POLICY: dict[int, tuple[str, float]] = {
-    0: ("hold", 0.010),   # Mixed/Transitional — cautious
-    1: ("long", 0.040),   # Calm Bull — full send
-    2: ("hold", 0.000),   # Stress/Crisis — flat
-    3: ("short", 0.020),  # Bear Trend — small short
-    4: ("hold", 0.010),   # Calm Bear — stay flat
-    5: ("long", 0.015),   # Trending Forex A
-    6: ("long", 0.015),   # Trending Forex B
-}
+# Regime -> (action, position_size), generated from data/validated/regime_semantics.json
+# instead of hand-maintained by label number. A hardcoded-by-index table like this one
+# used to be went stale silently every time run_regime.py refits the HMM — label 3 can
+# mean "severe crisis" after one refit and "mild bull" after the next, since regime
+# label assignment isn't stable across fits. Generating it from each regime's actual
+# Sharpe (the same statistic already used for the human-readable descriptions in
+# agents/context.py and regime_service.py) keeps this table correct automatically.
+_REGIME_POLICY_PATH = MARTA_ROOT / "data" / "validated" / "regime_semantics.json"
+_REGIME_POLICY_FALLBACK: dict[int, tuple[str, float]] = {
+    0: ("hold", 0.010),
+}  # used only if regime_semantics.json is missing (pipeline never run)
+
+_regime_policy_cache: dict[int, tuple[str, float]] | None = None
+
+
+def _generate_regime_policy() -> dict[int, tuple[str, float]]:
+    """Sharpe-banded action/size per regime, thresholds chosen to mirror how the old
+    hand-written table reasoned about its regimes: stay flat in a severe-negative
+    regime rather than short into it (crisis regimes are exactly the high-variance,
+    hard-to-model conditions you don't want to lever into on a fallback rule), scale
+    conviction (position size) with Sharpe magnitude otherwise.
+    """
+    global _regime_policy_cache
+    if _regime_policy_cache is not None:
+        return _regime_policy_cache
+
+    if not _REGIME_POLICY_PATH.exists():
+        _regime_policy_cache = dict(_REGIME_POLICY_FALLBACK)
+        return _regime_policy_cache
+
+    try:
+        sem = json.loads(_REGIME_POLICY_PATH.read_text())
+    except Exception:
+        _regime_policy_cache = dict(_REGIME_POLICY_FALLBACK)
+        return _regime_policy_cache
+
+    policy: dict[int, tuple[str, float]] = {}
+    for label, stats in sem.get("regimes", {}).items():
+        sharpe = float(stats.get("sharpe", 0.0))
+        if sharpe <= -1.0:
+            policy[int(label)] = ("hold", 0.000)      # severe crisis/bear — stay flat
+        elif sharpe <= -0.15:
+            policy[int(label)] = ("short", 0.015)     # real negative edge
+        elif sharpe < 0.15:
+            policy[int(label)] = ("hold", 0.010)      # too weak to act on — cautious
+        elif sharpe < 0.5:
+            policy[int(label)] = ("long", 0.015)      # modest positive edge
+        elif sharpe < 1.0:
+            policy[int(label)] = ("long", 0.020)      # solid positive edge
+        else:
+            policy[int(label)] = ("long", 0.040)      # strong edge
+
+    _regime_policy_cache = policy or dict(_REGIME_POLICY_FALLBACK)
+    return _regime_policy_cache
+
+
+def invalidate_regime_policy_cache() -> None:
+    """Call after regime_semantics.json is regenerated so the next lookup re-reads it."""
+    global _regime_policy_cache
+    _regime_policy_cache = None
 
 # Paper portfolio state is persisted to SQLite via paper_db — survives restarts.
 
@@ -152,7 +202,12 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
     import ppo_inference
 
     now = pd.Timestamp("now", tz="UTC")
-    regime_info = regime_service.get_regime(asset, now)
+    # Live, not the historical nearest-lookup — this drives the crisis-override guard
+    # below, so it needs to reflect right now, not regime_stream.parquet's last
+    # precomputed row (frozen at 2024-12-31 as of this fix). log=True here because
+    # get_live_signal() is the natural once-per-hour-per-asset cadence (the scheduler
+    # tick) to grow the live regime audit log at — see regime_service.get_live_regime.
+    regime_info = regime_service.get_live_regime(asset, now, log=True)
     regime_label = regime_info.get("regime_label", 0)
     regime_prob = regime_info.get("probabilities", {})
 
@@ -164,7 +219,7 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
         source = "ppo"
     else:
         # --- Signal priority 2: rule-based fallback ---
-        action, size = _REGIME_POLICY.get(regime_label, ("hold", 0.01))
+        action, size = _generate_regime_policy().get(regime_label, ("hold", 0.01))
         source = "regime_policy"
 
     # --- Signal priority 3: explicit caller-supplied debate override (direction only;

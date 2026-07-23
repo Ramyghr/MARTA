@@ -1,22 +1,27 @@
-"""Final test-set evaluation — MARTA PPO vs trading baselines on genuinely unseen 2024 data.
+"""Final test-set evaluation — MARTA PPO vs trading baselines on genuinely unseen 2025 data.
 
 Usage:
     /home/ramy/miniconda3/envs/marta/bin/python run_test_set.py
 
-Test window: 2024-01-01 → 2024-12-31 (clamped to the aligned data's actual end).
+Test window: 2025-01-01 → 2025-12-31 (clamped to the aligned data's actual end).
 
-Provenance under the 2024-extension configuration (see configs/assets.yaml):
-    - TFT encoder:   trained < 2023-01-01, early-stopped on 2023; the Kaggle training
-                     dataset is trimmed to ≤ 2023-12-31, so 2024 never reaches the
+Provenance under the 2026-07-13 walk-forward configuration (see configs/assets.yaml):
+    - TFT encoder:   trained < 2024-01-01, early-stopped on 2024; the Kaggle training
+                     dataset is trimmed to ≤ 2024-12-31, so 2025 never reaches the
                      encoder in any form (not even model selection)
-    - HMM + PCA:     fitted on timestamps < 2023-01-01
-    - RL PPO:        train ≤ 2022-12-31, val 2023-01-01 → 2023-12-31 (rl/env.py)
+    - HMM + PCA:     fitted on timestamps < 2024-01-01
+    - RL PPO:        train ≤ 2023-12-31, val 2024-01-01 → 2024-12-31 (rl/env.py)
 
-    ⇒ 2024 is untouched by every layer, including checkpoint selection.
+    ⇒ 2025 is untouched by every layer, including checkpoint selection.
 
-If the PPO holds a zero position for the whole test window (the failure mode observed
-on the pre-extension checkpoints), a diagnostic pass over the 2023 validation window
-separates "policy abstains everywhere out-of-sample" from "2024-specific shift".
+This split supersedes the previous train≤2022/val2023/test2024 configuration — the
+old checkpoint (evaluated during the 2026-07-13 diagnosis session) traded reasonably
+on 2024 (Sharpe 0.372) but was fully flat on 2025 (Sharpe 0.000), the failure this
+retrain (root-caused to a stale, pre-2023 encoder) is meant to fix.
+
+If the PPO holds a zero position for the whole test window, a diagnostic pass over
+the 2024 validation window separates "policy abstains everywhere out-of-sample" from
+"2025-specific shift".
 
 Baselines share the environment's transaction cost (0.001 per unit turnover) and are
 computed on exactly the same bars as the PPO walk-forward.
@@ -49,8 +54,8 @@ RESULTS_PATH = Path("data/results/test_set_results.json")
 CHECKPOINT = "rl/checkpoints/ppo_best.zip"
 ASSET = "BTC_USDT"
 
-TEST_START = "2024-01-01"
-TEST_END = "2024-12-31"
+TEST_START = "2025-01-01"
+TEST_END = "2025-12-31"
 
 STRATEGY_LABELS: dict[str, str] = {
     "marta_ppo": "MARTA PPO",
@@ -64,26 +69,28 @@ STRATEGY_LABELS: dict[str, str] = {
 def resolve_test_window(
     index: pd.DatetimeIndex,
 ) -> tuple[pd.Timestamp, pd.Timestamp, str, list[str]]:
-    """Return (test_start, test_end, warning, caveats) for the 2024 test window,
+    """Return (test_start, test_end, warning, caveats) for the 2025 test window,
     clamped to the aligned data's actual coverage."""
     start = pd.Timestamp(TEST_START, tz="UTC")
     end = min(pd.Timestamp(TEST_END + " 23:59:59", tz="UTC"), index[-1])
     if index[-1] < start:
         raise RuntimeError(
-            f"Aligned data ends {index[-1]} — no 2024 test data. "
-            "Run pipeline/fetch_2024.py and run_pipeline.py first."
+            f"Aligned data ends {index[-1]} — no 2025 test data. "
+            "Run pipeline/fetch_2025.py and run_pipeline.py first."
         )
     warning = (
         "Single-asset (BTC), single-path test window — treat bootstrap CIs as "
         "sampling noise on one path, not as generalisation evidence"
     )
     caveats = [
-        "2024 is untouched by every layer (encoder trained <2023 with the Kaggle "
-        "dataset trimmed to ≤2023-12-31; HMM/PCA fit <2023; PPO train ≤2022, val 2023) "
+        "2025 is untouched by every layer (encoder trained <2024 with the Kaggle "
+        "dataset trimmed to ≤2024-12-31; HMM/PCA fit <2024; PPO train ≤2023, val 2024) "
         "— provided the trimmed-upload instruction was followed for the encoder",
-        "BTC 2024 was a strong bull year (April halving, ~$73k ATH in March, ~$100k in "
-        "November) — long-biased baselines like buy-and-hold are flattered",
-        "No cached debates exist in 2024, so the PPO's 16-dim consensus slot is zeros "
+        "BTC 2025 was actually a DOWN year for buy-and-hold (Sharpe -0.185, -12.8% "
+        "return, 40.3% max drawdown per the 2026-07-13 diagnosis session) — unlike "
+        "2024's bull run, long-biased baselines are NOT flattered here; a policy that "
+        "merely avoids losses can look artificially good against buy-hold this year",
+        "No cached debates exist in 2025, so the PPO's 16-dim consensus slot is zeros "
         "(its usual state during training)",
         "One asset, one path: results should be replicated across assets before any "
         "generalisation claim",
@@ -124,7 +131,7 @@ def run_diagnostic_window(
 
 
 def evaluate_test_set() -> dict[str, Any]:
-    """Run PPO + all baselines on the held-out 2024 test window and save the results."""
+    """Run PPO + all baselines on the held-out 2025 test window and save the results."""
     t_start = time.time()
 
     # ── Step 1: verify what test data actually exists ────────────────────────
@@ -199,9 +206,9 @@ def evaluate_test_set() -> dict[str, Any]:
         }
 
     # ── Abstention diagnostic ────────────────────────────────────────────────
-    # If the policy is fully flat on 2024, probe the 2023 validation window: trading
-    # there but not in 2024 ⇒ 2024-specific distribution shift; flat in both ⇒ the
-    # same out-of-sample abstention pathology seen on the pre-extension checkpoints.
+    # If the policy is fully flat on 2025, probe the 2024 validation window: trading
+    # there but not in 2025 ⇒ 2025-specific distribution shift; flat in both ⇒ the
+    # same out-of-sample abstention pathology seen on prior checkpoints.
     key_finding: str | None = None
     diagnostics: dict[str, Any] = {}
     ppo_flat = results["marta_ppo"]["n_trades"] == 0
@@ -214,17 +221,17 @@ def evaluate_test_set() -> dict[str, Any]:
         }
         if diag["n_trades"] == 0:
             key_finding = (
-                "MARTA PPO holds a zero position on EVERY step of the 2024 test window "
+                "MARTA PPO holds a zero position on EVERY step of the 2025 test window "
                 "AND on its own validation window — the policy abstains everywhere "
-                "out-of-sample, reproducing the pre-extension pathology. Check training "
+                "out-of-sample, reproducing the pre-retrain pathology. Check training "
                 "logs before interpreting any other number in this file."
             )
         else:
             key_finding = (
-                "MARTA PPO trades on its 2023 validation window but holds a zero "
-                "position on every step of 2024 — consistent with a 2024-specific "
+                "MARTA PPO trades on its 2024 validation window but holds a zero "
+                "position on every step of 2025 — consistent with a 2025-specific "
                 "distribution shift rather than a degenerate policy. It preserves "
-                "capital by abstaining, but produces no 2024 alpha."
+                "capital by abstaining, but produces no 2025 alpha."
             )
 
     # ── Step 4: save ─────────────────────────────────────────────────────────

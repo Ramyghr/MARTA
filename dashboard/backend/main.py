@@ -85,6 +85,7 @@ def _run_ablation_eval() -> subprocess.CompletedProcess:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     regime_service.load_regime_stream()
+    regime_service.load_regime_models()
     import ppo_inference
     ppo_inference.load_model()
     import signal_scheduler
@@ -163,9 +164,11 @@ def get_regime_semantics():
 
 @app.get("/api/regime/{asset}")
 def get_regime(asset: str):
+    """Current regime, right now — computed live (see regime_service.get_live_regime),
+    not looked up in the possibly-stale precomputed regime_stream.parquet."""
     import pandas as pd
     ts = pd.Timestamp("now", tz="UTC")
-    return regime_service.get_regime(asset, ts)
+    return regime_service.get_live_regime(asset, ts)
 
 
 @app.get("/api/regime/{asset}/at")
@@ -709,21 +712,32 @@ async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
             pass
 
 
+def _lookup_regime(asset: str, ts: "pd.Timestamp", explicit_timestamp: bool) -> dict:
+    """explicit_timestamp=False means the caller asked for "now" (no timestamp
+    supplied) — treat that as a live query. An explicit timestamp is always a
+    historical "what was true on this date" question, even if it happens to
+    resolve close to the present moment."""
+    if explicit_timestamp:
+        return regime_service.get_regime(asset, ts)
+    return regime_service.get_live_regime(asset, ts)
+
+
 @app.websocket("/ws/regime/{asset}")
 async def ws_regime(websocket: WebSocket, asset: str, timestamp: Optional[str] = None):
     await websocket.accept()
     try:
         import pandas as pd
         ts = pd.Timestamp(timestamp, tz="UTC") if timestamp else pd.Timestamp("now", tz="UTC")
-        data = regime_service.get_regime(asset, ts)
+        data = _lookup_regime(asset, ts, explicit_timestamp=bool(timestamp))
         await websocket.send_json({"type": "regime", **data})
         # Keep alive; client sends new timestamps to get updated regime
         while True:
             try:
                 msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
                 payload = json.loads(msg)
-                new_ts = pd.Timestamp(payload.get("timestamp", str(ts)), tz="UTC")
-                data = regime_service.get_regime(asset, new_ts)
+                new_ts_raw = payload.get("timestamp")
+                new_ts = pd.Timestamp(new_ts_raw, tz="UTC") if new_ts_raw else pd.Timestamp("now", tz="UTC")
+                data = _lookup_regime(asset, new_ts, explicit_timestamp=bool(new_ts_raw))
                 await websocket.send_json({"type": "regime", **data})
             except asyncio.TimeoutError:
                 await websocket.send_json({"type": "ping"})

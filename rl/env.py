@@ -21,9 +21,9 @@ refit per-step (which would make training intractable) and the LLM debate system
 invoked during RL.
 
 Walk-forward split (strict — PPO never trains on validation timestamps):
-    train: 2018-01-10 .. 2022-12-31
-    val:   2023-01-01 .. 2023-12-31
-    test:  2024-01-01 .. 2024-12-31  (never touched here — see run_test_set.py)
+    train: 2018-01-10 .. 2023-12-31
+    val:   2024-01-01 .. 2024-12-31
+    test:  2025-01-01 .. 2025-12-31  (never touched here — see run_test_set.py)
 """
 
 from __future__ import annotations
@@ -51,11 +51,12 @@ PORTFOLIO_DIM = 8
 STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM  # 152
 N_POSITION_SLOTS = 4  # first 4 portfolio dims hold per-asset signed positions
 
-# 2024-extension split (was train ≤2020-12-31 / val 2021-01-01..2021-10-12 for the
-# checkpoints trained before the 2024 data extension — see git history).
-TRAIN_END = pd.Timestamp("2022-12-31 23:59:59", tz="UTC")
-VAL_START = pd.Timestamp("2023-01-01 00:00:00", tz="UTC")
-VAL_END   = pd.Timestamp("2023-12-31 23:59:59", tz="UTC")
+# 2026-07-13 walk-forward split (was train ≤2022-12-31 / val 2023 for the
+# checkpoints trained before this extension — see git history). Test is now 2025
+# (see run_test_set.py); encoder/HMM train through the same 2023-12-31 cutoff.
+TRAIN_END = pd.Timestamp("2023-12-31 23:59:59", tz="UTC")
+VAL_START = pd.Timestamp("2024-01-01 00:00:00", tz="UTC")
+VAL_END   = pd.Timestamp("2024-12-31 23:59:59", tz="UTC")
 VAL_END_EXTENDED = VAL_END  # legacy alias (pre-2024-extension --extended-val); now a no-op
 
 # 95% normal CVaR multiplier — matches RiskAgent: -pdf(ppf(0.05))/0.05

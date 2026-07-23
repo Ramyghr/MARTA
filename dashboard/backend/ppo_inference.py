@@ -101,7 +101,9 @@ def load_model() -> None:
 def _get_aligned_df(asset: str) -> Optional["pd.DataFrame"]:
     if asset in _aligned_cache:
         return _aligned_cache[asset]
-    path = Path(_ALIGNED_PATTERN.format(asset=asset))
+    from utils.assets import ASSET_FILE_STEM
+    file_stem = ASSET_FILE_STEM.get(asset, asset)  # GOLD -> XAUUSD on disk
+    path = Path(_ALIGNED_PATTERN.format(asset=file_stem))
     if not path.exists():
         return None
     try:
@@ -113,25 +115,41 @@ def _get_aligned_df(asset: str) -> Optional["pd.DataFrame"]:
         return None
 
 
+def _embed_window(window: np.ndarray) -> np.ndarray:
+    """Encode a single (60, 14) window -> (128,) embedding, ONNX or PyTorch, whichever
+    is loaded. Shared by both the single-point and sequence embedding builders below."""
+    from encoder.encoder_onnx import OnnxEncoder
+    if isinstance(_encoder, OnnxEncoder):
+        return _encoder.encode(window).astype(np.float32)
+    import torch
+    x = torch.from_numpy(window).unsqueeze(0)  # (1, 60, 14)
+    with torch.no_grad():
+        emb = _encoder.encode(x)  # (1, 128)
+    return emb.squeeze(0).cpu().numpy().astype(np.float32)
+
+
+def _locate(asset: str, timestamp: "pd.Timestamp") -> tuple[Optional["pd.DataFrame"], int]:
+    """Sorted aligned df + integer row position of the last candle at/before
+    `timestamp`. Returns (None, -1) if unavailable."""
+    df = _get_aligned_df(asset)
+    if df is None or df.empty:
+        return None, -1
+    import pandas as pd
+    ts_utc = pd.Timestamp(timestamp).tz_convert("UTC") if pd.Timestamp(timestamp).tzinfo else pd.Timestamp(timestamp).tz_localize("UTC")
+    idx_tz = df.index.tz
+    ts_local = ts_utc.tz_convert(idx_tz) if idx_tz else ts_utc.tz_localize(None)
+    df_sorted = df.sort_index()
+    loc = df_sorted.index.searchsorted(ts_local, side="right") - 1
+    return df_sorted, loc
+
+
 def _build_regime_embedding(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
     """Build 128-dim regime embedding from the 60-candle window ending at `timestamp`."""
     if _encoder is None:
         return np.zeros(_REGIME_DIM, dtype=np.float32)
 
-    df = _get_aligned_df(asset)
-    if df is None or df.empty:
-        return np.zeros(_REGIME_DIM, dtype=np.float32)
-
-    import torch
-    import pandas as pd
-
-    ts_utc = pd.Timestamp(timestamp).tz_convert("UTC") if pd.Timestamp(timestamp).tzinfo else pd.Timestamp(timestamp).tz_localize("UTC")
-    idx_tz = df.index.tz
-    ts_local = ts_utc.tz_convert(idx_tz) if idx_tz else ts_utc.tz_localize(None)
-
-    df_sorted = df.sort_index()
-    loc = df_sorted.index.searchsorted(ts_local, side="right") - 1
-    if loc < _WINDOW_SIZE:
+    df_sorted, loc = _locate(asset, timestamp)
+    if df_sorted is None or loc < _WINDOW_SIZE:
         return np.zeros(_REGIME_DIM, dtype=np.float32)
 
     window = df_sorted.iloc[loc - _WINDOW_SIZE + 1 : loc + 1].values.astype(np.float32)
@@ -139,17 +157,56 @@ def _build_regime_embedding(asset: str, timestamp: "pd.Timestamp") -> np.ndarray
         return np.zeros(_REGIME_DIM, dtype=np.float32)
 
     try:
-        from encoder.encoder_onnx import OnnxEncoder
-        if isinstance(_encoder, OnnxEncoder):
-            return _encoder.encode(window).astype(np.float32)
-        # PyTorch path
-        import torch
-        x = torch.from_numpy(window).unsqueeze(0)  # (1, 60, 14)
-        with torch.no_grad():
-            emb = _encoder.encode(x)  # (1, 128)
-        return emb.squeeze(0).cpu().numpy().astype(np.float32)
+        return _embed_window(window)
     except Exception:
         return np.zeros(_REGIME_DIM, dtype=np.float32)
+
+
+def get_live_embedding_sequence(
+    asset: str, timestamp: "pd.Timestamp", lookback: int = 168
+) -> Optional[np.ndarray]:
+    """Sequence of `lookback` consecutive live embeddings ending at `timestamp`, oldest
+    first — i.e. (lookback, 128), not a single isolated point.
+
+    Why a sequence: the fitted HMM's predict_proba() on a single frame is dominated by
+    startprob_ (the model's learned initial-state prior), not the actual observation —
+    verified empirically, every single-frame query returned whatever state startprob_
+    favors regardless of input. Feeding a proper time-ordered sequence lets the
+    transition matrix actually inform the estimate via the forward-backward algorithm,
+    the way the model was fit and validated to be used (regime_stream.parquet itself
+    was built from one predict_proba() call over the full ordered historical sequence,
+    never single points). Returns None if there isn't enough history before `timestamp`.
+    """
+    if _encoder is None:
+        return None
+
+    df_sorted, loc = _locate(asset, timestamp)
+    needed = lookback + _WINDOW_SIZE - 1
+    if df_sorted is None or loc < needed - 1:
+        return None
+
+    start = loc - needed + 1
+    block = df_sorted.iloc[start : loc + 1].values.astype(np.float32)  # (needed, 14)
+
+    embeddings = np.zeros((lookback, _REGIME_DIM), dtype=np.float32)
+    try:
+        for i in range(lookback):
+            window = block[i : i + _WINDOW_SIZE]
+            embeddings[i] = _embed_window(window)
+    except Exception:
+        return None
+    return embeddings
+
+
+def get_live_embedding(asset: str, timestamp: "pd.Timestamp") -> Optional[np.ndarray]:
+    """Public accessor for the live 128-dim regime embedding, so other services (e.g.
+    regime_service's live regime inference) can reuse the encoder already loaded here
+    instead of loading a second copy of it. Returns None if unavailable (encoder not
+    loaded, no aligned data for this asset, or too little history before `timestamp`)
+    — `_build_regime_embedding` signals the same cases with an all-zero vector.
+    """
+    emb = _build_regime_embedding(asset, timestamp)
+    return emb if np.any(emb) else None
 
 
 def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:

@@ -29,6 +29,8 @@ mlruns/
 data/raw/
 data/processed/
 data/validated/
+data/results/*.json
+data/debates/*.json
 encoder/checkpoints/
 encoder/plots/
 regime/checkpoints/

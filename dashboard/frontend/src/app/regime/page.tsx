@@ -386,24 +386,25 @@ export default function RegimePage() {
       .finally(() => setLoading(false));
   }, [selectedAsset]);
 
-  // Section 1 — full BTC history, fetched once; 15s timeout with an explicit error
-  // state instead of an infinite spinner. The backend decimates the stream to ~2000
-  // points server-side; limit=200000 means "the full history", not the payload size.
-  const loadTimeline = useCallback(async () => {
+  // Section 1 — full history for the selected asset, fetched on asset change; 15s
+  // timeout with an explicit error state instead of an infinite spinner. The backend
+  // decimates the stream to ~2000 points server-side; limit=200000 means "the full
+  // history", not the payload size.
+  const loadTimeline = useCallback(async (asset: string) => {
     setTimelineLoading(true);
     setTimelineError(null);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      const rangeRes = await fetch(`${API_URL}/api/data-range/BTC_USDT`, { signal: controller.signal });
+      const rangeRes = await fetch(`${API_URL}/api/data-range/${asset}`, { signal: controller.signal });
       if (!rangeRes.ok) throw new Error(`HTTP ${rangeRes.status}`);
       const range: DataRange = await rangeRes.json();
       const [histRes, streamRes] = await Promise.all([
         fetch(
-          `${API_URL}/api/history/BTC_USDT/range?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`,
+          `${API_URL}/api/history/${asset}/range?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`,
           { signal: controller.signal },
         ),
-        fetch(`${API_URL}/api/regime-stream/BTC_USDT?limit=200000`, { signal: controller.signal }),
+        fetch(`${API_URL}/api/regime-stream/${asset}?limit=200000`, { signal: controller.signal }),
       ]);
       if (!histRes.ok) throw new Error(`HTTP ${histRes.status}`);
       if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
@@ -426,8 +427,8 @@ export default function RegimePage() {
   }, []);
 
   useEffect(() => {
-    loadTimeline();
-  }, [loadTimeline]);
+    loadTimeline(selectedAsset);
+  }, [loadTimeline, selectedAsset]);
 
   // Section 2 — regime semantics
   useEffect(() => {
@@ -439,14 +440,14 @@ export default function RegimePage() {
       <PageHeader title="Regime Explorer" description="HMM regime probability stream, historical timeline, and the contrastive embedding behind it" />
 
       {/* Section 1 */}
-      <Panel title="BTC Regime Timeline — 2018–2023 (log scale)">
+      <Panel title={`${selectedAsset.replace("_", "/")} Regime Timeline — 2018–2024 (log scale)`}>
         {timelineLoading ? (
           <Spinner label="Loading full history…" />
         ) : timelineError ? (
           <div className="flex flex-col items-center justify-center gap-3 py-8">
             <div className="text-[11px] text-[#ff8c00] text-center max-w-md">{timelineError}</div>
             <button
-              onClick={loadTimeline}
+              onClick={() => loadTimeline(selectedAsset)}
               className="px-3 py-1.5 rounded text-[11px] font-semibold uppercase tracking-wider bg-[#4a9eff]/10 text-[#4a9eff] border border-[#4a9eff]/30 hover:bg-[#4a9eff]/20 transition-colors"
             >
               Retry
