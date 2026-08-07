@@ -138,6 +138,24 @@ export default function DashboardPage() {
 
   const wsRef = useRef<MartaWebSocket | null>(null);
   useEffect(() => {
+    // Decide live-vs-historical by the candle's actual age, not by `mode`: the default
+    // "historical replay" mode ALSO extends forward to today (historical.py's live
+    // extension backfills it from Binance/yfinance), so its last candle is normally just
+    // as current as live mode's. Using /at for any recent timestamp was the bug — /at
+    // always treats an explicit timestamp as a historical "what was true on this date"
+    // lookup (regime_service.py's _lookup_regime), so it silently returned whatever
+    // regime_stream.parquet's frozen last row was instead of the real current regime.
+    // Only a deliberately-scrubbed-into-the-past range should ever hit /at. Threshold
+    // matches regime_service.get_regime's own `stale` cutoff (48h) for consistency.
+    const refreshRegimeForTimestamp = (timestamp: string | undefined) => {
+      if (!timestamp) return;
+      const ageHours = (Date.now() - new Date(timestamp).getTime()) / 3_600_000;
+      const req = ageHours < 48
+        ? api.getRegime(selectedAsset)
+        : fetchApi<RegimeState>(`/api/regime/${selectedAsset}/at?timestamp=${encodeURIComponent(timestamp)}`);
+      req.then((r) => { setRegime(r); setCurrentRegime(r); }).catch(() => {});
+    };
+
     // Historical mode with an explicit scrubbed range — fetch once via REST, no WS.
     if (mode === "historical" && chartRange) {
       wsRef.current?.close();
@@ -145,12 +163,7 @@ export default function DashboardPage() {
       api.getHistoryRange(selectedAsset, chartRange.start, chartRange.end)
         .then((d) => {
           setCandles(d.candles);
-          const last = d.candles.at(-1);
-          if (last) {
-            fetchApi<RegimeState>(`/api/regime/${selectedAsset}/at?timestamp=${encodeURIComponent(last.timestamp)}`)
-              .then((r) => { setRegime(r); setCurrentRegime(r); })
-              .catch(() => {});
-          }
+          refreshRegimeForTimestamp(d.candles.at(-1)?.timestamp);
           setWsConnected(true);
           setWsStatus("open");
           setWsLastUpdate(Date.now());
@@ -169,15 +182,14 @@ export default function DashboardPage() {
       if (msg.type === "history") {
         const hist = msg.candles as Candle[];
         setCandles(hist);
-        const last = hist.at(-1);
-        if (last) {
-          fetchApi<RegimeState>(`/api/regime/${selectedAsset}/at?timestamp=${encodeURIComponent(last.timestamp)}`)
-            .then((r) => { setRegime(r); setCurrentRegime(r); })
-            .catch(() => {});
-        }
+        refreshRegimeForTimestamp(hist.at(-1)?.timestamp);
         setWsConnected(true);
       } else if (msg.type === "candle") {
-        setCandles((prev) => [...prev.slice(-599), msg as unknown as Candle]);
+        const candle = msg as unknown as Candle;
+        setCandles((prev) => [...prev.slice(-599), candle]);
+        // A new live candle just arrived — refresh the regime badge too, so it keeps
+        // changing over time instead of being set once on connect and never again.
+        refreshRegimeForTimestamp(candle.timestamp);
       }
     });
     const offStatus = ws.onStatus((status) => {
