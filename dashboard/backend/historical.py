@@ -2,7 +2,7 @@ import os
 import time
 import pandas as pd
 from pathlib import Path
-from regime_service import get_regime_series, REGIME_DESCRIPTIONS
+from regime_service import get_regime_series_live_aware, REGIME_DESCRIPTIONS
 import live_feed
 
 MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.parent)))
@@ -247,7 +247,10 @@ def get_replay_candles(asset: str, around_timestamp: str, n: int = 200) -> list[
 
 def _build_records(asset: str, df: pd.DataFrame) -> list[dict]:
     timestamps = df.index.tolist()
-    regimes = get_regime_series(asset, timestamps)
+    # Live-aware: candles past regime_stream.parquet's frozen last row (e.g. the live
+    # extension _extend() appends above) get a live-computed regime instead of silently
+    # repeating that frozen row — see get_regime_series_live_aware's docstring.
+    regimes = get_regime_series_live_aware(asset, timestamps)
     records = []
     for i, (ts, row) in enumerate(df.iterrows()):
         regime_label = regimes[i]["regime_label"] if i < len(regimes) else 0

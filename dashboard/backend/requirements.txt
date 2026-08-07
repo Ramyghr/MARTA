@@ -51,3 +51,9 @@ alpaca-py>=0.28.0
 # training/eval metrics to the mounted mlruns/ dir. mlflow-skinny (no server/UI deps)
 # is enough since the dashboard only calls log_param/log_metric/log_artifact.
 mlflow-skinny==3.14.0
+# pipeline.features (pipeline/features.py, now mounted — see docker-compose.yml) uses
+# ta.momentum/trend/volatility for ATR/ADX/RSI/BB/MACD. Needed by live_feature_bridge.py,
+# which runs new live bars through the exact training-time features->normalize pipeline.
+# Found missing 2026-08-07 — the live bridge had never actually run inside the deployed
+# container (ImportError, silently caught by signal_scheduler's per-asset try/except).
+ta==0.11.0

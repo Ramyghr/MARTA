@@ -10,7 +10,7 @@ import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 
 from rl.env import MARTATradingEnv
-from rl.evaluate import validation_sharpe
+from rl.evaluate import validation_sharpe_and_trades
 from utils.logger import logger
 
 _CHECKPOINT_DIR = Path("rl/checkpoints")
@@ -33,6 +33,24 @@ class CurriculumCallback(BaseCallback):
         early_stop_sharpe: float = -0.5,
         early_stop_patience: int = 3,
         verbose: int = 1,
+        # Appended to every checkpoint filename this callback saves (e.g. "_seed0" ->
+        # ppo_best_seed0.zip). A 2026-08 audit found every seed in a --seeds sweep was
+        # saving to the SAME bare "ppo_best.zip"/"ppo_phase_N.zip" — each seed clobbered
+        # the previous one's checkpoint, so only the last seed's weights survived on disk
+        # even though the per-seed *numbers* (evaluated immediately after each seed's own
+        # training, before the next seed could clobber anything) were already correct.
+        # run_rl.py's _run_single_seed() already looked for "ppo_best_seed{seed}.zip" —
+        # nothing ever wrote that file until this fix. Default "" preserves the original
+        # bare filenames for the single-seed/production path (dashboard/ppo_inference.py
+        # reads "ppo_best.zip" directly).
+        checkpoint_suffix: str = "",
+        # Minimum meaningful-trade count (see rl.evaluate._MEANINGFUL_TRADE_THRESHOLD) an
+        # eval must have before it's eligible to become the new best_sharpe / overwrite
+        # ppo_best.zip. A 2026-08 audit found a checkpoint crowned "best" off a single eval
+        # with only 3 trades and Sortino=4728 — a near-zero-variance statistical fluke, not
+        # a validated result. This does NOT affect phase-advancement threshold checks
+        # (whether the phase's target behavior was reached) — only best-checkpoint tracking.
+        min_trades_for_best: int = 5,
     ) -> None:
         super().__init__(verbose)
         self.phases = phases
@@ -41,6 +59,8 @@ class CurriculumCallback(BaseCallback):
         self.eval_freq = eval_freq
         self.early_stop_sharpe = early_stop_sharpe
         self.early_stop_patience = early_stop_patience
+        self.checkpoint_suffix = checkpoint_suffix
+        self.min_trades_for_best = int(min_trades_for_best)
 
         self.phase_idx = 0
         self.phase_start_step = 0
@@ -59,7 +79,7 @@ class CurriculumCallback(BaseCallback):
         if self.num_timesteps % self.eval_freq != 0:
             return True
 
-        sharpe = validation_sharpe(self.model, self.val_env)
+        sharpe, n_trades = validation_sharpe_and_trades(self.model, self.val_env)
         self.last_eval_sharpe = sharpe
         phase = self._current_phase()
         steps_in_phase = self.num_timesteps - self.phase_start_step
@@ -67,14 +87,22 @@ class CurriculumCallback(BaseCallback):
         logger.info(
             f"[curriculum] phase {self.phase_idx + 1}/{len(self.phases)} "
             f"({'+'.join(phase['assets'])}) step={self.num_timesteps} "
-            f"val_sharpe={sharpe:.3f} thresh={phase['sharpe_threshold']:.2f}"
+            f"val_sharpe={sharpe:.3f} thresh={phase['sharpe_threshold']:.2f} n_trades={n_trades}"
         )
         mlflow.log_metric("val/sharpe", sharpe, step=self.num_timesteps)
+        mlflow.log_metric("val/n_trades", n_trades, step=self.num_timesteps)
         mlflow.log_metric("train/current_phase", self.phase_idx + 1, step=self.num_timesteps)
 
         if sharpe > self.best_sharpe:
-            self.best_sharpe = sharpe
-            self.model.save(_CHECKPOINT_DIR / "ppo_best.zip")
+            if n_trades < self.min_trades_for_best:
+                logger.info(
+                    f"[curriculum] sharpe={sharpe:.3f} is a new high but only {n_trades} "
+                    f"trades (< min_trades_for_best={self.min_trades_for_best}) — not "
+                    f"trusting it as best_sharpe, skipping checkpoint save"
+                )
+            else:
+                self.best_sharpe = sharpe
+                self.model.save(_CHECKPOINT_DIR / f"ppo_best{self.checkpoint_suffix}.zip")
 
         # Early stopping on a persistent negative Sharpe.
         if sharpe < self.early_stop_sharpe:
@@ -100,7 +128,7 @@ class CurriculumCallback(BaseCallback):
     def _advance_phase(self, threshold_met: bool, sharpe: float, steps_in_phase: int) -> None:
         phase = self._current_phase()
         n = self.phase_idx + 1
-        ckpt = _CHECKPOINT_DIR / f"ppo_phase_{n}.zip"
+        ckpt = _CHECKPOINT_DIR / f"ppo_phase_{n}{self.checkpoint_suffix}.zip"
         self.model.save(ckpt)
 
         mlflow.log_param(f"phase_{n}_completed_at_step", self.num_timesteps)
@@ -143,6 +171,46 @@ class CurriculumCallback(BaseCallback):
             # Last phase finished — keep training to total_timesteps but stop advancing.
             self.done_curriculum = True
             logger.info("[curriculum] final phase complete; continuing to total_timesteps")
+
+
+class EntropyDecayCallback(BaseCallback):
+    """Linearly decay PPO's entropy coefficient over the course of training.
+
+    ``ent_coef`` starts high (0.05, vs SB3's default 0.0) specifically to stop the policy
+    collapsing to always-hold early in training (see run_rl.py's config comment). But
+    holding it that high for the *entire* run works against the policy ever settling into
+    a confident, sustained directional stance later on: a 2026-08 multi-seed audit found
+    the trained policy satisfying idle_penalty with single-bar open-then-immediately-close
+    "pokes" (every completed position in the eval trade log lasted exactly 1 hour) rather
+    than genuine multi-bar conviction — consistent with entropy_loss staying flat around
+    -0.7 to -0.9 for the whole run instead of decaying as training progressed. Decaying
+    ent_coef lets the policy explore early (breaking hold-collapse) and commit later
+    (once it has something worth committing to).
+
+    ``model.ent_coef`` is a plain mutable attribute on SB3's ``PPO`` (read fresh in its
+    loss computation each update), so overwriting it here takes effect immediately —
+    no need to touch the optimizer or reconstruct the model.
+    """
+
+    def __init__(
+        self,
+        start: float = 0.05,
+        end: float = 0.005,
+        decay_steps: int = 100_000,
+        verbose: int = 0,
+    ) -> None:
+        super().__init__(verbose)
+        self.start = float(start)
+        self.end = float(end)
+        self.decay_steps = int(decay_steps)
+
+    def _on_step(self) -> bool:
+        frac = min(1.0, self.num_timesteps / max(self.decay_steps, 1))
+        new_coef = self.start + frac * (self.end - self.start)
+        self.model.ent_coef = float(new_coef)
+        if self.num_timesteps % 10_000 == 0:
+            mlflow.log_metric("train/ent_coef", new_coef, step=self.num_timesteps)
+        return True
 
 
 class MLflowCallback(BaseCallback):

@@ -39,25 +39,35 @@ Layer 2 — Multi-Agent Deliberation    agents/               ✓ Week 1+2 compl
     ContrarianAgent — anti-groupthink rebuttal bias          ✓ Week 2 complete
   2-round debate → Fund Manager synthesizes weighted consensus → action proposal
 
-Layer 3 — RL Execution Agent          (Month 3 — not yet implemented)
+Layer 3 — RL Execution Agent          ✓ Month 3 complete
   PPO (Stable-Baselines3) with Beta distribution position head
   State: [128-dim regime | 16-dim consensus | 8-dim portfolio]
   Reward: ΔPnL / CVaR_t − λ × drawdown_penalty
-  Curriculum: BTC → ETH → Forex → Commodities
-  Execution: Alpaca paper API / CCXT sandbox
+  Curriculum: BTC → BTC+ETH (capped here in practice — see Month 3 section)
+  Execution: Alpaca paper API (dashboard/backend/alpaca_service.py) — live, not CCXT sandbox
+
+Layer 4 — Dashboard & Live Trading    dashboard/  pipeline/live/   ✓ complete (undocumented below — see "Dashboard & Live Trading")
+  FastAPI backend + Next.js frontend, APScheduler-driven hourly signal tick (NOT Celery/Redis),
+  live price/regime/debate websockets, Telegram alerts, Alpaca paper execution, LLM chat.
 ```
 
 ## Data pipeline — REFACTORED (Layer 1 v2)
 
 Run order: `fetch → features → normalize → align → validate` (`python run_pipeline.py`)
 
-Data sources (all genuine OHLCV, no synthetic upsampling):
-- **BTC/USDT, ETH/USDT** — CCXT/Binance hourly (2018-01-01 → 2024-01-01). The old ETH
-  fetch loop broke on `len(batch) < 1000` and silently capped ETH at 2021-10-12; the
-  loop now breaks **only** on an empty batch or on reaching the configured end.
-- **EURUSD, XAUUSD, WTIUSD** — histdata.com genuine 1-minute → resampled to hourly
-  (`open=first, high=max, low=min, close=last, volume=sum`). Replaces the old yfinance
-  daily→hourly forward-fill (which made 23 of every 24 windows near-duplicates and
+Data sources (all genuine OHLCV, no synthetic upsampling). **OIL/WTIUSD was removed from the
+pipeline entirely 2026-07-04** (weekend/holiday gaps were the alignment bottleneck) — the
+canonical asset set is now `BTC_USDT, ETH_USDT, EURUSD, GOLD` (4 assets, not 5):
+- **BTC/USDT, ETH/USDT** — CCXT/Binance hourly. Originally fetched 2018-01-01 → 2024-01-01;
+  extended repeatedly since (`pipeline/fetch_2024.py`, `pipeline/fetch_2025.py`) and currently
+  reaches **2026-07-12** per `configs/assets.yaml`'s `end: "2026-01-01"`-and-later config
+  comment — verify against the actual parquet before quoting an end date, this has moved
+  several times. The old ETH fetch loop broke on `len(batch) < 1000` and silently capped ETH
+  at 2021-10-12; the loop now breaks **only** on an empty batch or on reaching the configured end.
+- **EURUSD, XAUUSD** — histdata.com genuine 1-minute → resampled to hourly
+  (`open=first, high=max, low=min, close=last, volume=sum`). Capped at **2025-12-31** by
+  histdata.com's whole-year-only ZIPs (no 2026 year ZIP exists yet). Replaces the old
+  yfinance daily→hourly forward-fill (which made 23 of every 24 windows near-duplicates and
   contaminated the contrastive embedding).
 
 | Module | Input | Output | Key detail |
@@ -71,20 +81,24 @@ Data sources (all genuine OHLCV, no synthetic upsampling):
 **14 final features per asset:** `atr, adx, rsi, bb_width, macd_histogram, obv_raw, vol_zscore, realized_vol, vol_ratio, return_skew, return_kurtosis, autocorr_lag1, realized_vol_raw, close_return`
 (13 z-scored + `realized_vol_raw` passthrough; `realized_vol_raw` and `close_return` are the two non-z-scored columns. `model.input_dim` in `configs/assets.yaml` is 14.)
 
-**Train/val/test split (real, not claimed):** Train 2018-01-01 → 2022-12-31 · Val 2023-01-01 → 2023-12-31 · Test 2024-01-01 onward (SACRED — untouched until final evaluation).
+**Train/val/test split (2026-07-13 walk-forward — current):** Train < 2024-01-01 · Val 2024-01-01 → 2024-12-31 · Test 2025-01-01 → 2025-12-31 (SACRED — the Kaggle upload is trimmed to ≤ 2024-12-31 so 2025 never reaches encoder/HMM training or checkpoint selection; see `run_test_set.py`). Every split boundary (`configs/assets.yaml`, `rl/env.py`) was bumped one year in this pass; `configs/encoder.yaml` was found stale at the old 2020-12-31/2021-01-01 boundary during the 2026-07-31 audit and fixed to match.
 
-**histdata notes:** Downloads are slow (~2s/year/instrument); a full cold fetch of all 3
-instruments × 6 years is ~45–60 min. Year ZIPs and per-year 1-minute parquets are cached
+**histdata notes:** Downloads are slow (~2s/year/instrument); a full cold fetch of both
+histdata instruments across all years is ~30–40 min (was "all 3 instruments" before
+OIL/WTIUSD's 2026-07-04 removal). Year ZIPs and per-year 1-minute parquets are cached
 in `data/raw/histdata/` — **do not delete**. FX/commodity histdata has **zero volume**
 (no centralised volume), so `obv_raw`/`vol_zscore` are degenerate (~constant) for EURUSD/
-XAUUSD/WTIUSD — price-based features carry their signal.
+XAUUSD — price-based features carry their signal.
 
-**Alignment:** With ETH now reaching 2024, the bottleneck is the forex weekend structure
-(no Sat/Sun bars), so the inner join is capped by the histdata instruments rather than ETH.
-Actual aligned dataset: **33,387 rows × 14 features, 2018-01-12 → 2023-12-01** (the end is
-capped by WTIUSD, whose 2023 histdata ends 2023-12-01). This is 63.6% of BTC's 24/7 range
-— up from the old 32,768 rows, but the forex-weekend ceiling means the spec's ">40,000"
-target is not reachable while inner-joining against weekday-only forex.
+**Alignment (current — post 2026-07 extensions):** OIL/WTIUSD was dropped from the pipeline
+entirely (2026-07-04, "4-asset pipeline") — the four canonical assets are now
+`BTC_USDT, ETH_USDT, EURUSD, GOLD`, dropping the WTIUSD weekend/holiday bottleneck.
+Actual aligned dataset: **45,921 rows × 14 features, 2018-01-12 → 2025-12-31** per asset
+(`data/processed/{asset}_aligned.parquet` and `all_assets_aligned.parquet`), extended
+through 2025 for the 2025 dashboard/live data bridge and the 2025 test-set window. The
+old "33,387 rows, ends 2023-12-01, capped by WTIUSD" figure is stale — verify against the
+actual parquet (`pd.read_parquet(...).shape` / `.index[-1]`) before quoting a row count,
+this file has been extended multiple times.
 
 ## Configuration
 
@@ -110,7 +124,8 @@ Key thresholds:
 - **OHLCV clamping:** `_sanitize_ohlcv()` ensures `high = max(open,high,close)`,
   `low = min(open,low,close)`, forward-fills zero close prices. Applied after every fetch.
 - **Symbol naming:** `BTC/USDT` → `BTC_USDT` throughout; histdata instruments are
-  `EURUSD`/`XAUUSD`/`WTIUSD` (Gold = XAUUSD, Oil = WTIUSD).
+  `EURUSD`/`XAUUSD` (Gold = XAUUSD). WTIUSD (Oil) existed under this same convention before
+  its 2026-07-04 removal — `utils/assets.py`'s `ASSET_FILE_STEM` still only maps `GOLD`.
 - All paths use `pathlib.Path`, all parquet files use `engine="pyarrow"`.
 
 ## Regime clustering (`regime/`) — complete
@@ -121,7 +136,9 @@ Outputs:
 - `regime/checkpoints/hmm_model.pkl` — fitted GaussianHMM (n_states=7, BIC-selected)
 - `regime/checkpoints/pca_model.pkl` — PCA(16) fitted on training embeddings (before 2021-07-01)
 - `regime/checkpoints/bic_results.json` — BIC/AIC/LL per n_states for reproducibility
-- `data/processed/regime_stream.parquet` — full regime probability stream (163,540 rows)
+- `data/processed/regime_stream.parquet` — full regime probability stream (183,444 rows as
+  of the 2026-07-31 audit, 4 assets BTC/ETH/EURUSD/GOLD — row count grows with every data
+  extension, verify with `pd.read_parquet(...).shape` rather than trusting a hardcoded figure)
 - `data/validated/regime_semantics.json` — per-regime financial statistics + validation result
 - `regime/plots/` — BIC curve, regime timeline per asset, regime t-SNE
 
@@ -138,7 +155,7 @@ Pipeline details:
 - Final HMM refit: full covariance, 200 iters, tol=1e-4, all 163,540 rows
 - Semantic validation passes if `std(realized_vol μ across regimes) > 0.001`
 
-**Regime label availability:** Not all regimes appear for all assets. BTC_USDT has regimes {0,1,4,5,6}. Regimes 2 (stress/crisis) and 3 (bear trend) appear only in GOLD/EURUSD/OIL. Always filter by asset before selecting a regime label.
+**Regime label availability:** Not all regimes appear for all assets. BTC_USDT has regimes {0,1,4,5,6}. Regimes 2 (stress/crisis) and 3 (bear trend) appear only in GOLD/EURUSD. (OIL/WTIUSD was removed from the pipeline 2026-07-04 — it no longer exists as an asset; this note predates that removal.) Always filter by asset before selecting a regime label. Regime label *semantics* are not stable across HMM refits — see "Regime Label Staleness" in project memory, and `dashboard/backend/regime_service.py`'s `_load_regime_descriptions()`, which derives descriptions from `data/validated/regime_semantics.json` at runtime instead of a hardcoded table for exactly this reason.
 
 ## Month 2 — Multi-Agent Deliberation (`agents/`) — Week 1 complete
 
@@ -294,14 +311,18 @@ Run: `conda run -n marta python run_per_asset_regime.py`
 
 ## Month 3 — RL Execution Agent (`rl/`) — complete
 
-Run: `python run_rl.py`           (full curriculum, ~700k steps)
+Run: `python run_rl.py`           (curriculum, capped at Phase 1+2 in practice — see below)
      `python run_rl.py --quick`   (fast end-to-end smoke run)
+     `python run_rl.py --eval-only`   (skip training, evaluate + ablate ppo_best.zip)
+     `python run_rl.py --seeds 0 1 2`   (multi-seed variance estimate, not yet run as of 2026-07-31)
 
 ```
 State:  [128-dim regime embedding | 16-dim consensus | 8-dim portfolio] = 152-dim
 Action: Discrete direction {0=long, 1=short, 2=hold} × Beta(α,β) position fraction ∈ (0,1)
 Reward: r_t = ΔPnL / CVaR_t − λ × drawdown_penalty   (ΔPnL is the per-step return fraction)
-Curriculum: BTC → BTC+ETH → +EURUSD → +GOLD+OIL   (Sharpe gates 0.5/0.6/0.7/0.8)
+Curriculum config still defines 4 phases (BTC → BTC+ETH → +EURUSD → +GOLD), but `run_rl.py`'s
+main() hard-caps `config["phases"]` at the first 2 whenever more than 2 are configured — see
+"Curriculum collapse" below. OIL/WTIUSD no longer exists as an asset (removed 2026-07-04).
 ```
 
 ### Architecture
@@ -311,8 +332,8 @@ Curriculum: BTC → BTC+ETH → +EURUSD → +GOLD+OIL   (Sharpe gates 0.5/0.6/0.
   - 16-dim: agent consensus — per-R1-agent signed confidence (+conf bullish / −conf bearish / 0)
     plus FM signed-conviction, position size, regime_override, dissent count. Zeros when no
     debate exists for the timestamp (the common case during training).
-  - 8-dim portfolio: 4 per-asset signed-position slots (canonical order BTC,ETH,EURUSD,GOLD;
-    OIL shares slot 3 — only one asset trades per episode) + `[pnl_norm, drawdown,
+  - 8-dim portfolio: 4 per-asset signed-position slots (canonical order BTC,ETH,EURUSD,GOLD —
+    `rl.env.CANONICAL_ASSETS`; only one asset trades per episode) + `[pnl_norm, drawdown,
     steps_since_trade/100, vol_forecast]`.
 - **Action (hybrid):** exposed to SB3 as a flat 2-dim Box `[direction∈{0,1,2}, position_fraction∈(0.01,0.99)]`
   (SB3 PPO has no Dict action support; `MARTATradingEnv.action_space_dict` documents the semantic
@@ -322,11 +343,14 @@ Curriculum: BTC → BTC+ETH → +EURUSD → +GOLD+OIL   (Sharpe gates 0.5/0.6/0.
   RiskAgent formula. GARCH is refit weekly and cached to `data/processed/rl_cache/vol_{asset}_*.parquet`
   — never refit per-step (intractable) and the LLM debate system is never called during RL.
 
-### Walk-forward split (strict)
+### Walk-forward split (strict, current — `rl/env.py` constants)
 
-Train: 2018-01-10 → 2020-12-31. Validation: 2021-01-01 → 2021-10-12 (6,803 BTC rows). `reset()`
+Train: < 2024-01-01 (`TRAIN_END`). Validation: 2024-01-01 → 2024-12-31 (`VAL_START`/`VAL_END`,
+5,928 BTC rows as of the 2026-07-31 audit). Test: 2025 (`run_test_set.py`, SACRED). `reset()`
 samples start timestamps only from the active split; evaluation runs `sequential=True` (traverses
-the whole val window, ignoring the per-episode `max_steps` cap).
+the whole val window, ignoring the per-episode `max_steps` cap). The old "train 2018-01-10 →
+2020-12-31, val 2021, 6,803 rows" split is two generations stale — this file used to also carry
+a per-asset OIL/WTIUSD portfolio slot and 5-asset assumptions that no longer apply.
 
 ### Curriculum & callbacks
 
@@ -337,9 +361,10 @@ val Sharpe < −0.5 for 3 consecutive evals. Best-by-val-Sharpe → `ppo_best.zi
 
 ### Ablation (central research result)
 
-5 variants on the val set: `buy_hold`, `ppo_no_regime`, `agents_no_regime`, `ppo_agents_no_regime`,
-`marta_full`. **Block bootstrap CI** (n=1000) on the Sharpe delta of `marta_full` vs each baseline →
-`data/results/ablation_results.json`.
+**7 variants** (`rl/ablation.py:ABLATION_VARIANTS`, not 5 — `rsi_strategy` and `ma_crossover`
+were added after the original 5-variant design): `buy_hold`, `rsi_strategy`, `ma_crossover`,
+`ppo_no_regime`, `agents_no_regime`, `ppo_agents_no_regime`, `marta_full`. **Block bootstrap CI**
+(n=1000) on the Sharpe delta of `marta_full` vs each baseline → `data/results/ablation_results.json`.
 
 **`ppo_no_regime` / `ppo_agents_no_regime` do not run the trained PPO.** Zeroing the 128-dim regime
 slot pushes the frozen policy out-of-distribution and it collapses to hold on every step (Sharpe/
@@ -396,7 +421,14 @@ traversal covers exactly the window. `run_rl.py` runs this after the ablation an
 
 Outputs: `rl/checkpoints/ppo_{phase_n,best,final}.zip`, `data/results/{ppo_evaluation,ablation_results,regime_behavior_analysis,curriculum_history}.json`.
 
-### Results & key findings (2026-06-01 — first full run)
+### Results & key findings (2026-06-01 — first full run, SUPERSEDED)
+
+**This subsection is a historical snapshot from the very first Month-3 run, on the old
+2021 validation window (5 assets including OIL). It has been superseded by at least four
+later retrains/splits and does not reflect the current system** (current split is val=2024,
+4 assets, see "Walk-forward split" above). Kept for historical context only — do not quote
+these numbers as current. See "Eval Reliability Audit (2026-07-31)" below for the current,
+verified state.
 
 **Headline (BTC validation 2021-01-01 → 2021-10-12, from `ppo_best.zip`):** Sharpe **1.809**, max drawdown **5.8%**, Calmar 3.605, total return 17.0%, 31 meaningful trades, avg position 0.026. Per-regime both positive (R1=1.729, R4=1.893). vs buy-and-hold (Sharpe 0.946, 60% DD, 41% return): MARTA wins on risk-adjusted return and drawdown, gives up absolute return by running low exposure.
 
@@ -426,6 +458,212 @@ best checkpoint (clean Sharpe 1.370 vs 0.449); `ppo_best.zip` was replaced
 with `ppo_phase_4.zip` accordingly. `scripts/evaluate_all_checkpoints.py`
 reproduces this comparison (`data/results/checkpoint_evaluation.json`).
 
+## CRITICAL: current encoder checkpoint has a collapsed temperature
+
+`encoder/checkpoints/best_encoder.pt` (2026-07-14, the Kaggle walk-forward retrain
+currently in production) has a learned temperature of **0.0047** — 6.4x below
+`encoder.yaml`'s `min_temperature: 0.03` floor. Its `val_top1_acc` was never recorded
+anywhere: the checkpoint has no local MLflow run at all (trained on Kaggle, only the
+`.pt` file was downloaded back), and `encoder/train.py`'s convergence check only logged
+`temperature_in_range` as a WARNING (not CRITICAL), so this went to production unnoticed.
+
+Root cause: `log_temp` in `encoder/loss.py`'s `NTXentLoss` was an unconstrained learnable
+parameter — nothing stopped gradient descent from driving it arbitrarily low.
+
+Fixed 2026-07-31 (code only — **the currently-deployed checkpoint itself is unchanged
+and still has the collapsed temperature** until it's retrained):
+- `NTXentLoss.clamp_temperature()` hard-bounds `log_temp` in place after every optimizer
+  step (`encoder/train.py`'s `_run_epoch`), so temperature structurally cannot leave
+  `[min_temperature, max_temperature]` on the next retrain.
+- `train_encoder()` now embeds `val_top1_acc`, `convergence_checks`, and
+  `convergence_thresholds` directly into the saved checkpoint `.pt` file (both `best` and
+  `final`), not just MLflow — so a Kaggle-trained checkpoint is self-describing even when
+  no local MLflow run exists for it. Check `torch.load(path, weights_only=True)["convergence_checks"]`
+  before trusting a new checkpoint.
+
+Until the next retrain happens, treat `best_encoder.pt`'s embeddings with this caveat in
+mind — the collapsed temperature is a known contrastive-collapse risk factor, not
+independently confirmed to have degraded the embedding space, just unverified.
+
+## Eval Reliability Audit (2026-07-31)
+
+Triggered by validation Sharpe swinging wildly (roughly -1.8 to +1.4) across runs on the
+*same* checkpoint. Root causes found and fixed:
+
+**1. Eval was not deterministic.** Nothing in `rl/` or `encoder/` seeded torch/numpy, and
+the frozen encoder's forward pass ran on GPU (cuDNN, unseeded) once per env step. With only
+8-15 meaningful trades across the whole val window, a handful of borderline direction flips
+from float noise was enough to flip the sign of the annualized Sharpe. Fixed:
+- `rl/train.py`'s `build_env_factory` now resolves the env's `device` to `"cpu"` for any
+  non-`"train"` split (val/all/test) and DEEP-COPIES the encoder before doing so — the
+  encoder module is shared across envs and `.to(device)` mutates in place, so without the
+  copy a CPU val_env built after a CUDA train_env would silently drag the training encoder
+  onto CPU too (verified this crashes training; the fix keeps them independent).
+- `rl/evaluate.py`'s `run_walk_forward` seeds `torch`/`numpy` (seed=42) before each pass.
+- Every `PPO.load(...)` used purely for evaluation (`run_rl.py`, `scripts/evaluate_all_checkpoints.py`)
+  now loads on `"cpu"` instead of `config["device"]`.
+- Verified: repeated eval runs on `ppo_best.zip` now return bit-identical Sharpe.
+
+**2. A second, unrelated variable was being conflated with GPU nondeterminism.**
+`evaluate_ppo()` defaults to `debate=True` (real consensus signal from
+`data/debates/debate_results.json`, which has real 2024 BTC entries). An ad-hoc diagnostic
+script that used `debate=False` produced a different — but *equally deterministic* — number.
+**Takeaway: always match the debate-cache configuration when comparing eval runs, and note
+which config a given Sharpe number came from** — it's not just a checkpoint + code + data
+question, the debate cache snapshot matters too and can change over time (see item 3).
+
+**3. Encoder/regime_stream/debate-cache staleness guard added.** A 2026-07-14→07-20 drift
+(`best_encoder.pt` swapped without regenerating `regime_stream.parquet`/HMM/PCA to match)
+went unnoticed for 6 days. `rl/train.py`'s `load_data()` now calls
+`check_encoder_regime_stream_freshness()` first and raises `StaleRegimeStreamError` if
+`best_encoder.pt` is newer than `regime_stream.parquet`. **Not yet covered:** the standalone
+debate-generation scripts (`run_debate.py`, `run_weekly_debates.py`,
+`run_clean_ablation_debates.py`, `run_validation_debates.py`) each define their own local
+`_load_data()` and don't route through this guard — `debate_results.json` can still drift
+silently relative to the encoder/regime_stream.
+
+**4. Trade-level detail, not just an aggregate Sharpe.** `evaluate_ppo()`'s saved
+`data/results/ppo_evaluation.json` now includes a `trade_log`: one record per meaningful
+trade (timestamp, direction, size, decision-time regime, step/cumulative PnL) via
+`rl/evaluate.py:extract_trade_log()`. With this few real trades, read the trade log, not
+just the Sharpe.
+
+**5. Not yet done: multi-seed retraining.** `run_rl.py --seeds 0 1 2` exists but hasn't been
+run — the current headline number is still a single deterministic point estimate, not a
+distribution. Retraining is deferred to a later session (per-seed: ~30-110 min on this GPU,
+so ~1.5-5.5h for 2-3 seeds, sequential — see chat history for the per-run duration evidence).
+
 ## Stack
 
-`pytorch-forecasting` (TFT), `hmmlearn` (Gaussian HMM), `stable-baselines3` (PPO), `langgraph` (agent orchestration), `langchain-ollama` (Mistral 7B), `fastapi + celery + redis` (live trading backend), `mlflow` (experiment tracking), `ccxt` (crypto data + execution), `yfinance` (traditional asset data), `ta` (technical indicators), `vectorbt` (backtesting), `rich` (CLI logging)
+`pytorch-forecasting` (TFT), `hmmlearn` (Gaussian HMM), `stable-baselines3` (PPO), `langgraph` (agent orchestration), `langchain-ollama` (Mistral 7B), `fastapi + APScheduler` (live trading backend — dashboard/backend/signal_scheduler.py; NOT Celery/Redis, despite Celery/Redis appearing in requirements.txt/an optional health-check probe, neither is actually load-bearing), `mlflow` (experiment tracking), `ccxt` (crypto data + execution), `yfinance` (traditional asset data), `ta` (technical indicators), `vectorbt` (backtesting), `rich` (CLI logging)
+
+## Dashboard & Live Trading (`dashboard/`, `pipeline/live/`) — complete, undocumented until 2026-07-31
+
+Not previously documented here despite being fully implemented (git: "MARTA v6.0 complete:
+all features, dashboard, live system, LLM chat, Telegram, Alpaca"). This section covers only
+what's been directly verified — a full dashboard/live audit is still open (see "Still
+missing" below).
+
+- **Backend:** FastAPI (`dashboard/backend/main.py`) + Next.js frontend. Scheduling is
+  **APScheduler** (`AsyncIOScheduler`, `signal_scheduler.py`), a `CronTrigger(minute=0)` job
+  running `_run_signal_tick()` once per hour on the hour — not Celery/Redis.
+- **Regime lookup has two paths, and they are NOT interchangeable:**
+  - `regime_service.get_regime(asset, ts)` — nearest-row lookup in the static
+    `regime_stream.parquet` snapshot. That file "stops growing the moment `run_regime.py`
+    stops running" (the module's own comment) and nothing scheduled regenerates it. A
+    `get_regime()` call near "now" silently snaps to the frozen last row forever.
+  - `regime_service.get_live_regime(asset, ts)` — recomputes PCA→HMM fresh from a live
+    168-hour embedding sequence (a single-frame `predict_proba()` was tried first and found
+    to be dominated by the HMM's prior, not the actual observation — a full sequence is
+    needed). This is the one that actually changes candle-to-candle.
+  - `/api/regime/{asset}` (current) and the hourly `signal_scheduler`/`live_signal` tick
+    correctly use `get_live_regime()`. `/api/regime/{asset}/at` (explicit historical
+    timestamp) correctly uses `get_regime()`.
+  - **Found + fixed 2026-07-31:** `chat_service.py`'s LLM context and `main.py`'s
+    `_add_regime()` (tags every candle on the live `/ws/price` websocket) were both still
+    using the frozen `get_regime()` lookup. `chat_service.py` now calls `get_live_regime()`
+    directly (it's always asking about "now"). `_add_regime()` gained a `live: bool = False`
+    parameter — the 300-candle history backfill still uses the cheap historical lookup
+    (correct for genuinely past bars, and avoids 300 live HMM recomputes per connection),
+    but the `forward()` callback that streams each new real-time tick now passes `live=True`.
+    Requires a backend restart to take effect (`docker compose up -d --force-recreate backend`
+    — `uvicorn --reload` is known to hang on backend edits in this project, per prior session
+    feedback).
+- **Execution:** Alpaca paper trading (`alpaca_service.py`), Telegram alerts
+  (`telegram_service.py`), LLM chat (`chat_service.py`).
+- **Found + fixed 2026-07-31: two more data-provenance bugs, same root cause as above
+  (a live/current view silently reading a stale or wrong file):**
+  - `debate_stream.py`'s live-mode websocket crashed with `KeyError: 'GOLD'` —
+    `all_assets_aligned.parquet`'s MultiIndex columns are keyed by file stem (`XAUUSD`),
+    not the logical asset id (`GOLD`) that `agents/graph.py` looks `aligned_dfs` up by.
+    Added `utils.assets.logical_asset_name()` (reverse of `ASSET_FILE_STEM`) and used it
+    in `debate_stream.py`. This exact mismatch class has now recurred several times across
+    different files — check any new code that reads `all_assets_aligned.parquet` directly.
+  - The Analytics page showed a 100% win rate next to a -1.278 Sharpe on the same card —
+    not a calculation bug, two different data sources: the Sharpe came from the current
+    `ppo_evaluation.json` (2024 val window), but `rl_service.get_positions()` (which feeds
+    win-rate/best-trade/worst-trade) read `data/results/equity_curve.json`, a snapshot
+    frozen since 2026-07-05 describing the old 2021 val window — and when that file's shape
+    didn't match, it fell through to `_synthetic_positions()`, which **fabricates** a trade
+    log from a sine-wave formula with a hardcoded `2021-01-01` start date. That fabricated
+    data is what "Best Trade 1/11/2021 · R3" was. Fixed: `get_positions()` now prefers
+    `ppo_evaluation.json`'s real `trade_log` (added earlier in this same audit) as the
+    primary source — guaranteed consistent with the Sharpe shown next to it, since both
+    come from the same `evaluate_ppo()` run. Verified: win rate now computes to a real
+    33.3% (2/6 meaningful trades), consistent with a losing (-1.278 Sharpe) backtest,
+    instead of a fabricated 100%. `equity_curve.json` and the synthetic fallback are still
+    there as lower-priority fallbacks, unchanged.
+
+**Still missing from this doc (open):** a full pass over `dashboard/backend/`'s other
+services (`freshness_service.py`, `live_feed.py`, `paper_exchange.py`, `portfolio_service.py`,
+etc.) and `pipeline/live/` — this section only covers what came up while answering a specific
+question about regime freshness, not a complete audit.
+
+## EURUSD/GOLD live regime — fixed (2026-08-01); BTC/ETH root cause identified, not yet fixed
+
+Confirmed via `data/processed/regime_live_log.parquet` (the real audit trail) that
+`get_live_regime()` was returning **bit-identical** regime probabilities across queries
+hours to a week apart, for all 4 assets — not just EURUSD, which is what prompted the
+investigation. Root cause: `ppo_inference.py`'s `_get_aligned_df`/`_locate` reads the
+static training-time `{file_stem}_normalized.parquet`. `_locate()`'s `searchsorted(...) - 1`
+resolves to the same last row for any query timestamp after that file's last row,
+regardless of when the query happens.
+
+Asymmetric cause, and the exact boundary differs per asset:
+- **EURUSD/GOLD**: genuinely capped at 2025-12-31 by histdata.com's whole-year-only ZIPs
+  (no 2026 ZIP exists yet).
+- **BTC/ETH**: `{file_stem}_normalized.parquet` (pre-join) was actually already fresh
+  through **2026-07-12** (matching `data/raw/BTC_USDT_1h_raw.parquet`'s own end) — the
+  2025-12-31 ceiling only affects the POST-join `{file_stem}_aligned.parquet`, which
+  `ppo_inference.py` never reads. Corrected from an earlier, wrong assumption in this same
+  investigation that BTC/ETH shared EURUSD/GOLD's 2025-12-31 ceiling — they don't, theirs
+  is 3 weeks stale (as of 2026-08-01), not 7 months, but the same frozen-`searchsorted`
+  mechanism still applies and still needs the equivalent of a live bridge. **Not yet done**
+  — BTC/ETH still read the plain static file, unfixed.
+
+**Fixed for EURUSD/GOLD** — `dashboard/backend/live_feature_bridge.py`:
+- Pulls real hourly OHLC bars from Twelve Data's `/time_series` (not `/price`, which the
+  existing forex poller in `live_feed.py` uses for point-price ticks only — no real
+  high/low range, unusable for indicators like ATR/ADX/Bollinger width).
+- Verified empirically: a single `outputsize=5000` call closes the *entire* ~7-month gap
+  (2026-01-02 → today) in one request — no chunked backfill needed.
+- Runs the fetched bars through the exact same `pipeline/features.py` →
+  `pipeline/normalize.py` (720h rolling z-score) functions training used — not a
+  reimplementation — bridged onto trailing historical context so the rolling window has
+  full history right at the boundary.
+- Three-file design, not one — **important if touching this again**: a
+  `{file_stem}_raw_live.parquet` append-only OHLCV accumulator that is *never* itself run
+  through `compute_features()`. An earlier version fed its own already-warmup-trimmed
+  output back in as next cycle's context, losing ~20-50 rows/cycle to indicator warmup
+  against ~1 new bar/cycle at hourly cadence — that erodes to nothing within days. The
+  accumulator being append-only and untouched by the trim is what prevents that.
+  `{file_stem}_normalized_live.parquet` is the accumulated output —
+  same 14-column schema as the training-time file, ready for `ppo_inference.py` to read.
+- Wired into the existing hourly APScheduler tick (`signal_scheduler.py`'s
+  `_run_signal_tick` → `_refresh_forex_bridge`, independent of the crypto trading-signal
+  loop so a forex-side failure can't block it). Verified end-to-end: first run backfills
+  ~5,000 rows per asset, a second run correctly adds only the handful of genuinely new
+  bars, and calling it with nothing new logs and no-ops rather than erroring.
+
+**`ppo_inference.py` rewired to match** — `_get_aligned_df` now:
+- Prefers `{file_stem}_normalized_live.parquet` when present (`_resolve_aligned_path`),
+  falling back to the static file otherwise — so BTC/ETH (no live bridge yet) are
+  unaffected and keep working exactly as before.
+- Caches by `(path, mtime)`, not "load once forever" — the live-bridge file changes on
+  disk every hour and a backend process can live for days between restarts; the old
+  cache-once behavior would have made this whole effort silently do nothing for a
+  long-running process. Verified: a second call within the same mtime returns the
+  identical cached object (no redundant reload); `_get_aligned_df('EURUSD')` returns
+  53,798 rows through 2026-08-02 (was frozen at 2025-12-31 before the fix).
+- End-to-end verified via `regime_service.get_live_regime()`: querying EURUSD at three
+  different timestamps (2026-08-02, 2026-07-15, 2026-06-01) now returns three genuinely
+  different results (regime 6/6/5, differing top-probabilities) — confirms the window
+  actually slides with real data instead of being pinned to a frozen boundary.
+
+**Still open:**
+- `dashboard/docker-compose.yml`'s backend service doesn't pass `TWELVE_DATA_KEY` into the
+  container at all (confirmed missing from its `environment:` block) — the key exists in
+  `dashboard/backend/.env` but never reaches a dockerized backend process. Blocks this
+  whole feature in the actual deployment until fixed.
+- BTC/ETH: same frozen-window mechanism, a different (much smaller — weeks, not months)
+  gap, and no live bridge built for them yet — not addressed by this work.

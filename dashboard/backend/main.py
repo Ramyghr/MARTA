@@ -268,7 +268,11 @@ def get_demo_scenarios():
 
 @app.get("/api/regime-stream/{asset}")
 def get_regime_stream(asset: str, limit: int = 500):
-    return regime_service.get_regime_stream_tail(asset, limit)
+    """Live-aware (see get_regime_stream_tail_live_aware) — the Regime page's probability
+    timeline. Found 2026-08-07: this previously called the pure static
+    get_regime_stream_tail directly, so it looked permanently frozen even after the
+    live-regime fixes elsewhere, since nothing routed through this endpoint at all."""
+    return regime_service.get_regime_stream_tail_live_aware(asset, limit)
 
 
 @app.get("/api/plots/tsne")
@@ -644,12 +648,21 @@ class PriceConnectionManager:
 price_manager = PriceConnectionManager()
 
 
-def _add_regime(candle: dict, asset: str) -> dict:
-    """Attach regime_label and regime_description to a candle dict."""
+def _add_regime(candle: dict, asset: str, live: bool = False) -> dict:
+    """Attach regime_label and regime_description to a candle dict.
+
+    ``live=True`` uses get_live_regime (fresh PCA->HMM recompute) for a genuinely
+    real-time tick; the default historical nearest-lookup (get_regime) is for backfilling
+    a batch of already-past candles, where recomputing a live sequence per candle would be
+    both wasteful (up to 300 HMM calls per connection) and semantically wrong (those bars
+    aren't "now"). Found during the 2026-07-31 audit: this previously always used the
+    historical lookup, so the live-tick candles streamed over /ws/price carried a regime
+    label frozen at whatever regime_stream.parquet's last precomputed row was.
+    """
     try:
         import pandas as pd
         ts = pd.Timestamp(candle["timestamp"], tz="UTC")
-        r = regime_service.get_regime(asset, ts)
+        r = regime_service.get_live_regime(asset, ts) if live else regime_service.get_regime(asset, ts)
         return {**candle, "regime_label": r["regime_label"], "regime_description": r.get("regime_description", "")}
     except Exception:
         return {**candle, "regime_label": 0, "regime_description": ""}
@@ -679,7 +692,7 @@ async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
 
         async def forward(candle: dict):
             try:
-                await websocket.send_json({"type": "candle", **_add_regime(candle, asset)})
+                await websocket.send_json({"type": "candle", **_add_regime(candle, asset, live=True)})
             except Exception:
                 pass
 

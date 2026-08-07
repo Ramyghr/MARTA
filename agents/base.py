@@ -55,17 +55,20 @@ class BaseAgent:
         temperature: float = 0.4,
         timeout_seconds: int = _TIMEOUT_SECONDS,
         max_attempts: int = 2,
+        num_predict: int = 600,
     ) -> None:
-        kwargs: dict = dict(model=model, temperature=temperature, num_predict=600,format="json")
+        kwargs: dict = dict(model=model, temperature=temperature, num_predict=num_predict, format="json")
         if _OLLAMA_BASE_URL:
             kwargs["base_url"] = _OLLAMA_BASE_URL
         self.llm = ChatOllama(**kwargs)
         self._token_count: int = 0
-        # Per-agent overridable timeout/retry budget — see ContrarianAgent for an
-        # example that widens both (its prompt + historical-analogue context makes
-        # slow responses more likely, and losing it to a timeout is more costly:
-        # the fallback neutral thesis silences the one agent whose whole job is to
-        # catch groupthink).
+        # Per-agent overridable timeout/retry/token budget — see ContrarianAgent for an
+        # example that widens all three (its prompt + historical-analogue context makes
+        # slow, longer responses more likely, and losing it to a timeout or truncated-JSON
+        # parse failure is more costly: the fallback neutral thesis silences the one agent
+        # whose whole job is to catch groupthink). A 2026-08 audit found ContrarianAgent's
+        # response was hitting the (until-now shared) 600-token num_predict cap and getting
+        # cut off mid-JSON in ~40% of its activations across a validated 81-debate cache.
         self._timeout_seconds = timeout_seconds
         self._max_attempts = max_attempts
     @staticmethod

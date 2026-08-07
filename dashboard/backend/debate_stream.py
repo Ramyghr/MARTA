@@ -191,6 +191,7 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         from agents.fund_manager import FundManagerAgent
         from agents.sentiment_agent import SentimentAgent
         from agents.contrarian_agent import ContrarianAgent
+        from utils.assets import logical_asset_name
         import pandas as pd
 
         await websocket.send_json({"type": "debate_start", "asset": asset, "timestamp": timestamp, "mode": "live"})
@@ -203,9 +204,17 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         aligned_full = pd.read_parquet(
             MARTA_ROOT / "data/processed/all_assets_aligned.parquet", engine="pyarrow"
         )
-        # Build per-asset dict and single-asset df for context
-        aligned_dfs = {col: aligned_full[col] for col in aligned_full.columns.get_level_values(0).unique()}
-        aligned_df = aligned_full[asset]
+        # Build per-asset dict and single-asset df for context. all_assets_aligned.parquet's
+        # MultiIndex top-level columns are keyed by file stem (GOLD -> "XAUUSD", its histdata
+        # instrument name), but `asset` here and every downstream agent lookup
+        # (agents/graph.py's aligned_dfs.get(ctx.asset)) use the logical name ("GOLD") — hence
+        # the KeyError('GOLD') this crashed with. Translate the dict's keys back to logical
+        # names once, then look the single-asset df up from that already-translated dict.
+        aligned_dfs = {
+            logical_asset_name(col): aligned_full[col]
+            for col in aligned_full.columns.get_level_values(0).unique()
+        }
+        aligned_df = aligned_dfs.get(asset)
 
         context = build_regime_context(ts, asset, regime_stream_df, aligned_df)
 

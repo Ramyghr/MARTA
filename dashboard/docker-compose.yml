@@ -9,6 +9,14 @@ services:
       - ../agents:/app/agents:ro
       - ../rl:/app/rl:ro
       - ../regime:/app/regime:ro
+      # live_feature_bridge.py imports pipeline.features/pipeline.normalize (the same
+      # fetch->features->normalize functions training used) — found missing 2026-08-07:
+      # without this mount, every live-bridge refresh (BTC/ETH/EURUSD/GOLD) failed inside
+      # the actual deployed container with "No module named 'pipeline'", silently
+      # swallowed by signal_scheduler's per-asset try/except. The bridge had only ever
+      # been verified via direct host-side script runs, never through the running
+      # container's own hourly tick.
+      - ../pipeline:/app/pipeline:ro
       - ../models:/app/models:ro
       - ../configs:/app/configs:ro
       - ../utils:/app/utils:ro
@@ -16,6 +24,15 @@ services:
       - ../run_rl.py:/app/run_rl.py:ro
       - ./backend:/dashboard_backend
       - paper_trading_db:/app/paper_trading_db
+    # dashboard/backend/.env holds TWELVE_DATA_KEY, ALPACA_API_KEY/SECRET_KEY,
+    # TELEGRAM_BOT_TOKEN/CHAT_ID, BINANCE_TESTNET_*, NEWS_API_KEY, etc. — none of these
+    # were reaching the container before (confirmed missing 2026-08-01; every live
+    # integration gated on one of them, including Alpaca paper trading and the
+    # EURUSD/GOLD live-regime bridge, was silently disabled in the dockerized deployment
+    # despite the key existing on disk). `environment:` below still overrides any
+    # same-named key from this file (e.g. OLLAMA_HOST), per compose's normal precedence.
+    env_file:
+      - ./backend/.env
     environment:
       - PYTHONPATH=/app
       - MARTA_ROOT=/app

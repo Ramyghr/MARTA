@@ -129,33 +129,41 @@ Given the exploratory, research-oriented nature of MARTA, a rigid upfront specif
 \subsection{Development Phases}
 \label{subsec:development-phases}
 
-The work was organized into six successive phases, summarized in Table~\ref{tab:phases}.
+The work was organized into seven successive phases, summarized in Table~\ref{tab:phases} and Figure~\ref{fig:gantt}. The first phase, covering literature review, problem definition, and architecture design, produced Chapter~\ref{chap:background}'s survey and the five-layer design introduced in Section~\ref{sec:proposed-solution}; the remaining six phases correspond one-to-one with the architectural layers and validation work described in Chapter~\ref{chap:methodology}.
 
 \begin{table}[h]
 \centering
+\small
 \caption{MARTA development phases}
 \label{tab:phases}
-\begin{tabular}{|l|l|l|}
+\begin{tabular}{|p{4.6cm}|p{5.4cm}|p{3.3cm}|}
 \hline
-\textbf{Phase} & \textbf{Deliverable} & \textbf{Duration} \\
+\textbf{Phase} & \textbf{Deliverable} & \textbf{Duration \& dates} \\
 \hline
-1. Data \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & X weeks \\
-2. Regime Encoder & Trained TFT + InfoNCE encoder & X weeks \\
-3. Regime Detection & Gaussian HMM over encoder embeddings & X weeks \\
-4. Multi-Agent System & 5-agent LLM debate pipeline & X weeks \\
-5. RL Execution Agent & PPO supervisor trained on agent outputs & X weeks \\
-6. Dashboard \& Validation & Next.js dashboard, ablations, backtests & X weeks \\
+1. Literature Review \& Architecture Design & State-of-the-art survey, 5-layer design & 12 wk (Mar 1 -- May 24) \\
+\hline
+2. Data \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 25 -- Jun 7) \\
+\hline
+3. Regime Encoder & Trained TFT + InfoNCE encoder & 3 wk (Jun 8 -- Jun 28) \\
+\hline
+4. Regime Detection & Gaussian HMM over encoder embeddings & 1 wk (Jun 29 -- Jul 5) \\
+\hline
+5. Multi-Agent System & 5-agent LLM debate pipeline & 2 wk (Jul 6 -- Jul 19) \\
+\hline
+6. RL Execution Agent & PPO supervisor trained on agent outputs & 3 wk (Jul 20 -- Aug 9) \\
+\hline
+7. Dashboard \& Validation & Next.js dashboard, live system, ablations & 3 wk (Aug 10 -- Aug 31) \\
 \hline
 \end{tabular}
+\normalsize
 \end{table}
 
-% TODO: replace "X weeks" with your real durations, and insert a Gantt chart image here per the pedagogical guide's requirement for a planning diagram.
-% \begin{figure}[h]
-%     \centering
-%     \includegraphics[width=\textwidth]{images/gantt_chart.png}
-%     \caption{Project planning Gantt chart}
-%     \label{fig:gantt}
-% \end{figure}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{images/gantt_chart.png}
+    \caption{Project planning Gantt chart}
+    \label{fig:gantt}
+\end{figure}
 
 \subsection{Rationale for the Approach}
 \label{subsec:methodology-rationale}

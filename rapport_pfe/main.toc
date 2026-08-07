@@ -1,0 +1,33 @@
+\contentsline {chapter}{\numberline {1}General Introduction}{1}{}%
+\contentsline {section}{\numberline {1.1}General Context}{1}{}%
+\contentsline {section}{\numberline {1.2}Host Organization}{1}{}%
+\contentsline {subsection}{\numberline {1.2.1}Presentation of Coral-io}{1}{}%
+\contentsline {subsection}{\numberline {1.2.2}Internship Framework}{2}{}%
+\contentsline {section}{\numberline {1.3}Problem Statement}{2}{}%
+\contentsline {subsection}{\numberline {1.3.1}Limitations of Existing Approaches}{2}{}%
+\contentsline {subsection}{\numberline {1.3.2}The Core Gap}{3}{}%
+\contentsline {subsection}{\numberline {1.3.3}Formal Problem Statement}{3}{}%
+\contentsline {section}{\numberline {1.4}Proposed Solution}{3}{}%
+\contentsline {section}{\numberline {1.5}Project Objectives and Scope}{4}{}%
+\contentsline {subsection}{\numberline {1.5.1}Objectives}{4}{}%
+\contentsline {subsection}{\numberline {1.5.2}Scope}{5}{}%
+\contentsline {section}{\numberline {1.6}Project Methodology and Work Planning}{5}{}%
+\contentsline {subsection}{\numberline {1.6.1}Development Phases}{5}{}%
+\contentsline {subsection}{\numberline {1.6.2}Rationale for the Approach}{6}{}%
+\contentsline {chapter}{\numberline {2}State of the Art}{7}{}%
+\contentsline {section}{\numberline {2.1}Introduction}{7}{}%
+\contentsline {section}{\numberline {2.2}Algorithmic Trading: Evolution and Challenges}{7}{}%
+\contentsline {section}{\numberline {2.3}Market Regime Detection}{7}{}%
+\contentsline {subsection}{\numberline {2.3.1}Rule-Based Approaches}{7}{}%
+\contentsline {subsection}{\numberline {2.3.2}Statistical Approaches: Hidden Markov Models and Clustering}{8}{}%
+\contentsline {subsection}{\numberline {2.3.3}Deep Learning Approaches}{8}{}%
+\contentsline {section}{\numberline {2.4}LLM Agents in Finance}{8}{}%
+\contentsline {subsection}{\numberline {2.4.1}Single- and Multi-Agent LLM Trading Systems}{8}{}%
+\contentsline {subsection}{\numberline {2.4.2}Multi-Agent Debate as a Design Pattern}{9}{}%
+\contentsline {subsection}{\numberline {2.4.3}Limitations of Existing Approaches}{9}{}%
+\contentsline {section}{\numberline {2.5}Reinforcement Learning for Trading}{9}{}%
+\contentsline {subsection}{\numberline {2.5.1}Early Approaches: DQN and Discrete Action Spaces}{9}{}%
+\contentsline {subsection}{\numberline {2.5.2}PPO and Continuous Action Spaces}{9}{}%
+\contentsline {subsection}{\numberline {2.5.3}Curriculum Learning in Finance}{10}{}%
+\contentsline {section}{\numberline {2.6}Positioning of MARTA}{10}{}%
+\contentsline {section}{\numberline {2.7}Summary}{10}{}%

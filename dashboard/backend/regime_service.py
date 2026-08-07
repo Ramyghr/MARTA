@@ -1,8 +1,10 @@
 import json
 import os
+from pathlib import Path
+from typing import Optional
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.parent)))
 
@@ -203,21 +205,81 @@ def get_regime_series(asset: str, timestamps: list[pd.Timestamp]) -> list[dict]:
     return results
 
 
-def get_regime_stream_tail(asset: str, limit: int = 500) -> list[dict]:
-    """Last `limit` regime-stream rows for `asset`, oldest first, decimated to ~2000 points."""
-    if _df is None:
-        load_regime_stream()
-    asset_df = _df[_df["asset"] == asset].tail(limit)
-    if len(asset_df) > 2000:
+def _format_stream_rows(df: pd.DataFrame, limit: int) -> list[dict]:
+    """Shared tail/decimate/sanitize step for get_regime_stream_tail and its live-aware
+    variant below — same output shape either way."""
+    df = df.tail(limit)
+    if len(df) > 2000:
         # Keep every Nth row — 33k+ points overwhelm both the JSON encoder and the chart
-        step = len(asset_df) // 2000
-        asset_df = asset_df.iloc[::step]
-    out = asset_df.reset_index().rename(columns={"index": "timestamp"})
+        step = len(df) // 2000
+        df = df.iloc[::step]
+    out = df.reset_index().rename(columns={"index": "timestamp"})
     # Sanitize non-finite values that crash the JSON encoder
     num_cols = out.select_dtypes(include="number").columns
     out[num_cols] = out[num_cols].replace([np.inf, -np.inf], 0).fillna(0)
     out["timestamp"] = out["timestamp"].astype(str)
     return out.to_dict(orient="records")
+
+
+def get_regime_stream_tail(asset: str, limit: int = 500) -> list[dict]:
+    """Last `limit` regime-stream rows for `asset`, oldest first, decimated to ~2000 points.
+
+    Pure regime_stream.parquet — frozen at whatever run_regime.py last produced. Use
+    get_regime_stream_tail_live_aware for anything user-facing (the Regime page); this is
+    kept for callers that specifically want the static historical stream.
+    """
+    if _df is None:
+        load_regime_stream()
+    asset_df = _df[_df["asset"] == asset]
+    return _format_stream_rows(asset_df, limit)
+
+
+def get_regime_stream_tail_live_aware(asset: str, limit: int = 500) -> list[dict]:
+    """Like get_regime_stream_tail, but appends regime_live_log.parquet's rows for
+    `asset` past regime_stream.parquet's frozen boundary, instead of silently stopping
+    there — this is what made the Regime page's probability timeline look permanently
+    stuck (found 2026-08-07: /api/regime-stream/{asset} called get_regime_stream_tail
+    directly, so the earlier live-aware fix to historical.py's *chart-candle tagging*
+    never touched this endpoint at all).
+
+    The live log only has rows from whenever hourly logging for `asset` began (see
+    signal_scheduler.py) — there's no way to reconstruct real per-hour regime for the
+    period before that started, so a visible gap between the frozen boundary and the
+    first live-log entry is expected, not a bug. It fills in and gets denser as more
+    hourly ticks land; it never repeats one frozen value across the gap the way the old
+    behavior did.
+    """
+    if _df is None:
+        load_regime_stream()
+    asset_df = _df[_df["asset"] == asset]
+    if asset_df.empty:
+        return _format_stream_rows(asset_df, limit)
+    frozen_max = asset_df.index.max()
+
+    live_tail = pd.DataFrame()
+    if _LIVE_LOG_PATH.exists():
+        try:
+            log = pd.read_parquet(_LIVE_LOG_PATH, engine="pyarrow")
+            live_tail = log[(log["asset"] == asset) & (log.index > frozen_max)].sort_index()
+        except Exception:
+            live_tail = pd.DataFrame()
+
+    if live_tail.empty:
+        return _format_stream_rows(asset_df, limit)
+
+    # Decimate the (much larger) static history and the live tail SEPARATELY, then
+    # concatenate the formatted results — decimating them together strides over the
+    # combined series, and since the live tail is a tiny fraction of a 180k+ row static
+    # history, that stride reliably lands nowhere near the last few rows and silently
+    # drops the entire live tail (confirmed: BTC's full-history request, limit=200000,
+    # produced a step of ~90 and dropped every single live-log row — found 2026-08-07,
+    # the exact reason the full-history chart still looked frozen after the first pass
+    # of this fix). The live tail is small enough it rarely needs decimation at all in
+    # practice, but still routed through _format_stream_rows defensively in case the log
+    # grows large over a long-running deployment.
+    static_rows = _format_stream_rows(asset_df, limit)
+    live_rows = _format_stream_rows(live_tail, len(live_tail))
+    return static_rows + live_rows
 
 
 def get_available_assets() -> list[str]:
@@ -332,3 +394,96 @@ def _append_live_regime_log(asset: str, ts: pd.Timestamp, result: dict) -> None:
         combined.to_parquet(_LIVE_LOG_PATH, engine="pyarrow")
     except Exception as exc:
         print(f"[regime_service] live regime log append failed (non-fatal): {exc}")
+
+
+# ── Live-aware chart tagging ────────────────────────────────────────────────────
+# get_regime_series (above) is a pure nearest-lookup into regime_stream.parquet, whose
+# newest row is whatever run_regime.py last produced (2025-12-31 as of this pass, but
+# the exact date isn't the point — it stops growing the moment that script stops
+# running, same staleness class documented at the top of this file). historical.py's
+# chart-candle tagging used to call get_regime_series directly, which meant every
+# extension candle fetched live past that boundary (BTC/ETH via ccxt, EURUSD/GOLD via
+# yfinance/Twelve Data — see historical.py's _extend()) still got tagged with that one
+# frozen last row, for however many months/candles have passed since. Found + fixed
+# 2026-08-07 audit, alongside the BTC/ETH live bridge above.
+
+_LIVE_LOG_MAX_AGE_DAYS = 14.0  # nearest-log-entry tolerance for chart tagging — beyond
+# this, a "nearest" live_log hit would itself be too stale to trust; fall back to one
+# fresh get_live_regime() computation instead (shared across the whole request, not
+# recomputed per candle — see get_regime_series_live_aware).
+
+
+def _nearest_live_log_regime(asset: str, ts: pd.Timestamp, max_age_days: float = _LIVE_LOG_MAX_AGE_DAYS) -> Optional[dict]:
+    """Nearest-neighbor lookup in regime_live_log.parquet — the incrementally-growing
+    per-hour audit trail (_append_live_regime_log), NOT the frozen regime_stream.parquet
+    snapshot. Populated once/hour/asset by the scheduler (live_signal.py for BTC/ETH,
+    signal_scheduler._log_nontrading_regimes for EURUSD/GOLD). Returns None if the log
+    is missing, has no rows for `asset`, or its nearest entry is more than `max_age_days`
+    from `ts` — all three cases are handled by the caller falling back to a fresh compute.
+    """
+    if not _LIVE_LOG_PATH.exists():
+        return None
+    try:
+        log = pd.read_parquet(_LIVE_LOG_PATH, engine="pyarrow")
+    except Exception:
+        return None
+    asset_log = log[log["asset"] == asset].sort_index()
+    if asset_log.empty:
+        return None
+
+    pos = int(asset_log.index.searchsorted(ts))
+    candidates = [i for i in (pos - 1, pos) if 0 <= i < len(asset_log)]
+    if not candidates:
+        return None
+    best = min(candidates, key=lambda i: abs(asset_log.index[i] - ts))
+    if abs(asset_log.index[best] - ts) > pd.Timedelta(days=max_age_days):
+        return None
+    return {"regime_label": int(asset_log.iloc[best]["regime_label"])}
+
+
+def get_regime_series_live_aware(asset: str, timestamps: list[pd.Timestamp]) -> list[dict]:
+    """Like get_regime_series, but candles past regime_stream.parquet's frozen boundary
+    use live data instead of silently repeating its last row — for historical.py's chart
+    tagging, so a stale regime_stream doesn't make every recent candle look like it's
+    stuck in one regime.
+
+    For each timestamp:
+      - at/before the frozen boundary: identical to get_regime_series (cheap static
+        nearest-lookup — these are genuinely past candles, the fast path is correct).
+      - after it: nearest hit in the live audit log (regime_live_log.parquet) if one
+        exists within `_LIVE_LOG_MAX_AGE_DAYS`; otherwise ONE shared fresh
+        get_live_regime() computation, reused for every such candle in this call.
+
+    Cost bound: at most one full PCA->HMM live recompute per call, never one per candle
+    — recomputing per-candle would mean up to hundreds of 168-window HMM passes per
+    chart load (see _add_regime's docstring in main.py for the same reasoning applied
+    to the live-tick websocket path).
+    """
+    if _df is None:
+        load_regime_stream()
+    asset_df = _df[_df["asset"] == asset]
+    if asset_df.empty:
+        return [_empty_regime() for _ in timestamps]
+    frozen_max = asset_df.index.max()
+
+    fresh_live: Optional[dict] = None  # lazily computed at most once, shared below
+    results = []
+    for ts in timestamps:
+        if not isinstance(ts, pd.Timestamp):
+            ts = pd.Timestamp(ts, tz="UTC")
+        if ts.tzinfo is None:
+            ts = ts.tz_localize("UTC")
+
+        if ts <= frozen_max:
+            idx = asset_df.index.get_indexer([ts], method="nearest")
+            label = int(asset_df.iloc[idx[0]]["regime_label"])
+        else:
+            hit = _nearest_live_log_regime(asset, ts)
+            if hit is None:
+                if fresh_live is None:
+                    fresh_live = get_live_regime(asset, pd.Timestamp.now(tz="UTC"))
+                hit = fresh_live
+            label = hit["regime_label"]
+
+        results.append({"regime_label": label, "regime_description": _load_regime_descriptions().get(label, "Unknown")})
+    return results

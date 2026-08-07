@@ -14,10 +14,15 @@ training:
   early_stopping_patience: 20
   warmup_epochs: 10
   gradient_clip_max_norm: 1.0
-  # Layer 1 v2 real split: train 2018-01 → 2022-12-31, val 2023 (data ends 2023-12-01).
-  # Test (2024) is SACRED and not present in this dataset.
-  train_end: "2020-12-31"
-  val_start: "2021-01-01"
+  # 2026-07-13 walk-forward split (matches configs/assets.yaml and rl/env.py):
+  # train < 2024-01-01, val = 2024. Test (2025) is SACRED — the Kaggle upload is
+  # trimmed to <= 2024-12-31 so 2025 never reaches encoder training or validation.
+  # This value was stale at 2020-12-31/2021-01-01 (two split generations behind)
+  # until 2026-07-31 — it only worked because the Kaggle notebook %%writefile's its
+  # own inline override of this file; a local `python run_encoder.py` run would have
+  # silently retrained on the wrong split.
+  train_end: "2024-01-01"
+  val_start: "2024-01-01"
 
 data:
   assets:

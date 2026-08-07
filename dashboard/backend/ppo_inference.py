@@ -10,7 +10,9 @@ or encoder is absent (e.g. first-run before any training).
 
 from __future__ import annotations
 
+import json
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -22,20 +24,34 @@ _CHECKPOINT = MARTA_ROOT / "rl" / "checkpoints" / "ppo_best.zip"
 _ENCODER_CKPT = MARTA_ROOT / "encoder" / "checkpoints" / "best_encoder.pt"
 _REGIME_STREAM_PATH = MARTA_ROOT / "data" / "processed" / "regime_stream.parquet"
 _ALIGNED_PATTERN = str(MARTA_ROOT / "data" / "processed" / "{asset}_normalized.parquet")
+# Live-extended file (see live_feature_bridge.py) — a superset of the training-time file,
+# kept current for all 4 assets via the hourly scheduler tick (Twelve Data for EURUSD/GOLD,
+# Binance for BTC/ETH). Preferred over _ALIGNED_PATTERN when present; falls back to it for
+# any asset whose live bridge hasn't run yet (e.g. a fresh deploy before the first tick).
+_ALIGNED_LIVE_PATTERN = str(MARTA_ROOT / "data" / "processed" / "{asset}_normalized_live.parquet")
+_DEBATE_RESULTS_PATH = MARTA_ROOT / "data" / "debates" / "debate_results.json"
 
 _WINDOW_SIZE = 60
 _REGIME_DIM = 128
 _CONSENSUS_DIM = 16
 _PORTFOLIO_DIM = 8
 _STATE_DIM = _REGIME_DIM + _CONSENSUS_DIM + _PORTFOLIO_DIM  # 152
+_NEAREST_DEBATE_MAX_DAYS = 7  # mirrors rl/ablation.py::_NEAREST_DEBATE_MAX_DAYS
+
+_BIAS_SIGN = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
+_ACTION_SIGN = {"long": 1.0, "short": -1.0, "hold": 0.0}
 
 _model = None
 _encoder = None
 _regime_stream = None
-_aligned_cache: dict[str, "pd.DataFrame"] = {}
+_aligned_cache: dict[str, tuple[Path, float, "pd.DataFrame"]] = {}
 
 _vol_cache: dict[str, tuple[float, "datetime"]] = {}  # asset -> (vol_forecast, fitted_at)
 _VOL_REFIT_HOURS = 168  # weekly — mirrors rl.env._GARCH_STRIDE
+
+_ConsensusRecordCls = None  # lazily-built Pydantic model, see _get_consensus_record_cls()
+_debate_cache: dict = {"mtime": None, "entries": {}}  # asset -> (DatetimeIndex, np.ndarray)
+_debate_cache_lock = threading.Lock()
 
 
 def load_model() -> None:
@@ -101,18 +117,39 @@ def load_model() -> None:
         _encoder = None
 
 
+def _resolve_aligned_path(file_stem: str) -> Optional[Path]:
+    """Prefer the live-bridge file when it exists — see _ALIGNED_LIVE_PATTERN above."""
+    live_path = Path(_ALIGNED_LIVE_PATTERN.format(asset=file_stem))
+    if live_path.exists():
+        return live_path
+    static_path = Path(_ALIGNED_PATTERN.format(asset=file_stem))
+    return static_path if static_path.exists() else None
+
+
 def _get_aligned_df(asset: str) -> Optional["pd.DataFrame"]:
-    if asset in _aligned_cache:
-        return _aligned_cache[asset]
+    """Cached by (path, mtime), not loaded once forever — the live-bridge file changes
+    on disk every hour (live_feature_bridge.py, via the scheduler tick), and a backend
+    process can live for days between restarts. Without mtime-based invalidation, the
+    first load would win permanently and this whole live-bridge effort would silently do
+    nothing for a long-running process. Also re-resolves the path each call so a fresh
+    live-bridge file appearing after startup (e.g. first-ever backfill completes while the
+    backend is already running) gets picked up without a restart."""
     from utils.assets import ASSET_FILE_STEM
+
     file_stem = ASSET_FILE_STEM.get(asset, asset)  # GOLD -> XAUUSD on disk
-    path = Path(_ALIGNED_PATTERN.format(asset=file_stem))
-    if not path.exists():
+    path = _resolve_aligned_path(file_stem)
+    if path is None:
         return None
+
+    mtime = path.stat().st_mtime
+    cached = _aligned_cache.get(asset)
+    if cached is not None and cached[0] == path and cached[1] == mtime:
+        return cached[2]
+
     try:
         import pandas as pd
         df = pd.read_parquet(path, engine="pyarrow")
-        _aligned_cache[asset] = df
+        _aligned_cache[asset] = (path, mtime, df)
         return df
     except Exception:
         return None
@@ -285,14 +322,168 @@ def _build_portfolio_vec(asset: str) -> np.ndarray:
     return vec
 
 
+def _get_consensus_record_cls():
+    """Lazily build (once) a narrow Pydantic validation target for consensus extraction.
+
+    Deliberately narrower than the full agents.schemas.DebateResult — only the fields the
+    consensus vector actually reads (timestamp, asset, round1_theses, fund_manager_decision)
+    — so a record with a corrupted-but-irrelevant field (risk_limits, round2_rebuttals)
+    doesn't get needlessly discarded. Reuses AgentThesis/FundManagerDecision from
+    agents.schemas directly (single source of truth, stays in sync with the write-side
+    schema automatically). Still catches every gap in the raw `.get()`-chain readers used
+    elsewhere in the codebase: a present-but-null field (e.g. "conviction": null) is
+    rejected by Field(ge=0,le=1) instead of silently passing through as None; an invalid
+    enum value (e.g. "Bullish") is rejected by Literal[...] instead of silently mapping to
+    0.0 via `bias_sign.get(x, 0.0)`.
+
+    Imports are lazy (module-level cache, built once) so a process that never reaches this
+    code path (fast mtime-cache-hit calls) never needs agents.schemas/pydantic imported.
+    """
+    global _ConsensusRecordCls
+    if _ConsensusRecordCls is None:
+        from pydantic import BaseModel
+        from agents.schemas import AgentThesis, FundManagerDecision
+
+        class _ConsensusRecord(BaseModel):
+            timestamp: str
+            asset: str
+            round1_theses: list[AgentThesis]
+            fund_manager_decision: FundManagerDecision
+
+        _ConsensusRecordCls = _ConsensusRecord
+    return _ConsensusRecordCls
+
+
+def _consensus_vec_from_result(record) -> np.ndarray:
+    """Exact port of rl/env.py::_build_consensus_lookup's per-record formula, operating on
+    validated Pydantic attributes instead of raw dict .get() chains. Dims 9-15 stay zero —
+    never populated in training either."""
+    vec = np.zeros(_CONSENSUS_DIM, dtype=np.float32)
+    for i, th in enumerate(record.round1_theses[:5]):
+        vec[i] = _BIAS_SIGN.get(th.directional_bias, 0.0) * th.confidence
+    fmd = record.fund_manager_decision
+    vec[5] = _ACTION_SIGN.get(fmd.final_action, 0.0) * fmd.conviction
+    vec[6] = fmd.position_size
+    vec[7] = 1.0 if fmd.regime_override else 0.0
+    vec[8] = float(len(fmd.dissenting_agents))
+    return vec
+
+
+def _load_debate_lookup() -> dict:
+    """Pure read of an already-persisted file — NEVER triggers a live debate (no import of
+    agents.graph.run_debate or any LLM/Ollama call anywhere in this function). Populated
+    only by whatever cadence a human has manually triggered "Run Debate" through
+    debate_stream.py; if nobody ever has, this returns {} and consensus stays all-zero,
+    same as before this function existed.
+
+    mtime-gated: re-reads/re-parses/re-validates debate_results.json only when the file
+    actually changed since the last call. Steady-state cost per predict() call is one
+    stat() + a dict lookup — well under the latency budget, and no live LLM call is ever
+    on this path.
+    """
+    global _debate_cache
+    import logging
+    log = logging.getLogger(__name__)
+
+    if not _DEBATE_RESULTS_PATH.exists():
+        return {}
+    try:
+        mtime = _DEBATE_RESULTS_PATH.stat().st_mtime
+    except OSError:
+        return _debate_cache["entries"]
+    if _debate_cache["mtime"] == mtime:
+        return _debate_cache["entries"]  # fast path: no re-read, no re-parse, no re-validate
+
+    with _debate_cache_lock:
+        if _debate_cache["mtime"] == mtime:  # re-check after acquiring the lock
+            return _debate_cache["entries"]
+
+        try:
+            raw = json.loads(_DEBATE_RESULTS_PATH.read_text())
+        except Exception as exc:
+            log.warning(f"ppo_inference: could not read/parse debate_results.json — {exc}")
+            return _debate_cache["entries"]  # keep last-good cache, never crash predict()
+
+        import pandas as pd
+
+        record_cls = _get_consensus_record_cls()
+        by_asset: dict[str, list[tuple["pd.Timestamp", np.ndarray]]] = {}
+        n_skipped = 0
+        for i, d in enumerate(raw):
+            try:
+                record = record_cls.model_validate(d)
+                ts = pd.Timestamp(record.timestamp)
+                ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+                vec = _consensus_vec_from_result(record)
+            except Exception as exc:
+                # Catches pydantic.ValidationError (missing/wrong-typed/out-of-range
+                # fields) and any other malformed-record failure (bad timestamp, etc.) —
+                # one bad record is logged and skipped, never aborts the whole reload.
+                n_skipped += 1
+                log.warning(f"ppo_inference: skipping malformed debate record #{i} — {exc}")
+                continue
+            by_asset.setdefault(record.asset, []).append((ts, vec))
+
+        entries = {}
+        for asset, items in by_asset.items():
+            items.sort(key=lambda x: x[0])
+            entries[asset] = (
+                pd.DatetimeIndex([x[0] for x in items]),
+                np.stack([x[1] for x in items]),
+            )
+
+        if n_skipped:
+            log.warning(
+                f"ppo_inference: {n_skipped}/{len(raw)} debate record(s) skipped as malformed on reload"
+            )
+        _debate_cache = {"mtime": mtime, "entries": entries}
+        return entries
+
+
+def _nearest_consensus_vec(
+    asset: str, timestamp: "pd.Timestamp", max_days: int = _NEAREST_DEBATE_MAX_DAYS
+) -> Optional[np.ndarray]:
+    """Byte-for-byte port of rl/ablation.py::_make_nearest_consensus_fn's nearest-neighbor
+    search, for consistency with the already-tested agents_no_regime ablation baseline
+    rather than inventing a third freshness-window convention (live_signal.py already has
+    two other ad hoc ones for a different purpose)."""
+    entries = _load_debate_lookup()
+    if asset not in entries:
+        return None
+    timestamps, vecs = entries[asset]
+
+    import pandas as pd
+    ts = pd.Timestamp(timestamp)
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+    pos = int(timestamps.searchsorted(ts))
+    candidates = [i for i in (pos - 1, pos) if 0 <= i < len(timestamps)]
+    if not candidates:
+        return None
+    best = min(candidates, key=lambda i: abs(timestamps[i] - ts))
+    if abs(timestamps[best] - ts) > pd.Timedelta(days=max_days):
+        return None
+    return vecs[best]
+
+
+def _build_consensus_vec(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
+    import logging
+    try:
+        vec = _nearest_consensus_vec(asset, timestamp)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"ppo_inference: consensus lookup failed for {asset} — {exc}")
+        return np.zeros(_CONSENSUS_DIM, dtype=np.float32)
+    return vec if vec is not None else np.zeros(_CONSENSUS_DIM, dtype=np.float32)
+
+
 def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
     """Build the 152-dim observation for PPO inference.
 
-    Consensus is still zero (wired in a later phase); portfolio reflects live paper_db
-    state (position, return, drawdown, idle time, vol forecast).
+    Consensus is a nearest-cached-debate lookup (never triggers a live debate); portfolio
+    reflects live paper_db state (position, return, drawdown, idle time, vol forecast).
     """
     regime = _build_regime_embedding(asset, timestamp)
-    consensus = np.zeros(_CONSENSUS_DIM, dtype=np.float32)
+    consensus = _build_consensus_vec(asset, timestamp)
     portfolio = _build_portfolio_vec(asset)
     obs = np.concatenate([regime, consensus, portfolio])
     return np.clip(obs, -10.0, 10.0).astype(np.float32)

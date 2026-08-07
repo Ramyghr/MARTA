@@ -24,11 +24,18 @@ class ContrarianAgent(BaseAgent):
     name = "ContrarianAgent"
 
     def __init__(self, model: str = "mistral:7b-instruct", temperature: float = 0.4) -> None:
-        # Wider timeout/retry budget than the other agents (base.py defaults: 300s, 2
-        # attempts): 600s timeout, up to 3 total attempts (1 initial + 2 retries) before
-        # genuinely falling back to the neutral "system_error" thesis. The fallback
-        # itself is correct — it just shouldn't fire until retries are truly exhausted.
-        super().__init__(model=model, temperature=temperature, timeout_seconds=600, max_attempts=3)
+        # Wider timeout/retry/token budget than the other agents (base.py defaults: 300s, 2
+        # attempts, 600 num_predict): 600s timeout, up to 3 total attempts (1 initial + 2
+        # retries), and 900 num_predict before genuinely falling back to the neutral
+        # "system_error" thesis. The fallback itself is correct — it just shouldn't fire
+        # until retries are truly exhausted. Retries alone don't fix this failure mode:
+        # a 2026-08 audit found this agent's historical-analogue reasoning deterministically
+        # overruns the shared 600-token cap for the same prompt, so it kept retrying into
+        # the same truncated-JSON failure (~40% of activations across an 81-debate cache)
+        # rather than a one-off timeout blip that a retry would actually help with.
+        super().__init__(
+            model=model, temperature=temperature, timeout_seconds=600, max_attempts=3, num_predict=900
+        )
         self._regime_stream = pd.read_parquet(_REGIME_STREAM_PATH, engine="pyarrow")
 
     def _compute_consensus(self, theses: list[AgentThesis]) -> tuple[str, float]:

@@ -52,6 +52,22 @@ class NTXentLoss(nn.Module):
     def temperature(self) -> torch.Tensor:
         return torch.exp(-self.log_temp)
 
+    def clamp_temperature(self, min_temperature: float, max_temperature: float) -> None:
+        """Hard-bound ``log_temp`` in place so ``temperature = exp(-log_temp)`` cannot
+        wander outside ``[min_temperature, max_temperature]``.
+
+        Call after each optimizer step. Gradient descent on an unconstrained log_temp was
+        observed to drive temperature to 0.0047 (6.4x below the 0.03 floor) during the
+        2026-07 Kaggle walk-forward retrain — the convergence check in encoder/train.py
+        only warns on this, it doesn't constrain it, so it went to production unnoticed.
+        """
+        with torch.no_grad():
+            # temperature <= max_temperature  <=>  log_temp >= -ln(max_temperature)
+            # temperature >= min_temperature  <=>  log_temp <= -ln(min_temperature)
+            low = -math.log(max_temperature)
+            high = -math.log(min_temperature)
+            self.log_temp.clamp_(min=low, max=high)
+
     def forward(
         self,
         z_anchor: torch.Tensor,

@@ -57,6 +57,7 @@ def _run_epoch(
     device: torch.device,
     grad_clip: float,
     train: bool,
+    temp_bounds: tuple[float, float] | None = None,
 ) -> tuple[float, float, bool]:
     """Run one full pass over loader.  Returns (mean_loss, mean_acc, nan_grad_hit)."""
     model.train(train)
@@ -82,6 +83,8 @@ def _run_epoch(
                 if torch.isnan(grad_norm):
                     nan_grad_hit = True
                 optimizer.step()
+                if temp_bounds is not None:
+                    loss_fn.clamp_temperature(*temp_bounds)
 
             losses.append(loss.item())
             accs.append(acc.item())
@@ -188,9 +191,12 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
     nan_grad_detected = False
     stopping_epoch = max_epochs
 
+    temp_bounds = (conv["min_temperature"], conv["max_temperature"])
+
     for epoch in range(1, max_epochs + 1):
         train_loss, train_acc, nan_hit = _run_epoch(
-            train_loader, model, loss_fn, optimizer, device, grad_clip, train=True
+            train_loader, model, loss_fn, optimizer, device, grad_clip, train=True,
+            temp_bounds=temp_bounds,
         )
         if nan_hit:
             nan_grad_detected = True
@@ -232,6 +238,7 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
                 {
                     "epoch": epoch,
                     "val_loss": val_loss,
+                    "val_top1_acc": val_acc,
                     "model_state": model.state_dict(),
                     "loss_fn_state": loss_fn.state_dict(),
                 },
@@ -250,6 +257,7 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
         {
             "epoch": epoch,
             "val_loss": val_loss,
+            "val_top1_acc": val_acc,
             "model_state": model.state_dict(),
             "loss_fn_state": loss_fn.state_dict(),
         },
@@ -274,13 +282,25 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
     loss_fn.load_state_dict(best_ckpt["loss_fn_state"])
 
     # -------------------------------------------------------------- convergence checks
-    _run_convergence_checks(
+    checks = _run_convergence_checks(
         best_val_loss=best_val_loss,
         best_val_acc=best_val_acc,
         temperature=loss_fn.temperature.item(),
         nan_grad_detected=nan_grad_detected,
         thresholds=conv,
     )
+
+    # Embed the convergence-check results and thresholds INTO the checkpoint file itself —
+    # not just MLflow. When training runs on Kaggle (external, no local MLflow), the
+    # checkpoint .pt is the only artifact that reliably gets downloaded; if convergence
+    # metrics only live in a throwaway remote MLflow run, they're lost the moment the
+    # Kaggle session ends. This is exactly how the 2026-07 Kaggle retrain's collapsed
+    # temperature (0.0047, 6.4x below the 0.03 floor) went to production unnoticed.
+    for path in (ckpt_dir / ckpt_cfg["best"], ckpt_dir / ckpt_cfg["final"]):
+        saved = torch.load(path, map_location="cpu", weights_only=True)
+        saved["convergence_checks"] = checks
+        saved["convergence_thresholds"] = dict(conv)
+        torch.save(saved, path)
 
     # -------------------------------------------------------------- post-training artefacts
     run_id = mlflow.active_run().info.run_id
@@ -318,8 +338,9 @@ def _run_convergence_checks(
     temperature: float,
     nan_grad_detected: bool,
     thresholds: dict,
-) -> None:
-    """Log all convergence checks to MLflow and surface CRITICAL failures."""
+) -> dict[str, bool]:
+    """Log all convergence checks to MLflow, surface CRITICAL failures, and return the
+    pass/fail dict so the caller can embed it in the checkpoint file itself."""
     checks: dict[str, bool] = {
         "val_loss_below_threshold": best_val_loss < thresholds["max_val_loss"],
         "top1_acc_above_threshold": best_val_acc > thresholds["min_top1_acc"],
@@ -363,3 +384,5 @@ def _run_convergence_checks(
                 logger.warning(msg)
         else:
             logger.success(f"[{level}] Convergence check PASSED — {name}")
+
+    return checks

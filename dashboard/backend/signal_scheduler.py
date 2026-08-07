@@ -4,15 +4,20 @@ APScheduler runs `_run_signal_tick()` every 60 minutes (aligned to the top of
 the hour so signals land on the same hourly candle boundary as training data).
 
 Each tick:
+  0. Refreshes all 4 assets' live-bridge normalized features (live_feature_bridge.py)
+     so this hour's regime lookups — trading signal below, and every other
+     get_live_regime() caller — read current data, not last hour's.
   1. Calls live_signal.get_live_signal() for each active crypto asset.
   2. If a real testnet exchange is connected (paper_exchange.is_live()):
        — cancels stale open orders
        — places a market order matching the PPO/regime action
   3. Always updates the local SQLite paper_db (even without testnet).
   4. Logs each tick to MLflow (experiment: marta_live_paper).
+  5. Logs EURUSD/GOLD's live regime (they skip steps 1-3 — no trading loop for them).
 
-Disabled assets: EURUSD / GOLD have no real CCXT live feed from Binance;
-they stay in the dashboard's historical-replay mode only.
+Disabled assets: EURUSD / GOLD have no real CCXT live feed from Binance, so they stay
+in the dashboard's historical-replay mode only for *trading* — their regime data is
+still kept live via step 0/5 above.
 """
 
 from __future__ import annotations
@@ -82,11 +87,68 @@ async def _run_signal_tick() -> None:
     now = datetime.now(timezone.utc).isoformat()
     logger.info(f"signal_scheduler: tick at {now}")
 
+    # Refresh all 4 assets' live-bridge normalized features FIRST, before generating any
+    # signal below — so the BTC/ETH trading signal (and every get_live_regime() caller
+    # this hour: current-regime badge, chart tagging, chat) reads this hour's data, not
+    # last hour's. A failure here must never block the trading loop that follows.
+    await _refresh_live_bridges()
+
     for asset in _ACTIVE_ASSETS:
         try:
             await _tick_asset(asset)
         except Exception as exc:
             logger.warning(f"signal_scheduler: tick failed for {asset} — {exc}")
+
+    # EURUSD/GOLD aren't in _ACTIVE_ASSETS (no trading loop for them), so nothing above
+    # logs their live regime the way _tick_asset -> live_signal.py does for BTC/ETH.
+    # Log it here instead, same hourly cadence, so historical.py's chart tagging
+    # (get_regime_series_live_aware) has per-hour resolution for all 4 assets, not just
+    # the two that trade.
+    await _log_nontrading_regimes()
+
+
+async def _refresh_live_bridges() -> None:
+    """Keep all 4 assets' live-bridge normalized features current (see
+    live_feature_bridge.py — this is what get_live_regime() reads). Runs in the executor:
+    network calls (Twelve Data / Binance) + pandas recomputation are blocking.
+    """
+    loop = asyncio.get_running_loop()
+    for asset in ("BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"):
+        try:
+            await loop.run_in_executor(_tick_executor, _update_live_bridge_sync, asset)
+        except Exception as exc:
+            logger.warning(f"signal_scheduler: live bridge refresh failed for {asset} — {exc}")
+
+
+def _update_live_bridge_sync(asset: str) -> None:
+    import yaml
+    import live_feature_bridge
+
+    with open(live_feature_bridge.MARTA_ROOT / "configs" / "assets.yaml") as f:
+        config = yaml.safe_load(f)
+    result = live_feature_bridge.update_live_bridge(asset, config)
+    if result:
+        logger.info(f"signal_scheduler: live bridge refreshed for {asset} -> {result}")
+
+
+async def _log_nontrading_regimes() -> None:
+    """EURUSD/GOLD don't go through _tick_asset (no trading loop), which is what logs
+    BTC/ETH's live regime to regime_live_log.parquet every hour (via live_signal.py's
+    log=True call). Log theirs here instead, same cadence — see _run_signal_tick.
+    """
+    loop = asyncio.get_running_loop()
+    for asset in ("EURUSD", "GOLD"):
+        try:
+            await loop.run_in_executor(_tick_executor, _log_live_regime_sync, asset)
+        except Exception as exc:
+            logger.warning(f"signal_scheduler: live regime logging failed for {asset} — {exc}")
+
+
+def _log_live_regime_sync(asset: str) -> None:
+    import pandas as pd
+    import regime_service
+
+    regime_service.get_live_regime(asset, pd.Timestamp.now(tz="UTC"), log=True)
 
 
 async def _tick_asset(asset: str) -> None:

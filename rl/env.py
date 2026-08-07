@@ -195,6 +195,34 @@ class MARTATradingEnv(gym.Env):
         # Idle-step penalty: small negative reward per step where position ≈ 0.
         # Addresses the always-flat collapse on low-signal (forex/commodity) assets.
         idle_penalty: float = 0.0,
+        # Minimum bars a newly-opened position must be held before it can be flattened
+        # or reversed. A 2026-08 multi-seed audit found the trained policy satisfying
+        # idle_penalty with single-bar open-then-immediately-close "pokes" (every
+        # completed position in the eval trade log was held for exactly 1 hour) rather
+        # than genuine multi-bar directional conviction — idle_penalty only requires
+        # *some* non-zero position sometimes, and a 1-bar poke is the cheapest way to
+        # satisfy that. This structurally forbids the flip-flop: once a position opens,
+        # its direction is locked in for min_hold_bars steps. Applies at train AND eval
+        # time (unlike idle_penalty) — it's a market-structure rule, not reward shaping.
+        min_hold_bars: int = 4,
+        # Escape hatch: the min-hold lock is released early if portfolio drawdown already
+        # exceeds this (same 0.05 threshold the drawdown penalty in _compute_reward uses)
+        # — a genuine stop-loss must never be blocked by the minimum-hold constraint.
+        min_hold_stop_loss_dd: float = 0.05,
+        # When True, reward is EXCESS return over the asset's own realised return that bar
+        # (buy-and-hold's implicit per-bar return, since it's always 100% long), not an
+        # absolute risk-adjusted return. A 2026-08 audit identified this as a likely root
+        # cause of "why doesn't the trained policy beat buy-and-hold": with the default
+        # (absolute) reward, holding (position=0) always scores exactly 0.0 — a perfectly
+        # safe, zero-variance action with NO cost for missing a trending asset's gains.
+        # Nothing in the objective ever mentions what buy-and-hold earned, so a policy
+        # optimizing it has no built-in incentive to chase that specific comparison. This
+        # flag directly costs flat (or wrong-direction) steps for what was missed/avoided
+        # relative to being fully long, at the cost of no longer matching this project's
+        # original "absolute risk-adjusted return" research claim — treat it as a distinct
+        # experiment, not a strict improvement, and compare against the default explicitly.
+        # Default False preserves all prior results exactly.
+        benchmark_relative: bool = False,
     ) -> None:
         super().__init__()
 
@@ -214,6 +242,9 @@ class MARTATradingEnv(gym.Env):
         self.zero_regime = zero_regime
         self.zero_consensus = zero_consensus
         self.idle_penalty = float(idle_penalty)
+        self.min_hold_bars = int(min_hold_bars)
+        self.min_hold_stop_loss_dd = float(min_hold_stop_loss_dd)
+        self.benchmark_relative = bool(benchmark_relative)
 
         # Per-asset cached arrays: raw feature matrix, returns, vol, cvar, valid starts.
         self._arrays: dict[str, np.ndarray] = {}
@@ -257,6 +288,7 @@ class MARTATradingEnv(gym.Env):
         self._peak_value: float = self.initial_capital
         self._signed_position: float = 0.0
         self._steps_since_trade: int = 0
+        self._bars_in_position: int = 0  # bars held since the current position opened
         self._decision_regime: int = -1  # regime that drove the most recent position decision
         self._returns_history: list[float] = []
         self._turnover_history: list[float] = []
@@ -408,6 +440,7 @@ class MARTATradingEnv(gym.Env):
         self._peak_value = self.initial_capital
         self._signed_position = 0.0
         self._steps_since_trade = 0
+        self._bars_in_position = 0
         self._decision_regime = int(self._regime_labels[self._asset][min(self._t, len(self._regime_labels[self._asset]) - 1)])
         self._returns_history = []
         self._turnover_history = []
@@ -440,9 +473,23 @@ class MARTATradingEnv(gym.Env):
         # the regime embedding in the state vector.
         target_signed = _DIRECTION_SIGN[direction] * frac * risk_cap
 
+        # Minimum-holding-period lock: block flattening/reversing an open position
+        # before min_hold_bars have elapsed (see __init__ docstring for why). Escape
+        # hatch: skip the lock once drawdown already exceeds min_hold_stop_loss_dd —
+        # a genuine stop-loss must always be allowed through.
+        prev_signed = self._signed_position
+        if (
+            self.min_hold_bars > 0
+            and abs(prev_signed) > 1e-9
+            and self._bars_in_position < self.min_hold_bars
+            and self._current_drawdown() < self.min_hold_stop_loss_dd
+            and np.sign(target_signed) != np.sign(prev_signed)
+        ):
+            target_signed = prev_signed
+
         prev_value = self._portfolio_value
         # Transaction cost only on a change in position (hold → no cost).
-        turnover = abs(target_signed - self._signed_position)
+        turnover = abs(target_signed - prev_signed)
         cost = self.transaction_cost * turnover * prev_value
         traded = turnover > 1e-9
         self._turnover_history.append(float(turnover))
@@ -461,11 +508,22 @@ class MARTATradingEnv(gym.Env):
         self._steps_since_trade = 0 if traded else self._steps_since_trade + 1
         self._step_count += 1
 
+        # Bars-in-position bookkeeping for the min-hold lock above.
+        if abs(target_signed) < 1e-9:
+            self._bars_in_position = 0
+        elif np.sign(target_signed) != np.sign(prev_signed):
+            self._bars_in_position = 1  # freshly opened (or reversed) this bar
+        else:
+            self._bars_in_position += 1
+
         pnl_return = pnl_delta_cash / max(prev_value, 1e-8)
         self._returns_history.append(pnl_return)
 
         drawdown = self._current_drawdown()
-        reward = self._compute_reward(pnl_return, cvar_t, drawdown)
+        # ret is the asset's own raw realised return this bar — exactly what a
+        # buy-and-hold position (always 100% long) would have earned. Only consulted
+        # when benchmark_relative=True.
+        reward = self._compute_reward(pnl_return, cvar_t, drawdown, benchmark_return=ret)
 
         terminated = self._portfolio_value < 0.2 * self.initial_capital
 
@@ -482,11 +540,16 @@ class MARTATradingEnv(gym.Env):
         info = self._info(pnl_delta=pnl_return, cvar_t=cvar_t)
         return obs, float(reward), bool(terminated), bool(truncated), info
 
-    def _compute_reward(self, pnl_delta: float, cvar_t: float, drawdown: float) -> float:
+    def _compute_reward(
+        self, pnl_delta: float, cvar_t: float, drawdown: float, benchmark_return: float = 0.0
+    ) -> float:
         # pnl_delta is the fractional portfolio return for the step (see step()), not dollars.
         # Floor |CVaR| at 0.001 so low-vol regimes can't blow up the ratio (division by ~0).
         cvar_t = max(abs(cvar_t), 0.001)
-        risk_adjusted = pnl_delta / cvar_t
+        # benchmark_relative: reward excess return over "be 100% long this bar" instead of
+        # an absolute risk-adjusted return — see __init__ docstring on benchmark_relative.
+        excess = (pnl_delta - benchmark_return) if self.benchmark_relative else pnl_delta
+        risk_adjusted = excess / cvar_t
         penalty = self.lambda_drawdown * max(0.0, drawdown - 0.05)
 
         # Idle-step penalty: deduct when the agent holds a near-zero position.

@@ -50,14 +50,52 @@ def build_config(quick: bool) -> dict[str, Any]:
         "lambda_drawdown": 0.01,
         "max_leverage": 1.0,
         "max_episode_steps": 2000,
+        # Minimum bars a newly-opened position must be held before flattening/reversing
+        # is allowed (escape hatch: min_hold_stop_loss_dd overrides the lock). Added
+        # 2026-08 after a multi-seed audit found the trained policy satisfying
+        # idle_penalty with single-bar open-then-immediately-close "pokes" — every
+        # completed position in the eval trade log lasted exactly 1 hour. Applies at
+        # train AND eval time (see rl/env.py's __init__ docstring) — it's a
+        # market-structure rule, not reward shaping like idle_penalty.
+        "min_hold_bars": 4,
+        "min_hold_stop_loss_dd": 0.05,
+        # Minimum meaningful trades an eval needs before it's eligible to become the new
+        # best_sharpe / overwrite ppo_best.zip (rl/callbacks.py:CurriculumCallback). Added
+        # 2026-08 after a checkpoint got crowned "best" off 3 trades and Sortino=4728 — a
+        # statistical fluke, not a validated result.
+        "min_trades_for_best": 5,
+        # Reward excess return over buy-and-hold instead of an absolute risk-adjusted
+        # return (rl/env.py's benchmark_relative — see its docstring). Default False
+        # preserves every prior result exactly; flip to True as a distinct experiment
+        # aimed specifically at "beat buy-and-hold" rather than the original absolute
+        # risk-adjusted-return research claim. NOT enabled by default — a 2026-08 audit
+        # proposed this as the most likely lever to actually move that specific
+        # comparison, but it changes what the policy is trained to do and should be
+        # compared against the default explicitly, not silently substituted for it.
+        "benchmark_relative": False,
         "learning_rate": 3e-4,
-        "n_steps": 2048,
+        # n_steps raised 2048→4096 (2026-08): more rollout data per update smooths the
+        # advantage estimate against per-step reward noise (hourly risk-adjusted PnL is
+        # inherently high-variance) — training log showed explained_variance bouncing
+        # between roughly -0.44 and +0.4, i.e. the critic wasn't tracking returns well.
+        "n_steps": 4096,
         "batch_size": 64,
         "n_epochs": 10,
-        "gamma": 0.99,
+        # gamma lowered 0.99→0.95 (2026-08): 0.99 gives an effective ~100-step horizon,
+        # but actual completed trades were lasting ~1 hour — asking the critic to
+        # correctly discount 100 steps of noisy hourly reward is a harder fitting
+        # problem than the signal supports. 0.95 (~20-step horizon) is a smaller-variance
+        # target that better matches realistic holding periods (now >= min_hold_bars).
+        "gamma": 0.95,
         "gae_lambda": 0.95,
         "clip_range": 0.2,
         "ent_coef": 0.05,  # higher entropy prevents collapse to always-hold during early training
+        # Decayed by EntropyDecayCallback (rl/callbacks.py) from "ent_coef" down to
+        # ent_coef_final over ent_coef_decay_steps. Holding entropy at 0.05 for the whole
+        # run was found (2026-08 audit) to keep the policy too noisy to ever commit to a
+        # sustained directional stance — decaying it lets it explore early, commit later.
+        "ent_coef_final": 0.005,
+        "ent_coef_decay_steps": 100_000,
         "vf_coef": 0.5,
         "max_grad_norm": 0.5,
         "eval_freq": 10_000,
@@ -340,9 +378,11 @@ def _load_for_eval(config: dict, checkpoint: str) -> tuple[Any, Any]:
     env_factory = build_env_factory(
         aligned_dfs, regime_stream_df, encoder, debate_results, config
     )
+    # CPU for eval — deterministic float ops, removes GPU/cuDNN nondeterminism from the
+    # policy forward pass (the network is tiny: 152->256->128->64, cost is negligible).
     model = PPO.load(
         checkpoint,
-        device=config["device"],
+        device="cpu",
         custom_objects={"policy_class": MARTAActorCriticPolicy},
     )
     logger.success(f"Loaded checkpoint {checkpoint} for evaluation")
@@ -360,6 +400,12 @@ def _run_single_seed(config: dict, seed: int) -> dict:
 
     cfg = _copy.deepcopy(config)
     cfg["seed"] = seed
+    # Isolate this seed's checkpoints from every other seed's — see CurriculumCallback's
+    # checkpoint_suffix docstring. Before this fix, every seed saved to the same bare
+    # "ppo_best.zip"/"ppo_phase_N.zip", so only the LAST seed to run in a --seeds sweep
+    # left recoverable weights on disk; the lookup below already expected this filename,
+    # nothing ever wrote it.
+    cfg["checkpoint_suffix"] = f"_seed{seed}"
 
     train_out = train_ppo(cfg, pre_train_check=sanity_check_env)
     env_factory = train_out["env_factory"]
@@ -368,7 +414,8 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     default_best = Path("rl/checkpoints/ppo_best.zip")
     ckpt_path = best_ckpt if best_ckpt.exists() else (default_best if default_best.exists() else None)
     if ckpt_path:
-        model = PPO.load(str(ckpt_path), device=cfg["device"],
+        # CPU for eval — see _load_for_eval for why.
+        model = PPO.load(str(ckpt_path), device="cpu",
                          custom_objects={"policy_class": MARTAActorCriticPolicy})
     else:
         model = train_out["model"]
@@ -456,11 +503,24 @@ def main() -> None:
                 mlflow.log_metric("val/sharpe", res["eval"]["marta_ppo"]["sharpe"])
                 seed_results.append(res)
         _aggregate_seeds(seed_results)
-        # Print summary from the median-Sharpe seed.
+        # Print summary from the median-Sharpe seed — NOT the best one. A 2026-08 audit
+        # found this used to compute argmax (the single best-performing seed) despite the
+        # comment already claiming "median": with 3 seeds landing at [1.902, 1.201, 0.000]
+        # (mean 1.034, std 0.962 — std nearly as large as the mean), printing the best
+        # seed's full eval/ablation/significance tables gave a badly misleading picture of
+        # "the" result. argsort + middle index is the actual median for an odd seed count;
+        # for an even count this picks the lower of the two middle values (a concrete seed's
+        # full result dict is needed to print, so there's no seed to interpolate to).
         sharpes = [r["eval"]["marta_ppo"]["sharpe"] for r in seed_results]
-        best_idx = int(np.argmax(sharpes))
-        _print_eval(seed_results[best_idx]["eval"])
-        _print_ablation(seed_results[best_idx]["ablation"])
+        order = np.argsort(sharpes)
+        median_idx = int(order[len(order) // 2])
+        logger.info(
+            f"Printing detailed eval/ablation for the MEDIAN seed: "
+            f"seed={seed_results[median_idx]['seed']} sharpe={sharpes[median_idx]:.3f} "
+            f"(all seeds: {[round(s, 3) for s in sharpes]})"
+        )
+        _print_eval(seed_results[median_idx]["eval"])
+        _print_ablation(seed_results[median_idx]["ablation"])
         return
 
     mlflow.set_experiment(_EXPERIMENT)
@@ -502,9 +562,10 @@ def main() -> None:
 
             best_ckpt = Path("rl/checkpoints/ppo_best.zip")
             if best_ckpt.exists():
+                # CPU for eval — see _load_for_eval for why.
                 model = PPO.load(
                     str(best_ckpt),
-                    device=config["device"],
+                    device="cpu",
                     custom_objects={"policy_class": MARTAActorCriticPolicy},
                 )
                 logger.info("Evaluating ppo_best.zip (best val Sharpe), not the final model")
@@ -539,8 +600,9 @@ def main() -> None:
                 if ckpt.exists():
                     from stable_baselines3 import PPO
                     from rl.policy import MARTAActorCriticPolicy
+                    # CPU for eval — see _load_for_eval for why.
                     extra = PPO.load(
-                        str(ckpt), device=config["device"],
+                        str(ckpt), device="cpu",
                         custom_objects={"policy_class": MARTAActorCriticPolicy},
                     )
                     all_models.append(extra)

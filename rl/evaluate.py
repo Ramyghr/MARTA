@@ -9,12 +9,14 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import torch
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from rl.env import MARTATradingEnv, VAL_END, VAL_END_EXTENDED, VAL_START
 from utils.logger import logger
 
 _ANNUALIZE = np.sqrt(24 * 365)  # hourly → annual
+_EVAL_SEED = 42  # fixed seed for reproducible evaluation (matches bootstrap_sharpe_ci's seed)
 _RESULTS_PATH = Path("data/results/ppo_evaluation.json")
 _REGIME_BEHAVIOR_PATH = Path("data/results/regime_behavior_analysis.json")
 _MULTI_ASSET_RESULTS_PATH = Path("data/results/multi_asset_evaluation.json")
@@ -151,11 +153,17 @@ def run_walk_forward(
 
     ``env`` must be a raw :class:`MARTATradingEnv` with ``sequential=True``.
     """
-    obs, info = env.reset()
+    # Fixed seed so a deterministic policy pass is actually reproducible run-to-run.
+    # ``env``'s encoder runs on CPU for non-train splits (see build_env_factory), which
+    # removes GPU/cuDNN nondeterminism; this seed covers anything else touching torch/np RNG.
+    torch.manual_seed(_EVAL_SEED)
+    np.random.seed(_EVAL_SEED)
+    obs, info = env.reset(seed=_EVAL_SEED)
     portfolio_values = [info["portfolio_value"]]
     positions = [info["signed_position"]]
     regimes = [info["current_regime"]]
     decision_regimes = [info.get("decision_regime", info["current_regime"])]
+    timestamps = [env._index[env._asset][env._t]]
     returns: list[float] = []
     pnl: list[float] = []
 
@@ -167,6 +175,7 @@ def run_walk_forward(
         positions.append(info["signed_position"])
         regimes.append(info["current_regime"])
         decision_regimes.append(info.get("decision_regime", info["current_regime"]))
+        timestamps.append(env._index[env._asset][env._t])
         returns.append(info["pnl_return"])
         pnl.append(info["pnl"])
         done = terminated or truncated
@@ -176,6 +185,7 @@ def run_walk_forward(
         "positions": np.asarray(positions, dtype=np.float64),
         "regimes": np.asarray(regimes, dtype=np.int64),
         "decision_regimes": np.asarray(decision_regimes, dtype=np.int64),
+        "timestamps": pd.DatetimeIndex(timestamps),
         "returns": np.asarray(returns, dtype=np.float64),
         "pnl": np.asarray(pnl, dtype=np.float64),
     }
@@ -188,6 +198,26 @@ def validation_sharpe(model: BaseAlgorithm, val_env: MARTATradingEnv) -> float:
         return 0.0
     r = traj["returns"]
     return float(r.mean() / (r.std() + 1e-8) * _ANNUALIZE)
+
+
+def validation_sharpe_and_trades(
+    model: BaseAlgorithm, val_env: MARTATradingEnv
+) -> tuple[float, int]:
+    """Like :func:`validation_sharpe`, but also returns the meaningful-trade count.
+
+    A 2026-08 audit found the curriculum's best-checkpoint tracking crowned a checkpoint
+    "best" off a single eval with only 3 meaningful trades and a Sortino of 4728 — a
+    near-zero-variance statistical fluke, not a validated result. ``CurriculumCallback``
+    uses this to gate best-checkpoint selection on a minimum trade count so a tiny,
+    lucky sample can't get saved as the headline model.
+    """
+    traj = run_walk_forward(model, val_env, deterministic=True)
+    if len(traj["returns"]) < 2:
+        return 0.0, 0
+    r = traj["returns"]
+    sharpe = float(r.mean() / (r.std() + 1e-8) * _ANNUALIZE)
+    n_trades = count_position_changes(traj["positions"], _MEANINGFUL_TRADE_THRESHOLD)
+    return sharpe, n_trades
 
 
 def per_regime_breakdown(traj: dict[str, np.ndarray]) -> dict[str, dict[str, float]]:
@@ -220,6 +250,44 @@ def per_regime_breakdown(traj: dict[str, np.ndarray]) -> dict[str, dict[str, flo
             "avg_return": float(r.mean()),
         }
     return out
+
+
+def extract_trade_log(
+    traj: dict[str, np.ndarray], threshold: float = _MEANINGFUL_TRADE_THRESHOLD
+) -> list[dict[str, Any]]:
+    """Per-trade record (timestamp, direction, size, pnl) for every meaningful position
+    change in a walk-forward trajectory.
+
+    The aggregate Sharpe from a handful of trades is high-variance by construction (a single
+    trade flipping can flip its sign — see CLAUDE.md's eval-determinism note); this per-trade
+    breakdown is the stable, inspectable complement that should be reported alongside it
+    rather than trusting the point estimate on its own.
+    """
+    positions = traj["positions"]
+    diffs = np.diff(positions)
+    timestamps = traj["timestamps"][1:]
+    decision_regimes = traj.get("decision_regimes", traj["regimes"])[1:]
+    returns = traj["returns"]
+    pnl = traj["pnl"]
+    portfolio_values = traj["portfolio_values"][1:]
+
+    trades: list[dict[str, Any]] = []
+    for i, turnover in enumerate(np.abs(diffs)):
+        if turnover <= threshold:
+            continue
+        new_pos = positions[i + 1]
+        direction = "long" if new_pos > 0 else ("short" if new_pos < 0 else "flat")
+        trades.append({
+            "timestamp": str(timestamps[i]),
+            "direction": direction,
+            "position_size": float(abs(new_pos)),
+            "turnover": float(turnover),
+            "decision_regime": int(decision_regimes[i]),
+            "pnl_return_step": float(returns[i]),
+            "pnl_cumulative": float(pnl[i]),
+            "portfolio_value": float(portfolio_values[i]),
+        })
+    return trades
 
 
 def analyze_regime_behavior(
@@ -392,6 +460,7 @@ def evaluate_ppo(
     traj = run_walk_forward(model, val_env, deterministic=True)
     metrics = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"])
     regime_breakdown = per_regime_breakdown(traj)
+    trade_log = extract_trade_log(traj)
 
     bh = _buy_and_hold(val_env, asset="BTC_USDT", val_end=val_end)
 
@@ -404,6 +473,10 @@ def evaluate_ppo(
     result = {
         "marta_ppo": metrics,
         "per_regime": regime_breakdown,
+        # Trade-level detail: with this few meaningful trades, the aggregate Sharpe above
+        # is a high-variance point estimate — this list is what actually happened and is
+        # what should be read alongside it, not the bare number on its own.
+        "trade_log": trade_log,
         "baselines": {
             "buy_and_hold_btc": bh,
             "ppo_no_regime": metrics_nr,

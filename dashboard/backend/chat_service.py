@@ -88,7 +88,10 @@ async def _get_live_context(asset: str) -> dict:
 
     try:
         import pandas as pd
-        context["regime"] = regime_service.get_regime(asset, pd.Timestamp("now", tz="UTC"))
+        # get_live_regime, not get_regime — this is "now", and get_regime's nearest-row
+        # lookup in regime_stream.parquet silently snaps to whatever the stream's last
+        # precomputed row is, which can be stale by however long since run_regime.py last ran.
+        context["regime"] = regime_service.get_live_regime(asset, pd.Timestamp("now", tz="UTC"))
     except Exception as e:
         logger.debug(f"chat_service: regime lookup failed: {e}")
 

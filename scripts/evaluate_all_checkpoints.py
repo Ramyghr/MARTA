@@ -44,10 +44,12 @@ CONFIG: dict[str, Any] = {
 def evaluate_checkpoint(
     checkpoint_path: Path,
     env_factory: Any,
-    device: str,
 ) -> dict[str, float]:
     """Load one checkpoint and score it on a fresh BTC val_env with idle_penalty=0.0."""
-    model = PPO.load(str(checkpoint_path), device=device)
+    # CPU regardless of the `device` arg — eval must be deterministic (GPU forward passes
+    # are unseeded and were confirmed to flip Sharpe's sign run-to-run on an identical
+    # checkpoint). The policy net is tiny, so this costs nothing.
+    model = PPO.load(str(checkpoint_path), device="cpu")
     val_env: MARTATradingEnv = env_factory(
         assets=["BTC_USDT"],
         split="val",
@@ -72,7 +74,7 @@ def main() -> None:
     results: dict[str, dict[str, float]] = {}
     for ckpt in checkpoints:
         try:
-            m = evaluate_checkpoint(ckpt, env_factory, CONFIG["device"])
+            m = evaluate_checkpoint(ckpt, env_factory)
             results[ckpt.name] = m
             print(
                 f"{ckpt.name:<30} Sharpe={m['sharpe']:.4f} MaxDD={m['max_drawdown']:.1%} "
