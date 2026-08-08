@@ -12,7 +12,12 @@ SB3's PPO does not support Dict action spaces, so the flat Box is the training i
 and :meth:`unflatten_action` recovers the {"direction", "position_fraction"} dict.
 
 Reward:
-    r_t = ΔPnL / CVaR_t − λ × drawdown_penalty
+    r_t = ΔPnL / CVaR_t − λ × drawdown − idle_penalty
+
+drawdown_penalty is continuous from the first bar of drawdown (not gated behind a
+threshold) — a 2026-08 audit of RL-trading literature found continuous downside terms
+give denser training signal than a threshold-gated penalty that's silently zero for
+small, common drawdowns.
 
 CVaR_t is computed inline from a GARCH(1,1) volatility forecast using the exact same
 formula as ``agents.risk_agent.RiskAgent`` (Cornish-Fisher normal CVaR at 95%). The GARCH
@@ -209,6 +214,18 @@ class MARTATradingEnv(gym.Env):
         # exceeds this (same 0.05 threshold the drawdown penalty in _compute_reward uses)
         # — a genuine stop-loss must never be blocked by the minimum-hold constraint.
         min_hold_stop_loss_dd: float = 0.05,
+        # Hard episode-terminating drawdown (from peak, TRAINING episodes only — see the
+        # sequential branch in step()). A 2026-08 RL-trading literature review found the
+        # prior rule (terminate only after losing 80% of INITIAL capital, from the start,
+        # never from peak) far too loose to give useful risk feedback during training —
+        # "risk constraints are physics, not preferences." 0.20 gives a three-rung risk
+        # ladder with the existing min_hold_stop_loss_dd escape hatch: 0-5% dd normal,
+        # 5%+ can flatten/reverse early (stop-loss), 20%+ ends the training episode.
+        # NEVER applied during sequential (walk-forward eval) — eval must traverse the
+        # full val/test window for comparable metrics across checkpoints/variants; the
+        # old 80%-of-initial-capital rule is kept as an eval-only absolute safety net
+        # (practically unreachable at the ~2% CVaR-capped position sizes actually used).
+        max_drawdown_termination: float = 0.20,
         # When True, reward is EXCESS return over the asset's own realised return that bar
         # (buy-and-hold's implicit per-bar return, since it's always 100% long), not an
         # absolute risk-adjusted return. A 2026-08 audit identified this as a likely root
@@ -244,6 +261,7 @@ class MARTATradingEnv(gym.Env):
         self.idle_penalty = float(idle_penalty)
         self.min_hold_bars = int(min_hold_bars)
         self.min_hold_stop_loss_dd = float(min_hold_stop_loss_dd)
+        self.max_drawdown_termination = float(max_drawdown_termination)
         self.benchmark_relative = bool(benchmark_relative)
 
         # Per-asset cached arrays: raw feature matrix, returns, vol, cvar, valid starts.
@@ -525,15 +543,20 @@ class MARTATradingEnv(gym.Env):
         # when benchmark_relative=True.
         reward = self._compute_reward(pnl_return, cvar_t, drawdown, benchmark_return=ret)
 
-        terminated = self._portfolio_value < 0.2 * self.initial_capital
-
         if self.sequential:
+            # Eval walk-forward must cover the whole split for comparable metrics across
+            # checkpoints/variants — never end early on a risk threshold. Kept as an
+            # absolute safety net only (unreachable in practice at ~2% CVaR-capped sizes).
+            terminated = self._portfolio_value < 0.2 * self.initial_capital
             # Walk-forward: traverse the whole split, ignore the per-episode max_steps cap.
             starts = self._valid_starts[asset]
             truncated = (
                 self._t >= int(starts[-1]) + 1 or self._t >= len(self._returns[asset]) - 1
             )
         else:
+            # Training episodes: hard-stop on peak drawdown — see max_drawdown_termination
+            # docstring in __init__ for why this replaced the from-initial-capital rule.
+            terminated = drawdown > self.max_drawdown_termination
             truncated = self._step_count >= self.max_steps
 
         obs = self._build_observation()
@@ -550,7 +573,11 @@ class MARTATradingEnv(gym.Env):
         # an absolute risk-adjusted return — see __init__ docstring on benchmark_relative.
         excess = (pnl_delta - benchmark_return) if self.benchmark_relative else pnl_delta
         risk_adjusted = excess / cvar_t
-        penalty = self.lambda_drawdown * max(0.0, drawdown - 0.05)
+        # Continuous from the first bar of drawdown (no threshold gate) — a gated penalty
+        # (previously max(0, drawdown - 0.05)) is silently zero for the small, common
+        # drawdowns the agent sees most often, giving no gradient signal until a 5%
+        # threshold is crossed. See module docstring's 2026-08 note.
+        penalty = self.lambda_drawdown * drawdown
 
         # Idle-step penalty: deduct when the agent holds a near-zero position.
         # This addresses always-flat collapse on forex/commodity assets where near-zero
@@ -592,3 +619,15 @@ class MARTATradingEnv(gym.Env):
                 raise ValueError(f"Asset {a} not loaded into env")
         self.assets = list(assets)
         logger.info(f"Env active assets → {self.assets}")
+
+    def set_idle_penalty(self, idle_penalty: float) -> None:
+        """Update idle_penalty in place (used by CurriculumCallback).
+
+        Exists as a method (not a bare attribute set) so it works through
+        ``VecEnv.env_method`` on a vectorized training fleet — ``VecEnv.set_attr``
+        would set the attribute on the ``Monitor`` wrapper each sub-env is wrapped in,
+        not the underlying ``MARTATradingEnv`` that actually reads ``self.idle_penalty``
+        in ``_compute_reward``, since ``gym.Wrapper.__getattr__`` only delegates lookups,
+        not assignment.
+        """
+        self.idle_penalty = float(idle_penalty)

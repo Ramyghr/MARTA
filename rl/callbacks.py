@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
+from typing import Union
 
 import mlflow
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import VecEnv
 
 from rl.env import MARTATradingEnv
 from rl.evaluate import validation_sharpe_and_trades
 from utils.logger import logger
+
+TrainEnv = Union[MARTATradingEnv, VecEnv]
 
 _CHECKPOINT_DIR = Path("rl/checkpoints")
 
@@ -27,7 +31,7 @@ class CurriculumCallback(BaseCallback):
     def __init__(
         self,
         phases: list[dict],
-        train_env: MARTATradingEnv,
+        train_env: TrainEnv,
         val_env: MARTATradingEnv,
         eval_freq: int = 10_000,
         early_stop_sharpe: float = -0.5,
@@ -155,15 +159,24 @@ class CurriculumCallback(BaseCallback):
             self.phase_start_step = self.num_timesteps
             new_phase = self._current_phase()
             new_assets = new_phase["assets"]
-            self.train_env.set_active_assets(new_assets)
-            self.val_env.set_active_assets([new_assets[0]])  # eval on primary asset
             # Apply the new phase's idle penalty so the reward shaping is correct
             # for forex/commodity phases even though PPO weights persist.
             # idle_penalty=0.0 always on val_env — it is a training signal only.
             # Applying it during validation inflates Sharpe by penalizing abstention.
             # Bug confirmed: idle_penalty=0.002 on val_env inflated 0.449 → 1.413.
             new_penalty = float(new_phase.get("idle_penalty", 0.0))
-            self.train_env.idle_penalty = new_penalty
+            # train_env is a bare VecEnv.env_method (n_envs>1, see rl/train.py) or a raw
+            # MARTATradingEnv (n_envs=1) — VecEnv has no set_active_assets/idle_penalty
+            # attribute of its own, so broadcast through env_method to every sub-env
+            # instead. set_idle_penalty is a method (not a bare attribute set) precisely
+            # so this works — see its docstring in rl/env.py for why set_attr wouldn't.
+            if isinstance(self.train_env, VecEnv):
+                self.train_env.env_method("set_active_assets", new_assets)
+                self.train_env.env_method("set_idle_penalty", new_penalty)
+            else:
+                self.train_env.set_active_assets(new_assets)
+                self.train_env.set_idle_penalty(new_penalty)
+            self.val_env.set_active_assets([new_assets[0]])  # eval on primary asset
             self.val_env.idle_penalty = 0.0
             if new_penalty > 0:
                 logger.info(f"[curriculum] idle_penalty set to {new_penalty} for {'+'.join(new_assets)}")
@@ -264,6 +277,8 @@ class MLflowCallback(BaseCallback):
             mlflow.log_metric("train/sharpe_ratio", sharpe, step=self.num_timesteps)
 
         # Trajectory stats pulled from the underlying env via the Monitor wrapper.
+        # With n_envs>1 (rl/train.py), this is just one of several parallel envs — a
+        # representative sample for logging, not an aggregate across all of them.
         env = self.training_env.envs[0]
         base = getattr(env, "unwrapped", env)
         if getattr(base, "_returns_history", None):

@@ -5,6 +5,10 @@ Usage:
     python run_rl.py --quick               # tiny smoke run (fast end-to-end validation)
     python run_rl.py --seeds 0 1 2         # multi-seed run (3 seeds) for variance estimate
     python run_rl.py --eval-only           # skip training, evaluate ppo_best.zip
+    python run_rl.py --benchmark-relative  # A/B: reward excess return over buy-and-hold
+                                            # (saves to ppo_best_benchrel.zip — run once
+                                            # with, once without, then diff the two
+                                            # ppo_evaluation results explicitly)
 """
 
 from __future__ import annotations
@@ -59,6 +63,24 @@ def build_config(quick: bool) -> dict[str, Any]:
         # market-structure rule, not reward shaping like idle_penalty.
         "min_hold_bars": 4,
         "min_hold_stop_loss_dd": 0.05,
+        # Hard training-episode-terminating drawdown from peak (never applied during
+        # sequential/eval walk-forwards — see rl/env.py's __init__ docstring). Replaces
+        # the old "lose 80% of INITIAL capital" rule (2026-08 audit: literature review
+        # found that far too loose to give useful risk feedback during training).
+        "max_drawdown_termination": 0.20,
+        # Parallel training environments (SB3 DummyVecEnv, see rl/train.py's train_ppo).
+        # A 2026-08 multi-seed audit found single-env training gave high seed-to-seed
+        # Sharpe variance (std=0.861 on mean=0.798 across 3 seeds) — one long
+        # autocorrelated trajectory per rollout buffer. n_envs decorrelates the buffer
+        # across n_envs independent random start points instead — the standard fix in
+        # the RL-trading literature for this exact instability.
+        "n_envs": 8,
+        # n_steps lowered 4096→512 alongside n_envs=8: the rollout buffer size is
+        # n_steps × n_envs, and this keeps it at 4096 (same as the prior single-env
+        # config) — same amount of data per policy update, same number of updates per
+        # total_timesteps, but now sourced from 8 decorrelated trajectories instead of
+        # one. Do not raise n_steps back up without lowering n_envs correspondingly, or
+        # the buffer (and PPO update cadence) will silently balloon.
         # Minimum meaningful trades an eval needs before it's eligible to become the new
         # best_sharpe / overwrite ppo_best.zip (rl/callbacks.py:CurriculumCallback). Added
         # 2026-08 after a checkpoint got crowned "best" off 3 trades and Sortino=4728 — a
@@ -74,11 +96,12 @@ def build_config(quick: bool) -> dict[str, Any]:
         # compared against the default explicitly, not silently substituted for it.
         "benchmark_relative": False,
         "learning_rate": 3e-4,
-        # n_steps raised 2048→4096 (2026-08): more rollout data per update smooths the
-        # advantage estimate against per-step reward noise (hourly risk-adjusted PnL is
-        # inherently high-variance) — training log showed explained_variance bouncing
-        # between roughly -0.44 and +0.4, i.e. the critic wasn't tracking returns well.
-        "n_steps": 4096,
+        # n_steps is PER-ENV steps per rollout; buffer size = n_steps × n_envs.
+        # Originally raised 2048→4096 (2026-08, single env) to smooth the advantage
+        # estimate against per-step reward noise (explained_variance was bouncing
+        # -0.44..+0.4). Now lowered 4096→512 to pair with n_envs=8 above, keeping the
+        # same 4096 buffer size — see the n_envs comment for why.
+        "n_steps": 512,
         "batch_size": 64,
         "n_epochs": 10,
         # gamma lowered 0.99→0.95 (2026-08): 0.99 gives an effective ~100-step horizon,
@@ -111,7 +134,8 @@ def build_config(quick: bool) -> dict[str, Any]:
     if quick:
         config.update(
             {
-                "n_steps": 256,
+                "n_envs": 2,  # small fleet — enough to smoke-test the VecEnv path
+                "n_steps": 128,  # buffer = 128 × 2 = 256, matches the pre-n_envs quick buffer
                 "batch_size": 64,
                 "n_epochs": 3,
                 "eval_freq": 512,
@@ -404,13 +428,16 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     # checkpoint_suffix docstring. Before this fix, every seed saved to the same bare
     # "ppo_best.zip"/"ppo_phase_N.zip", so only the LAST seed to run in a --seeds sweep
     # left recoverable weights on disk; the lookup below already expected this filename,
-    # nothing ever wrote it.
-    cfg["checkpoint_suffix"] = f"_seed{seed}"
+    # nothing ever wrote it. Appended (not overwritten) so combining --seeds with
+    # --benchmark-relative still isolates both dimensions (e.g. "ppo_best_benchrel_seed0.zip").
+    cfg["checkpoint_suffix"] = cfg.get("checkpoint_suffix", "") + f"_seed{seed}"
 
     train_out = train_ppo(cfg, pre_train_check=sanity_check_env)
     env_factory = train_out["env_factory"]
 
-    best_ckpt = Path(f"rl/checkpoints/ppo_best_seed{seed}.zip")
+    # train_out["best_path"] already carries the full checkpoint_suffix (seed + any
+    # benchmark_relative marker) — see the comment above.
+    best_ckpt = train_out["best_path"]
     default_best = Path("rl/checkpoints/ppo_best.zip")
     ckpt_path = best_ckpt if best_ckpt.exists() else (default_best if default_best.exists() else None)
     if ckpt_path:
@@ -476,14 +503,30 @@ def main() -> None:
         action="store_true",
         help="evaluate on BTC+ETH as independent test paths and report mean±std Sharpe",
     )
+    parser.add_argument(
+        "--benchmark-relative",
+        action="store_true",
+        help=(
+            "reward excess return over buy-and-hold instead of absolute risk-adjusted "
+            "return (rl/env.py's benchmark_relative). A distinct experiment, not a "
+            "default — checkpoints save to a '_benchrel' suffix so they never overwrite "
+            "or get confused with the default-reward-mode checkpoints, letting both be "
+            "compared explicitly (e.g. run once with and once without this flag, then "
+            "diff the two ppo_evaluation results)."
+        ),
+    )
     args = parser.parse_args()
 
     config = build_config(args.quick)
     # Eval-only is BTC-focused (val metrics, ablation, baselines are all BTC) → keep it light.
     if args.eval_only:
         config["all_assets"] = ["BTC_USDT"]
+    if args.benchmark_relative:
+        config["benchmark_relative"] = True
+        config["checkpoint_suffix"] = "_benchrel"
     logger.info(
-        f"Device: {config['device']} | quick={args.quick} | eval_only={args.eval_only or False}"
+        f"Device: {config['device']} | quick={args.quick} | eval_only={args.eval_only or False} "
+        f"| benchmark_relative={config['benchmark_relative']}"
     )
 
     # Pre-training compatibility check: regime stream must cover all configured assets
@@ -493,6 +536,14 @@ def main() -> None:
 
     # Multi-seed path: run each seed independently, aggregate, then exit.
     if args.seeds and not args.eval_only:
+        if len(config["phases"]) > 2:
+            # Same 2-phase (BTC, BTC+ETH) cap the non-seeds path applies below — a 2026-08
+            # gap audit found this branch never had it, so every --seeds sweep ran the
+            # full 4-phase curriculum even though Phases 3-4 (EURUSD/GOLD) are documented
+            # to collapse on daily-upsampled data. Early stopping usually catches a bad
+            # Phase 2 before Phase 3 is reached, but not always — and letting it run
+            # further just burns wall-clock and log volume on a known-bad regime.
+            config["phases"] = CURRICULUM_PHASES[:2]
         mlflow.set_experiment(_EXPERIMENT)
         seed_results = []
         for seed in args.seeds:
@@ -560,7 +611,12 @@ def main() -> None:
 
             from rl.policy import MARTAActorCriticPolicy
 
-            best_ckpt = Path("rl/checkpoints/ppo_best.zip")
+            # train_out["best_path"] already carries checkpoint_suffix (e.g. "_benchrel"
+            # for --benchmark-relative runs) — reading it here instead of hardcoding
+            # "ppo_best.zip" is what keeps a benchmark_relative run's checkpoint from
+            # being confused with (or silently overwriting the read of) the default
+            # reward mode's checkpoint.
+            best_ckpt = train_out["best_path"]
             if best_ckpt.exists():
                 # CPU for eval — see _load_for_eval for why.
                 model = PPO.load(

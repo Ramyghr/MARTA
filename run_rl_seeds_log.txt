@@ -1,0 +1,13 @@
+[20:31:39] INFO     Device: cuda | quick=False |       
+                    eval_only=False |                  
+                    benchmark_relative=False           
+           INFO     ✓ Regime stream: 7 states, 183,444 
+                    rows, 2018-01-17 → 2025-12-31      
+/home/ramy/miniconda3/envs/marta/lib/python3.11/site-packages/mlflow/tracking/_tracking_service/utils.py:184: FutureWarning: The filesystem tracking backend (e.g., './mlruns') is deprecated as of February 2026. Consider transitioning to a database backend (e.g., 'sqlite:///mlflow.db') to take advantage of the latest MLflow features. See https://mlflow.org/docs/latest/self-hosting/migrate-from-file-store for migration guidance.
+  return FileStore(store_uri, store_uri)
+           INFO     === Seed 0 ===                     
+[20:31:40] INFO     Loaded encoder (epoch 195, frozen) 
+                    on cuda                            
+[20:31:41] INFO     Sanity check: mean_reward=0.0181,  
+                    mean_position=0.4403               
+           INFO     ✓ Environment sanity check PASSED  

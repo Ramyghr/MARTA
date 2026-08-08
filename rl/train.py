@@ -13,6 +13,7 @@ import pandas as pd
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 from encoder.model import TFTRegimeEncoder
 from rl.callbacks import CurriculumCallback, EntropyDecayCallback, MLflowCallback
@@ -199,6 +200,7 @@ def build_env_factory(
                 min_hold_bars if min_hold_bars is not None else config.get("min_hold_bars", 4)
             ),
             min_hold_stop_loss_dd=config.get("min_hold_stop_loss_dd", 0.05),
+            max_drawdown_termination=config.get("max_drawdown_termination", 0.20),
             benchmark_relative=config.get("benchmark_relative", False),
         )
 
@@ -232,9 +234,12 @@ def train_ppo(
     # idle_penalty on transition (_advance_phase), so without this the Phase-1 env silently
     # trains with idle_penalty=0.0 regardless of what CURRICULUM_PHASES[0] specifies.
     phase1_idle_penalty = phases[0].get("idle_penalty", 0.0)
-    train_env = env_factory(
-        assets=phase1_assets, split="train", debate=False, idle_penalty=phase1_idle_penalty,
-    )
+
+    def _make_train_env() -> MARTATradingEnv:
+        return env_factory(
+            assets=phase1_assets, split="train", debate=False, idle_penalty=phase1_idle_penalty,
+        )
+
     # idle_penalty=0.0 always on val_env — it is a training signal only.
     # Applying it during validation inflates Sharpe by penalizing abstention.
     # Bug confirmed: idle_penalty=0.002 on val_env inflated 0.449 → 1.413.
@@ -244,11 +249,32 @@ def train_ppo(
     )
 
     # Environment sanity check BEFORE any training — fail fast on a degenerate env
-    # (all-zero rewards/positions) instead of after hours of PPO steps.
+    # (all-zero rewards/positions) instead of after hours of PPO steps. Runs on one
+    # throwaway raw env (gymnasium's 5-tuple step API) — independent of the n_envs>1
+    # vectorized fleet below, which speaks SB3 VecEnv's differently-shaped step API.
     if pre_train_check is not None:
-        pre_train_check(train_env)
+        pre_train_check(_make_train_env())
 
-    monitored = Monitor(train_env)
+    # n_envs parallel training environments. A 2026-08 multi-seed audit found training
+    # with a single env produced high seed-to-seed Sharpe variance (std=0.861 on
+    # mean=0.798 across 3 seeds) — each rollout buffer was filled from one long
+    # autocorrelated trajectory. n_envs>1 fills each buffer from n_envs independent
+    # random start points instead, which is the standard fix in the RL-trading
+    # literature (see FinRL's vectorized-environment writeups) for exactly this kind of
+    # instability. DummyVecEnv (single-process), not SubprocVecEnv, is deliberate: the
+    # frozen TFTRegimeEncoder lives on config["device"] (often CUDA), and SubprocVecEnv
+    # would require re-initializing a CUDA context per subprocess (fork-unsafe); the
+    # MLflowCallback below also reads ``self.training_env.envs[0]`` directly, which only
+    # DummyVecEnv exposes. total_timesteps and n_steps are unchanged by this — see
+    # run_rl.py's config comment on how n_steps was rebalanced against n_envs to keep
+    # the per-update rollout buffer size (n_steps × n_envs) roughly constant.
+    n_envs = int(config.get("n_envs", 1))
+    if n_envs > 1:
+        train_env: Any = DummyVecEnv([lambda: Monitor(_make_train_env()) for _ in range(n_envs)])
+        monitored = train_env  # each sub-env is already Monitor-wrapped
+    else:
+        train_env = _make_train_env()
+        monitored = Monitor(train_env)
 
     device = config["device"]
     model = PPO(
