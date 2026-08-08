@@ -7,6 +7,7 @@ Usage:
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -87,6 +88,13 @@ def _print_summary(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--n-states", type=int, default=None,
+        help="Skip BIC search, fit only this n_states (see regime/n_states_sweep.py).",
+    )
+    args = parser.parse_args()
+
     config_path = _ROOT / "configs" / "assets.yaml"
     config = _load_config(config_path)
 
@@ -108,7 +116,7 @@ def main() -> None:
         mlflow.log_param("config_path", str(config_path))
 
         # ── Step 1: HMM pipeline ──────────────────────────────────────────
-        result = run_hmm_pipeline(config)
+        result = run_hmm_pipeline(config, force_n_states=args.n_states)
         regime_df: pd.DataFrame = result["regime_df"]
         bic_results: dict = result["bic_results"]
         best_n: int = result["best_n"]

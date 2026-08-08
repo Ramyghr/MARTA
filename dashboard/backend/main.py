@@ -149,7 +149,10 @@ def get_data_range(asset: str):
 
 @app.get("/api/regime/semantics")
 def get_regime_semantics():
-    path = MARTA_ROOT / "data" / "validated" / "regime_semantics.json"
+    # Live-only semantics (regime_semantics_live.json) — fit on 2018 -> today, not the
+    # sacred train<2024 model. The Regime page displays this alongside get_live_regime(),
+    # so its stats/descriptions must come from the same model, not the frozen one.
+    path = MARTA_ROOT / "data" / "validated" / "regime_semantics_live.json"
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
@@ -277,10 +280,22 @@ def get_regime_stream(asset: str, limit: int = 500):
 
 @app.get("/api/plots/tsne")
 def get_tsne_plot():
-    path = MARTA_ROOT / "regime" / "plots" / "regime_tsne.png"
+    # Live-only t-SNE (run_regime_live.py) — same model as get_live_regime()/the Regime
+    # Statistics cards, spanning 2018 -> today. Falls back to the sacred (train<2024)
+    # plot only if the live one hasn't been generated yet.
+    path = MARTA_ROOT / "regime" / "plots" / "regime_tsne_live.png"
+    if not path.exists():
+        path = MARTA_ROOT / "regime" / "plots" / "regime_tsne.png"
     if not path.exists():
         raise HTTPException(status_code=404, detail="tsne plot not generated yet")
-    return FileResponse(path, media_type="image/png")
+    # No-cache: FileResponse's default headers (Last-Modified/ETag only) let browsers
+    # heuristically cache this indefinitely, so a run_regime.py refit's new plot never
+    # shows up without a hard refresh. Forces revalidation on every load — cheap, since
+    # the browser still gets a 304 when the file hasn't actually changed.
+    return FileResponse(
+        path, media_type="image/png",
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 @app.get("/api/data/freshness")

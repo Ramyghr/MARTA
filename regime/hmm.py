@@ -92,6 +92,7 @@ def fit_hmm_bic(
     emb_reduced: np.ndarray,
     train_mask: np.ndarray,
     n_states_range: tuple[int, int] = (2, 9),
+    force_n_states: Optional[int] = None,
 ) -> tuple[GaussianHMM, int, dict[int, dict[str, float]]]:
     """
     Grid-search GaussianHMM over n_states; select by BIC.
@@ -101,7 +102,17 @@ def fit_hmm_bic(
       - subsample training data to _BIC_SUBSAMPLE rows
     Both BIC fit and BIC scoring use the subsample so the LL scale is consistent.
     run_hmm_pipeline refits the winner on the full dataset with full covariance.
+
+    force_n_states: bypass BIC selection entirely and fit only this n_states. Added
+    2026-08-08 after a regime-quality audit (regime/regime_quality_audit.py) found the
+    BIC flat-curve guard unreliable at this data scale — the log-likelihood term
+    dominates the complexity penalty so heavily that relative-BIC comparisons are
+    nearly meaningless (see regime/n_states_sweep.py for the empirical alternative:
+    fit each candidate and check for near-duplicate states / single-bar dwell times
+    directly). Use this to commit a specific, empirically-validated n_states.
     """
+    if force_n_states is not None:
+        n_states_range = (force_n_states, force_n_states + 1)
     train_emb_full = emb_reduced[train_mask]
     n_train_full = len(train_emb_full)
     pca_dim = emb_reduced.shape[1]
@@ -166,19 +177,32 @@ def fit_hmm_bic(
         raise RuntimeError("All HMM fits failed — cannot select best n_states.")
 
     sorted_by_bic = sorted(valid, key=lambda k: valid[k]["bic"])
-    best_n = sorted_by_bic[0]
+    raw_best_n = sorted_by_bic[0]
+    raw_best_bic = valid[raw_best_n]["bic"]
+
+    # Flat-curve guard (fixed 2026-08-08): previously only compared the top-2
+    # candidates, which is meaningless at this BIC scale (LL ~500K, BIC ~1M) — every
+    # adjacent pair in the n=2..8 grid was trivially within 5% of each other, so the
+    # guard just knocked the raw argmin down by exactly one state every time (n=8 ->
+    # n=7) without ever checking whether a much simpler model fit just as well by the
+    # same criterion. A regime-quality audit (KS/ANOVA distinctness + dwell time +
+    # predictive signal, see regime/regime_quality_audit.py) confirmed n=7 produced
+    # two pairs of statistically-indistinguishable, single-bar-dwell duplicate states
+    # (1≈4, 2≈3) — exactly what an under-penalized state count looks like. Now compares
+    # every candidate against the GLOBAL best BIC and picks the smallest n_states within
+    # 5% of it, which is what "the curve is flat, prefer simplicity" actually means.
+    within_threshold = [
+        n for n in valid if abs(valid[n]["bic"] - raw_best_bic) < 0.05 * abs(raw_best_bic)
+    ]
+    best_n = min(within_threshold)
     best_bic = valid[best_n]["bic"]
 
-    if len(sorted_by_bic) > 1:
-        second_n = sorted_by_bic[1]
-        second_bic = valid[second_n]["bic"]
-        if abs(best_bic - second_bic) < 0.05 * abs(best_bic):
-            simpler = min(best_n, second_n)
-            logger.warning(
-                f"BIC curve flat (Δ={abs(best_bic - second_bic):.2f} < 5% of "
-                f"|{best_bic:.2f}|). Picking simpler model: n_states={simpler}"
-            )
-            best_n = simpler
+    if best_n != raw_best_n:
+        logger.warning(
+            f"BIC curve flat across n_states={sorted(within_threshold)} (all within "
+            f"5% of global best BIC={raw_best_bic:,.2f} at n={raw_best_n}). "
+            f"Picking most parsimonious model within threshold: n_states={best_n}"
+        )
 
     logger.success(
         f"Selected n_states={best_n}  BIC={results[best_n]['bic']:,.2f}"
@@ -220,9 +244,11 @@ def generate_regime_stream(
     return df
 
 
-def run_hmm_pipeline(config: dict) -> dict[str, Any]:
+def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict[str, Any]:
     """
     Orchestrate the full Week 3 HMM pipeline.
+
+    force_n_states: skip BIC search, fit only this n_states (see fit_hmm_bic docstring).
 
     Returns dict with keys:
         regime_df   : pd.DataFrame  — full regime probability stream
@@ -281,7 +307,9 @@ def run_hmm_pipeline(config: dict) -> dict[str, Any]:
     pca, emb_reduced = fit_pca(embeddings, train_mask, n_components=16)
 
     # Step 2 — BIC selection (training data only)
-    _train_model, best_n, bic_results = fit_hmm_bic(emb_reduced, train_mask)
+    _train_model, best_n, bic_results = fit_hmm_bic(
+        emb_reduced, train_mask, force_n_states=force_n_states
+    )
 
     # Step 3 — Refit winner on TRAINING DATA ONLY (diag covariance, more iterations —
     # see module docstring for why this is diag, not full)

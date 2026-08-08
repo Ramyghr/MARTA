@@ -32,8 +32,18 @@ _descriptions_cache: dict[int, str] | None = None
 # stream was last generated. get_live_regime() below fixes this for "what's the regime
 # right now" callers by recomputing PCA -> HMM directly on a fresh embedding instead.
 
-_PCA_PATH = MARTA_ROOT / "regime" / "checkpoints" / "pca_model.pkl"
-_HMM_PATH = MARTA_ROOT / "regime" / "checkpoints" / "hmm_model.pkl"
+
+# Live-only PCA+HMM (run_regime_live.py) — fit on embeddings spanning 2018 -> today,
+# NOT the sacred pca_model.pkl/hmm_model.pkl (train<2024 only, used by agents/context.py
+# and RL/backtest — never touched here). Found 2026-08-08: the sacred model is 2+ years
+# out-of-distribution by mid-2026 and every live query since January 2026, across all 4
+# assets independently, was landing nearest a single state (~100% R3) — verified as real
+# distributional drift (embeddings vary day to day, genuinely closest to one 3-year-old
+# cluster), not a frozen/stale-data bug. This whole dashboard-backend module is entirely
+# separate from the research/RL pipeline, so repointing it here doesn't touch anything
+# the sacred split protects.
+_PCA_PATH = MARTA_ROOT / "regime" / "checkpoints" / "pca_model_live.pkl"
+_HMM_PATH = MARTA_ROOT / "regime" / "checkpoints" / "hmm_model_live.pkl"
 _LIVE_LOG_PATH = MARTA_ROOT / "data" / "processed" / "regime_live_log.parquet"
 _STALE_THRESHOLD_HOURS = 48.0
 
@@ -83,7 +93,7 @@ def _load_regime_descriptions() -> dict[int, str]:
     if _descriptions_cache is not None:
         return _descriptions_cache
 
-    sem_path = MARTA_ROOT / "data" / "validated" / "regime_semantics.json"
+    sem_path = MARTA_ROOT / "data" / "validated" / "regime_semantics_live.json"
     if not sem_path.exists():
         _descriptions_cache = dict(_FALLBACK_DESCRIPTIONS)
         return _descriptions_cache
@@ -142,7 +152,12 @@ _df: pd.DataFrame | None = None
 
 def load_regime_stream() -> None:
     global _df
-    path = MARTA_ROOT / "data" / "processed" / "regime_stream.parquet"
+    # Live-only stream (regime_stream_live.parquet) — same model as get_live_regime(),
+    # self-consistent 2018 -> today. The sacred regime_stream.parquet (train<2024 model)
+    # is read independently by agents/context.py and RL/backtest, never through here.
+    path = MARTA_ROOT / "data" / "processed" / "regime_stream_live.parquet"
+    if not path.exists():
+        path = MARTA_ROOT / "data" / "processed" / "regime_stream.parquet"
     _df = pd.read_parquet(path)
     if "timestamp" in _df.columns and not isinstance(_df.index, pd.DatetimeIndex):
         _df = _df.set_index("timestamp")

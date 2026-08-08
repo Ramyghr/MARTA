@@ -23,6 +23,7 @@ from utils.logger import logger  # noqa: E402
 def validate_regime_semantics(
     regime_df: pd.DataFrame,
     config: dict,
+    output_filename: str = "regime_semantics.json",
 ) -> dict[str, Any]:
     """
     Compute per-regime financial statistics and assert semantic coherence.
@@ -30,6 +31,11 @@ def validate_regime_semantics(
     For each regime state computes: realized_vol, close_return, rsi, adx
     statistics plus annualised return, vol, Sharpe, time share, and dominant asset.
     Logs all metrics to MLflow and saves a JSON summary.
+
+    output_filename: override to avoid clobbering the sacred regime_semantics.json —
+    e.g. the live-only regime model (regime/checkpoints/*_live.pkl, fit on data through
+    today for the dashboard) writes to "regime_semantics_live.json" instead, since it's
+    a completely separate model from the one agents/context.py and RL/backtest use.
     """
     processed_dir = _ROOT / config["data"]["processed_dir"]
     assets = regime_df["asset"].unique().tolist()
@@ -163,7 +169,7 @@ def validate_regime_semantics(
         "vol_std_across_regimes": vol_std_across,
         "regimes": regime_stats,
     }
-    json_path = validated_dir / "regime_semantics.json"
+    json_path = validated_dir / output_filename
     with open(json_path, "w") as fh:
         json.dump(summary, fh, indent=2)
     logger.success(f"Saved regime semantics → {json_path}")
