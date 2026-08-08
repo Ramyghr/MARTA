@@ -1,8 +1,8 @@
 """PPO inference service for the MARTA dashboard live signal.
 
 Loads ppo_best.zip + the frozen TFT encoder at startup, then builds a full
-152-dim observation vector (regime embedding | consensus zeros | portfolio
-zeros) to drive model.predict() for the live signal endpoint.
+156-dim observation vector (regime embedding | consensus | portfolio |
+asset-ID one-hot) to drive model.predict() for the live signal endpoint.
 
 Falls back gracefully to the rule-based _REGIME_POLICY when the checkpoint
 or encoder is absent (e.g. first-run before any training).
@@ -35,7 +35,8 @@ _WINDOW_SIZE = 60
 _REGIME_DIM = 128
 _CONSENSUS_DIM = 16
 _PORTFOLIO_DIM = 8
-_STATE_DIM = _REGIME_DIM + _CONSENSUS_DIM + _PORTFOLIO_DIM  # 152
+_ASSET_ID_DIM = 4  # one-hot over rl.env.CANONICAL_ASSETS — added 2026-08-08, see rl/env.py
+_STATE_DIM = _REGIME_DIM + _CONSENSUS_DIM + _PORTFOLIO_DIM + _ASSET_ID_DIM  # 156
 _NEAREST_DEBATE_MAX_DAYS = 7  # mirrors rl/ablation.py::_NEAREST_DEBATE_MAX_DAYS
 
 _BIAS_SIGN = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
@@ -476,8 +477,18 @@ def _build_consensus_vec(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
     return vec if vec is not None else np.zeros(_CONSENSUS_DIM, dtype=np.float32)
 
 
+def _build_asset_id_vec(asset: str) -> np.ndarray:
+    from rl.env import CANONICAL_ASSETS
+    vec = np.zeros(_ASSET_ID_DIM, dtype=np.float32)
+    if asset in CANONICAL_ASSETS:
+        idx = CANONICAL_ASSETS.index(asset)
+        if idx < _ASSET_ID_DIM:
+            vec[idx] = 1.0
+    return vec
+
+
 def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
-    """Build the 152-dim observation for PPO inference.
+    """Build the 156-dim observation for PPO inference (see rl/env.py STATE_DIM).
 
     Consensus is a nearest-cached-debate lookup (never triggers a live debate); portfolio
     reflects live paper_db state (position, return, drawdown, idle time, vol forecast).
@@ -485,7 +496,8 @@ def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
     regime = _build_regime_embedding(asset, timestamp)
     consensus = _build_consensus_vec(asset, timestamp)
     portfolio = _build_portfolio_vec(asset)
-    obs = np.concatenate([regime, consensus, portfolio])
+    asset_id = _build_asset_id_vec(asset)
+    obs = np.concatenate([regime, consensus, portfolio, asset_id])
     return np.clip(obs, -10.0, 10.0).astype(np.float32)
 
 

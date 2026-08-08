@@ -403,7 +403,7 @@ def _load_for_eval(config: dict, checkpoint: str) -> tuple[Any, Any]:
         aligned_dfs, regime_stream_df, encoder, debate_results, config
     )
     # CPU for eval — deterministic float ops, removes GPU/cuDNN nondeterminism from the
-    # policy forward pass (the network is tiny: 152->256->128->64, cost is negligible).
+    # policy forward pass (the network is tiny: 156->256->128->64, cost is negligible).
     model = PPO.load(
         checkpoint,
         device="cpu",

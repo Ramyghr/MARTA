@@ -50,7 +50,7 @@ class MARTAActorCriticPolicy(ActorCriticPolicy):
 
         Overrides SB3's default ``_build`` entirely so no DiagGaussian action net is created.
         """
-        feature_dim = int(self.features_dim)  # 152 (FlattenExtractor on a 152-d Box)
+        feature_dim = int(self.features_dim)  # 156 (FlattenExtractor on a 156-d Box, see rl/env.py STATE_DIM)
 
         self.shared_net = nn.Sequential(
             nn.Linear(feature_dim, 256),

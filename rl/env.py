@@ -1,7 +1,20 @@
 """MARTATradingEnv — custom Gymnasium environment for the MARTA PPO execution agent.
 
-State (152-dim):
-    [128-dim regime embedding | 16-dim agent consensus | 8-dim portfolio state]
+State (156-dim):
+    [128-dim regime embedding | 16-dim agent consensus | 8-dim portfolio state
+     | 4-dim asset-ID one-hot]
+
+The asset-ID block was added 2026-08-08 after a multi-seed audit of Phase 2 (BTC+ETH)
+curriculum training found the shared policy's BTC validation Sharpe was wildly unstable
+immediately after ETH episodes started entering the rollout buffer (every seed's val_sharpe
+went negative or oscillated hard within the first eval or two after the phase switch, never
+stabilizing) — the signature of gradient interference between assets sharing one policy.
+Root cause: the only asset-identifying signal in the old 152-dim state was the per-asset
+portfolio position slot, which is zero at the start of *every* episode (and any time the
+policy is flat) — the network had no reliable way to know which asset it was even trading,
+only an indirect, ambiguous cue buried in the regime embedding's content. The one-hot block
+below is persistent for the whole episode (never resets to an ambiguous zero the way the
+position slot does), removing that inference burden.
 
 Action (hybrid, exposed to SB3 as a flat 2-dim Box — the "flattened" form):
     action[0] = direction  (0=long, 1=short, 2=hold), sampled from a Categorical head
@@ -53,7 +66,8 @@ CANONICAL_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 REGIME_DIM = 128
 CONSENSUS_DIM = 16
 PORTFOLIO_DIM = 8
-STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM  # 152
+ASSET_ID_DIM = 4  # one-hot over CANONICAL_ASSETS — see module docstring, added 2026-08-08
+STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156
 N_POSITION_SLOTS = 4  # first 4 portfolio dims hold per-asset signed positions
 
 # 2026-07-13 walk-forward split (was train ≤2022-12-31 / val 2023 for the
@@ -78,7 +92,7 @@ _DIRECTION_SIGN = {0: 1.0, 1: -1.0, 2: 0.0}  # long / short / hold
 # This was calibrated for an earlier HMM fit. When the HMM is refit with new data, regime
 # labels change semantics completely, making any hardcoded scale wrong — hard multipliers
 # suppress positions in regimes that are actually profitable under the current fit and
-# collapse the policy toward always-hold. The regime embedding is in the 152-dim state
+# collapse the policy toward always-hold. The regime embedding is in the 156-dim state
 # vector — PPO learns regime-conditional position sizing from the reward signal.
 # Do not re-enable without recalibrating against the current regime semantics in
 # data/validated/regime_semantics.json.
@@ -407,11 +421,19 @@ class MARTATradingEnv(gym.Env):
         vec[7] = float(self._vol[asset][t])
         return vec
 
+    def _asset_id_vec(self, asset: str) -> np.ndarray:
+        vec = np.zeros(ASSET_ID_DIM, dtype=np.float32)
+        idx = CANONICAL_ASSETS.index(asset) if asset in CANONICAL_ASSETS else None
+        if idx is not None and idx < ASSET_ID_DIM:
+            vec[idx] = 1.0
+        return vec
+
     def _build_observation(self) -> np.ndarray:
         regime = self._encode_window(self._asset, self._t)
         consensus = self._consensus_vec(self._asset, self._t)
         portfolio = self._portfolio_vec(self._asset, self._t)
-        obs = np.concatenate([regime, consensus, portfolio]).astype(np.float32)
+        asset_id = self._asset_id_vec(self._asset)
+        obs = np.concatenate([regime, consensus, portfolio, asset_id]).astype(np.float32)
         return np.clip(obs, -10.0, 10.0)
 
     def _current_drawdown(self) -> float:

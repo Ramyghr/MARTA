@@ -225,7 +225,7 @@ Three scenarios: BTC calm bull (R1), BTC calm bear (R4, targeted to Oct 2018–J
 | File | Class | Role |
 |------|-------|------|
 | `agents/sentiment_agent.py` | `SentimentAgent` | FinBERT sentiment on static news cache; exponential recency decay; 6h momentum signal |
-| `agents/contrarian_agent.py` | `ContrarianAgent` | Devil's advocate; activates at avg_confidence ≥ 0.65; historical analogue retrieval from regime stream |
+| `agents/contrarian_agent.py` | `ContrarianAgent` | Devil's advocate; activates at avg_confidence ≥ 0.60; historical analogue retrieval from regime stream |
 
 **SentimentAgent:**
 - FinBERT loaded from `./models/finbert` on CPU (`device=-1`)
@@ -236,7 +236,7 @@ Three scenarios: BTC calm bull (R1), BTC calm bear (R4, targeted to Oct 2018–J
 - LLM call interprets scores; FinBERT provides the numbers, Mistral interprets them
 
 **ContrarianAgent:**
-- Activation threshold: avg R1 confidence ≥ 0.65 → Contrarian fires
+- Activation threshold: avg R1 confidence ≥ 0.60 → Contrarian fires
 - Below threshold: posts `neutral` thesis with note "consensus too low to challenge"
 - Historical analogue retrieval: filters `regime_stream.parquet` to same `regime_label` + `regime_prob > 0.80`; computes 24h cumulative `close_return` forward from `aligned_df` for up to 100 cases; reports loss rate and avg forward return
 - LLM builds the strongest counter-argument; `directional_bias` is *always forced* to the opposite of consensus regardless of LLM output
@@ -256,7 +256,7 @@ When active, the Contrarian also posts its own rebuttal targeting the highest-co
 ```
 Round 1:  MacroAgent → TechnicalAgent → SentimentAgent (sequential)  +  RiskAgent (GARCH, no LLM)
           ↓
-Contrarian: sees all R1 theses; activates if avg_confidence ≥ 0.65; argues opposite direction
+Contrarian: sees all R1 theses; activates if avg_confidence ≥ 0.60; argues opposite direction
           ↓
 Round 2:  Each R1 agent rebuts if Contrarian is active or opposing views exist
           ContrarianAgent also posts rebuttal when active
