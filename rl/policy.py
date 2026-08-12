@@ -25,7 +25,17 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.common.type_aliases import Schedule
 from torch.distributions import Beta, Categorical
 
-_EPS = 1e-6
+# Must match MARTATradingEnv.action_space's position_fraction bounds exactly (rl/env.py,
+# also duplicated in SyntheticDirectionEnv/MinimalBTCEnv). SB3's rollout collection clips
+# the sampled action to the action_space bounds before calling env.step() (see
+# on_policy_algorithm.py), but stores the UNCLIPPED sample for log_prob/gradient purposes.
+# Clamping here to the action_space bounds (not an arbitrary [1e-6, 1-1e-6]) keeps the
+# stored log_prob consistent with what the env actually executes — previously a sample
+# near the Beta's support boundary (e.g. 0.9998) would be clipped to 0.99 by SB3 before
+# reaching env.step(), but log_prob was computed at 0.9998, crediting/blaming the wrong
+# value. Confirmed via rl/diagnose_env.py-style repro (2026-08-11 RL audit).
+_POS_LOW = 0.01
+_POS_HIGH = 0.99
 N_DIRECTIONS = 3
 
 
@@ -96,7 +106,7 @@ class MARTAActorCriticPolicy(ActorCriticPolicy):
             direction = dir_dist.sample()
             position = pos_dist.sample()
 
-        position = position.clamp(_EPS, 1.0 - _EPS)
+        position = position.clamp(_POS_LOW, _POS_HIGH)
         log_prob = dir_dist.log_prob(direction) + pos_dist.log_prob(position)
 
         actions = torch.stack([direction.float(), position], dim=1)  # (B, 2)
@@ -110,7 +120,7 @@ class MARTAActorCriticPolicy(ActorCriticPolicy):
         dir_dist, pos_dist = self._distributions(latent)
 
         direction = actions[:, 0].long().clamp(0, N_DIRECTIONS - 1)
-        position = actions[:, 1].clamp(_EPS, 1.0 - _EPS)
+        position = actions[:, 1].clamp(_POS_LOW, _POS_HIGH)
 
         log_prob = dir_dist.log_prob(direction) + pos_dist.log_prob(position)
         entropy = dir_dist.entropy() + pos_dist.entropy()

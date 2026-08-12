@@ -28,6 +28,28 @@ def _classify_risk_regime(vol: float) -> str:
     return "extreme"
 
 
+def _event_risk_multiplier(upcoming_events: list | None) -> float:
+    """Quantitative throttle on max_position_size ahead of high-impact economic
+    releases (FOMC, CPI, NFP, ...) — a hard, auditable cap, not just something the LLM
+    agents might notice in their prompt context (they also see the same event list via
+    serialize_context_for_prompt, for the narrative side of this).
+
+    `upcoming_events` is None for historical/replay debates (a past debate can't know
+    the future's calendar) — correctly falls through to no throttle (1.0).
+    """
+    if not upcoming_events:
+        return 1.0
+    high_within_6h = any(
+        e["impact"] == "high" and e["hours_until"] <= 6 for e in upcoming_events
+    )
+    if high_within_6h:
+        return 0.5
+    high_within_24h = any(
+        e["impact"] == "high" and e["hours_until"] <= 24 for e in upcoming_events
+    )
+    return 0.75 if high_within_24h else 1.0
+
+
 class RiskAgent(BaseAgent):
     name = "RiskAgent"
 
@@ -105,8 +127,16 @@ class RiskAgent(BaseAgent):
         )
 
     def get_risk_limits(self, ctx: RegimeContext) -> RiskLimits:
-        """Compute GARCH-based risk limits. The LLM is not used for the numbers."""
-        return self.compute_risk_limits(ctx.timestamp, ctx.asset)
+        """Compute GARCH-based risk limits, then throttle down for an imminent
+        high-impact economic event. The LLM is not used for either step."""
+        limits = self.compute_risk_limits(ctx.timestamp, ctx.asset)
+        multiplier = _event_risk_multiplier(ctx.upcoming_events)
+        if multiplier < 1.0:
+            limits = limits.model_copy(update={
+                "max_position_size": round(limits.max_position_size * multiplier, 4),
+                "event_risk_multiplier": multiplier,
+            })
+        return limits
 
 
 def _default_risk_limits() -> RiskLimits:

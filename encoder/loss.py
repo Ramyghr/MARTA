@@ -72,13 +72,23 @@ class NTXentLoss(nn.Module):
         self,
         z_anchor: torch.Tensor,
         z_positive: torch.Tensor,
+        exclude_mask: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """exclude_mask: optional (B,B) bool tensor, True = forbid this (anchor_i,
+        positive_j) pair from counting as a negative (2026-08-12, E1-NegCtrl). None
+        (default) reproduces the original behavior exactly — every existing caller that
+        doesn't pass this is unaffected. The diagonal must never be True in exclude_mask
+        (that's the real positive) — see build_temporal_exclusion_mask, which enforces
+        this by construction; this method does not re-check it, callers are responsible.
+        """
         z_a = F.normalize(z_anchor, dim=1)
         z_p = F.normalize(z_positive, dim=1)
 
         batch_size = z_a.shape[0]
         # Divide by self.temperature tensor so gradient flows to log_temp
         sim_matrix = torch.mm(z_a, z_p.T) / self.temperature  # (B, B)
+        if exclude_mask is not None:
+            sim_matrix = sim_matrix.masked_fill(exclude_mask, -1e9)
 
         labels = torch.arange(batch_size, device=z_anchor.device)
         loss = F.cross_entropy(sim_matrix, labels)
@@ -88,3 +98,21 @@ class NTXentLoss(nn.Module):
             top1_acc = (preds == labels).float().mean()
 
         return loss, top1_acc
+
+
+def build_temporal_exclusion_mask(
+    asset_ids: torch.Tensor,
+    times: torch.Tensor,
+    radius: int,
+) -> torch.Tensor:
+    """(B,B) bool mask, True = same asset AND |t_i - t_j| < radius — i.e. forbid this
+    pair from counting as an NT-Xent negative (2026-08-12, E1-NegCtrl). Cross-asset pairs
+    are never masked regardless of timestamp (asset_ids must match too). The diagonal
+    (i==i) is always False (a sample is never excluded from being its own positive) —
+    enforced here explicitly, not left to the caller.
+    """
+    same_asset = asset_ids.unsqueeze(1) == asset_ids.unsqueeze(0)         # (B, B)
+    time_close = (times.unsqueeze(1) - times.unsqueeze(0)).abs() < radius  # (B, B)
+    mask = same_asset & time_close
+    mask.fill_diagonal_(False)
+    return mask

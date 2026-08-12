@@ -26,6 +26,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from configs.splits import TRAIN_END_EXCLUSIVE  # noqa: E402
 from regime.hmm import fit_pca  # noqa: E402
 from utils.logger import logger  # noqa: E402
 
@@ -48,7 +49,7 @@ def main() -> None:
         timestamps = timestamps.copy()
         timestamps["asset"] = asset_col
 
-    train_cutoff = pd.Timestamp(config["training"]["train_end"], tz="UTC")
+    train_cutoff = pd.Timestamp(TRAIN_END_EXCLUSIVE, tz="UTC")
     ts_series = pd.to_datetime(timestamps["timestamp"], utc=True)
     train_mask = (ts_series < train_cutoff).values
 

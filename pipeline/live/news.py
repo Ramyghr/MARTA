@@ -1,7 +1,9 @@
 """pipeline/live/news.py — multi-source live news aggregation and FinBERT sentiment scoring.
 
 Sources (in priority order):
-  1. RSS feeds — no API key, completely free (feedparser)
+  1. RSS feeds — no API key, completely free (requests + stdlib ElementTree; NOT
+     feedparser, which isn't installed in either the conda env or the dockerized
+     dashboard backend's offline pip-cache — see _fetch_rss_sync)
   2. StockTwits — free public stream, no API key (financial social sentiment,
      replaces the former Reddit/PRAW integration)
   3. NewsAPI.org — free tier 100 req/day (NEWSAPI_KEY env var)
@@ -18,8 +20,7 @@ Cache backend: Redis with asset-specific TTLs (crypto 15 min, traditional 60 min
 falls back to in-memory dict when Redis is not running.
 
 Requirements (all optional — feed degrades gracefully when missing):
-  feedparser  — pip install feedparser   (RSS, no key needed)
-  requests    — pip install requests     (StockTwits + NewsAPI.org; NewsAPI needs NEWSAPI_KEY)
+  requests    — pip install requests     (RSS + StockTwits + NewsAPI.org; NewsAPI needs NEWSAPI_KEY)
   transformers— pip install transformers (FinBERT; also needs ./models/finbert directory)
   redis       — pip install redis        (caching; env: REDIS_URL)
 """
@@ -44,15 +45,35 @@ logger = logging.getLogger(__name__)
 RSS_FEEDS: dict[str, list[str]] = {
     "crypto": [
         "https://cointelegraph.com/rss",
-        "https://coindesk.com/arc/outboundfeeds/rss/",
+        "https://www.coindesk.com/arc/outboundfeeds/rss/",
         "https://decrypt.co/feed",
     ],
+    # `feeds.reuters.com` (the old value here) is dead — Reuters retired classic RSS
+    # years ago (DNS failure, verified 2026-08-11). Replaced with sources verified live
+    # the same day: CNBC + Dow Jones Markets for business/macro, and investing.com's own
+    # general-news RSS (not the Cloudflare-gated calendar page — plain RSS isn't behind
+    # that gate) as a direct nod to the original ask for investing.com content.
     "macro": [
-        "https://feeds.reuters.com/reuters/businessNews",
+        "https://www.cnbc.com/id/100003114/device/rss/rss.html",
+        "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
+        "https://www.investing.com/rss/news.rss",
+    ],
+    # World/politics — wars, sanctions, elections, tariffs. Economic-calendar data
+    # (economic_calendar.py) only covers *scheduled* releases, not this. Tagged into the
+    # same "macro" category below so the existing _is_relevant()/_MACRO_ASSETS logic
+    # (already "macro" applies to every asset) picks it up with no filtering changes.
+    "world_politics": [
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
     ],
     "commodities": [
         "https://oilprice.com/rss/main",
     ],
+}
+
+# Categories that should be tagged into the "macro" article bucket (relevant to every
+# asset) even though they're fetched from a separate feed group above.
+_MACRO_CATEGORY_ALIASES: dict[str, str] = {
+    "world_politics": "macro",
 }
 
 # ---------------------------------------------------------------------------
@@ -177,35 +198,80 @@ class _Deduplicator:
 # ---------------------------------------------------------------------------
 
 def _fetch_rss_sync(category: str, urls: list[str]) -> list[dict[str, Any]]:
+    """Fetch and parse RSS/Atom feeds with requests + stdlib ElementTree.
+
+    Deliberately avoids feedparser: it's installed in neither the conda `marta` env
+    nor the dockerized dashboard backend (which builds --no-index from a local
+    pip-cache/, so adding it isn't a one-line fix), and requests + ElementTree already
+    ship everywhere in this repo (mirrors dashboard/backend/news_live.py::_parse_feed,
+    which has done exactly this successfully for the dashboard's own news panel).
+    """
     try:
-        import feedparser
+        import requests
     except ImportError:
-        logger.warning("[news] feedparser not installed — RSS feeds disabled. pip install feedparser")
+        logger.warning("[news] requests not installed — RSS feeds disabled")
         return []
 
+    category = _MACRO_CATEGORY_ALIASES.get(category, category)
     articles: list[dict[str, Any]] = []
     for url in urls:
         try:
-            feed = feedparser.parse(url)
-            for entry in feed.entries[:30]:
-                title = getattr(entry, "title", "")
-                summary = getattr(entry, "summary", "")
-                link = getattr(entry, "link", url)
-                published = getattr(entry, "published_parsed", None)
-                if published:
-                    ts = datetime(*published[:6], tzinfo=timezone.utc)
-                else:
-                    ts = datetime.now(timezone.utc)
-                articles.append({
-                    "headline": title,
-                    "body": summary[:500],
-                    "url": link,
-                    "category": category,
-                    "timestamp": ts.isoformat(),
-                    "source": "rss",
-                })
+            resp = requests.get(
+                url, headers={"User-Agent": _STOCKTWITS_USER_AGENT}, timeout=10, allow_redirects=True,
+            )
+            resp.raise_for_status()
+            articles.extend(_parse_rss_xml(resp.text, category))
         except Exception as exc:
             logger.warning(f"[news] RSS feed error ({url}): {exc}")
+    return articles
+
+
+def _parse_rss_date(date_str: str | None) -> datetime:
+    if not date_str:
+        return datetime.now(timezone.utc)
+    try:
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(date_str)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
+def _parse_rss_xml(xml_text: str, category: str) -> list[dict[str, Any]]:
+    import xml.etree.ElementTree as ET
+
+    articles: list[dict[str, Any]] = []
+    try:
+        root = ET.fromstring(xml_text)
+        channel = root.find("channel")
+        items = channel.findall("item") if channel is not None else root.findall(
+            "{http://www.w3.org/2005/Atom}entry"
+        )
+        for item in items[:30]:
+            title_el = item.find("title")
+            desc_el = item.find("description")
+            link_el = item.find("link")
+            pub_el = item.find("pubDate") if item.find("pubDate") is not None else item.find(
+                "{http://purl.org/dc/elements/1.1/}date"
+            )
+
+            title = (title_el.text or "").strip() if title_el is not None else ""
+            if not title:
+                continue
+            summary = (desc_el.text or "").strip() if desc_el is not None else ""
+            link = (link_el.text or "").strip() if link_el is not None else ""
+            ts = _parse_rss_date(pub_el.text if pub_el is not None else None)
+
+            articles.append({
+                "headline": title,
+                "body": summary[:500],
+                "url": link,
+                "category": category,
+                "timestamp": ts.isoformat(),
+                "source": "rss",
+            })
+    except Exception as exc:
+        logger.warning(f"[news] RSS parse error: {exc}")
     return articles
 
 
@@ -388,6 +454,32 @@ def _is_relevant(article: dict[str, Any], asset: str) -> bool:
 # FinBERT scoring
 # ---------------------------------------------------------------------------
 
+def _load_finbert_gpu_first(hf_pipeline: Any, model_path: str) -> Any:
+    """Try GPU first, fall back to CPU if CUDA isn't available or the model can't
+    actually be used on it (e.g. the GPU's 4GB VRAM already claimed by encoder
+    training or Ollama — a real, observed contention case on this project's dev box).
+
+    torch.cuda.is_available() only confirms a driver/device exists, not that there's
+    free VRAM right now, so this also runs one cheap canary inference before trusting
+    the GPU load — surfaces an OOM here, at process startup, instead of mid-fetch.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            try:
+                pipe = hf_pipeline("text-classification", model=model_path, device=0, top_k=None)
+                pipe("canary")
+                logger.info("[news] FinBERT loaded on GPU (cuda:0)")
+                return pipe
+            except Exception as exc:
+                logger.warning(f"[news] FinBERT GPU load failed ({exc}) — falling back to CPU")
+    except ImportError:
+        pass
+    pipe = hf_pipeline("text-classification", model=model_path, device=-1, top_k=None)
+    logger.info("[news] FinBERT loaded on CPU")
+    return pipe
+
+
 def _score_with_finbert(
     finbert: Any,
     headlines: list[str],
@@ -506,14 +598,7 @@ class LiveNewsFeed:
             if not os.path.isdir(finbert_path):
                 logger.warning(f"[news] FinBERT not found at {finbert_path} — scoring disabled")
                 return None
-            fb = hf_pipeline(
-                "text-classification",
-                model=finbert_path,
-                device=-1,     # CPU
-                top_k=None,
-            )
-            logger.info("[news] FinBERT loaded from local checkpoint")
-            return fb
+            return _load_finbert_gpu_first(hf_pipeline, finbert_path)
         except ImportError:
             logger.warning("[news] transformers not installed — FinBERT scoring disabled")
             return None

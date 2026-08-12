@@ -30,6 +30,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="hmmlearn")
 
+from configs.splits import TRAIN_END_EXCLUSIVE  # noqa: E402
 from utils.logger import logger  # noqa: E402
 
 _BIC_SUBSAMPLE = 20_000
@@ -208,7 +209,7 @@ def fit_per_asset_hmms(
     Returns:
         dict mapping asset_name → (fitted_hmm, fitted_pca)
     """
-    train_cutoff = pd.Timestamp(config["training"]["train_end"], tz="UTC")
+    train_cutoff = pd.Timestamp(TRAIN_END_EXCLUSIVE, tz="UTC")
     if asset_map_df is None or len(asset_map_df) == 0:
         asset_map_df = _build_asset_map_from_timestamps(timestamp_df)
 

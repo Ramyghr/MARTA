@@ -1,0 +1,80 @@
+# E2 — augmentation ablation (2026-08-11 encoder diagnostic).
+#
+# Copy of configs/encoder.yaml with ONLY the following intentional differences:
+#   - training.seed: added (42) — REQUIRED for a fair comparison (the baseline
+#     production checkpoint's own seed is unknown/uncontrolled; this seed at least
+#     makes THIS run's model init + DataLoader shuffle order reproducible). Does NOT
+#     make augmentation draws reproducible — encoder/augment.py's np.random.default_rng()
+#     is OS-entropy-seeded per call by design (see its docstring) and is unchanged here.
+#   - training.augment_kwargs: {use_jitter: false, use_channel_mask: false} — the ONLY
+#     substantive experimental change. amplitude_scale and time_warp remain ON.
+#   - data.output_dir: separate directory, so extract_embeddings() does NOT overwrite
+#     the production data/processed/embeddings.npy (encoder/embed.py already supports
+#     this override; no code change was needed for this part).
+#   - checkpoints.run_tag + save_periodic: tags all checkpoint/plot filenames so nothing
+#     under encoder/checkpoints/ or encoder/plots/ can collide with production files.
+#   - mlflow.run_name: distinct, same experiment (easy side-by-side comparison in the UI).
+#
+# Everything else (model architecture, window_size, batch_size, lr, weight_decay,
+# max_epochs, early_stopping_patience, warmup_epochs, gradient_clip_max_norm,
+# assets list, convergence thresholds) is IDENTICAL to configs/encoder.yaml, copied
+# verbatim. train_end/val_start are no longer read from either file — both come from
+# configs/splits.py (the canonical source; see encoder/train.py).
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  # REQUIRED for a local run (see encoder/train.py's _load_asset_split comment): without
+  # this, val would silently include 2025 data, since the local aligned parquet (unlike
+  # the Kaggle-trimmed upload) extends to 2025-12-31. Matches rl/env.py's VAL_END exactly.
+  val_end: "2024-12-31"
+  seed: 42
+  augment_kwargs:
+    use_jitter: false
+    use_channel_mask: false
+    # use_amplitude_scale and use_time_warp intentionally omitted -> default True (ON)
+
+data:
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e2_nojittermask"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e2_nojittermask"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e2_nojittermask"
+  save_periodic: true

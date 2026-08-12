@@ -36,23 +36,20 @@ from agents.risk_agent import RiskAgent
 from agents.schemas import DebateResult
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
-from utils.assets import aligned_path
+from utils.freshness import load_debate_data
 from utils.logger import logger
 
 _DATA_DIR = Path("data/processed")
 _OUTPUT_DIR = Path("data/debates")
-_ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 _MLFLOW_EXPERIMENT = "marta_agent_deliberation"
 
 
 def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    regime_stream = pd.read_parquet(_DATA_DIR / "regime_stream.parquet", engine="pyarrow")
-    aligned_dfs: dict[str, pd.DataFrame] = {}
-    for asset in _ASSETS:
-        path = aligned_path(asset, _DATA_DIR)
-        if path.exists():
-            aligned_dfs[asset] = pd.read_parquet(path, engine="pyarrow")
-    return regime_stream, aligned_dfs
+    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4) —
+    raises StaleRegimeStreamError if regime_stream.parquet predates the deployed
+    encoder checkpoint. Was previously a bespoke, unchecked implementation duplicated
+    near-verbatim across all four debate-generation scripts."""
+    return load_debate_data()
 
 
 def _select_demo_timestamps(

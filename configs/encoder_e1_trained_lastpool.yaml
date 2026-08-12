@@ -1,0 +1,88 @@
+# E1-trained — last-timestep pooling, trained from scratch (2026-08-11 encoder diagnostic).
+#
+# Copy of configs/encoder.yaml with ONLY the following intentional differences:
+#   - model.pooling: "last" — the ONLY architectural change. Selects
+#     TFTRegimeEncoderLastPool (encoder/model_lastpool.py): identical VSN, LSTM, gated
+#     residual, and projection head; only the temporal read-out differs
+#     (lstm_out[:, -1, :] instead of lstm_out.mean(dim=1)).
+#   - training.augment_kwargs: DELIBERATELY OMITTED, meaning all 4 real augmentations
+#     (amplitude_scale, jitter, channel_mask, time_warp) default to ON — this is the
+#     "original production set". E2 (2026-08-11) found that removing jitter+channel_mask
+#     caused severe overfitting (train_loss -> 0.004 while val stalled) without helping
+#     predictability — restoring the full augmentation set here isolates the pooling
+#     variable cleanly, with no confound from E2's augmentation change riding along.
+#     NOTE: the user's spec for this run mentioned a "window-drop" augmentation as one of
+#     the four — no such function exists in encoder/augment.py (the real four are
+#     amplitude_scale/jitter/channel_mask/time_warp). Flagged and treated as referring to
+#     the actual production set (all 4 real augmentations), not a request for new code.
+#   - training.seed: 42 — for a reproducible run (the production checkpoint's own seed is
+#     unknown/uncontrolled; this at least makes this run's init + shuffle order fixed).
+#   - training.val_end: "2024-12-31" — REQUIRED for local runs (encoder/train.py's
+#     TestSetContaminationError guard raises without it, since the local aligned parquet
+#     extends past 2025-01-01 unlike the Kaggle-trimmed upload). train_end/val_start
+#     themselves now come from configs/splits.py, not from this file.
+#   - data.output_dir: separate directory — extract_embeddings() writes here, not to the
+#     shared data/processed/embeddings.npy.
+#   - checkpoints.run_tag + save_periodic: tags all checkpoint/plot filenames so nothing
+#     under encoder/checkpoints/ or encoder/plots/ can collide with production or E2 files.
+#     save_periodic uses the same early/25%/50%/75% schedule as E2, which for
+#     max_epochs=200 gives epochs [1, 50, 100, 150] — matching the "every 50 epochs" ask.
+#   - mlflow.run_name: distinct, same experiment.
+#
+# Everything else (batch_size, lr, weight_decay, max_epochs, early_stopping_patience,
+# warmup_epochs, gradient_clip_max_norm, assets, convergence thresholds) is IDENTICAL to
+# configs/encoder.yaml, copied verbatim — including NO epoch cap beyond the existing 200
+# max_epochs / patience=20 early-stopping, per the "no arbitrary cap" instruction.
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  pooling: "last"
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  # augment_kwargs intentionally OMITTED -> all 4 real augmentations default True (ON)
+
+data:
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e1_trained_lastpool"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_trained_lastpool"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_trained_lastpool"
+  save_periodic: true

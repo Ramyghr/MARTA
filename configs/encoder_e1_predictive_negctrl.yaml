@@ -1,0 +1,85 @@
+# E1-predictive-NegCtrl — temporal negative exclusion (2026-08-12 encoder experiment).
+#
+# Identical to configs/encoder_e1_predictive.yaml with ONE intentional difference:
+#   - training.negative_exclusion_radius: 84 — forbids same-asset pairs whose context/
+#     future spans overlap in time (|t_i - t_j| < window_size + future_size = 84) from
+#     counting as NT-Xent negatives of each other. Cross-asset pairs are NEVER excluded
+#     regardless of timestamp. See encoder/loss.py's build_temporal_exclusion_mask and
+#     encoder/dataset.py's PredictiveContrastiveDataset.asset_id docstring.
+#
+# Verified before this run (not assumed):
+#   - Deterministic synthetic-batch test: diagonal never masked, same-asset within-radius
+#     masked, same-asset outside-radius not masked, cross-asset same-timestamp not masked
+#     — all 4 properties PASS.
+#   - Realistic-scale synthetic batch (B=512, matching real train pool sizes): mean 0.71
+#     excluded negatives per anchor (train/shuffled), 47.3% of anchors have >=1 exclusion,
+#     minimum 507/511 negatives remain valid for any anchor — negligible impact on train.
+#   - val (shuffle=False, contiguous same-asset blocks): mean ~152 excluded per anchor,
+#     minimum 345/511 valid negatives remain — not degenerate, but a real, expected
+#     asymmetry with train's exclusion rate (flagged, not "fixed" — per your explicit
+#     instruction not to redesign validation batching to chase this).
+#
+# Everything else — window_size=60, future_size=24, mean pooling (unchanged, deliberately
+# NOT combined with last-timestep pooling), no augmentation, seed=42, batch_size=512, lr,
+# optimizer, max_epochs=200, early_stopping_patience=20, assets, convergence thresholds,
+# train/val split boundaries — is IDENTICAL to configs/encoder_e1_predictive.yaml.
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  # pooling: "mean"  (omitted -> default; still not combined with "last")
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  positive_pair_mode: "predictive"
+  future_size: 24
+  negative_exclusion_radius: 84
+  augment_kwargs:
+    use_amplitude_scale: false
+    use_jitter: false
+    use_channel_mask: false
+    use_time_warp: false
+
+data:
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e1_predictive_negctrl"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_predictive_negctrl"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_predictive_negctrl"
+  save_periodic: true

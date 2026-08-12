@@ -33,6 +33,10 @@ class RiskLimits(BaseModel):
     cvar_95: float
     volatility_forecast: float
     risk_regime: Literal["low", "medium", "high", "extreme"]
+    event_risk_multiplier: float = 1.0  # <1.0 when a high-impact economic event is
+    # imminent (see RiskAgent._event_risk_multiplier) — already folded into
+    # max_position_size below; kept as its own field for auditability, same pattern
+    # FundManagerDecision.regime_penalty_applied uses.
 
 
 class FundManagerDecision(BaseModel):

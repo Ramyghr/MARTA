@@ -73,7 +73,7 @@ def _test_rss() -> str:
         sources += len(urls)
     if total > 0:
         return _fmt(True, f"RSS feeds: {total} articles fetched across {sources} sources")
-    return _fmt(None, "RSS feeds: 0 articles (feedparser may not be installed or feeds unreachable)")
+    return _fmt(None, "RSS feeds: 0 articles (requests may not be installed or feeds unreachable)")
 
 
 def _test_stocktwits(asset: str = "BTC_USDT") -> str:

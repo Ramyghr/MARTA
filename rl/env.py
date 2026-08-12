@@ -38,7 +38,8 @@ fits are precomputed on a coarse weekly stride and cached to disk — the arch m
 refit per-step (which would make training intractable) and the LLM debate system is never
 invoked during RL.
 
-Walk-forward split (strict — PPO never trains on validation timestamps):
+Walk-forward split (strict — PPO never trains on validation timestamps). Boundaries are
+defined once in configs/splits.py:
     train: 2018-01-10 .. 2023-12-31
     val:   2024-01-01 .. 2024-12-31
     test:  2025-01-01 .. 2025-12-31  (never touched here — see run_test_set.py)
@@ -56,6 +57,13 @@ import torch
 from gymnasium import spaces
 from scipy.stats import norm
 
+from configs.splits import (
+    TEST_START,
+    TRAIN_END_EXCLUSIVE,
+    VAL_END_EXCLUSIVE,
+    VAL_START as _VAL_START,
+    TestSetContaminationError,
+)
 from encoder.model import TFTRegimeEncoder
 from utils.logger import logger
 
@@ -70,12 +78,13 @@ ASSET_ID_DIM = 4  # one-hot over CANONICAL_ASSETS — see module docstring, adde
 STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156
 N_POSITION_SLOTS = 4  # first 4 portfolio dims hold per-asset signed positions
 
-# 2026-07-13 walk-forward split (was train ≤2022-12-31 / val 2023 for the
-# checkpoints trained before this extension — see git history). Test is now 2025
-# (see run_test_set.py); encoder/HMM train through the same 2023-12-31 cutoff.
-TRAIN_END = pd.Timestamp("2023-12-31 23:59:59", tz="UTC")
-VAL_START = pd.Timestamp("2024-01-01 00:00:00", tz="UTC")
-VAL_END   = pd.Timestamp("2024-12-31 23:59:59", tz="UTC")
+# Derived from configs/splits.py (the canonical source — see that module's docstring).
+# TRAIN_END/VAL_END keep the historical inclusive "day before the exclusive cutoff,
+# 23:59:59" form so every existing `ts <= TRAIN_END`/`ts <= VAL_END` comparison in this
+# file is unchanged; only the literal date now lives in one place.
+TRAIN_END = pd.Timestamp(TRAIN_END_EXCLUSIVE, tz="UTC") - pd.Timedelta(seconds=1)
+VAL_START = pd.Timestamp(_VAL_START, tz="UTC")
+VAL_END   = pd.Timestamp(VAL_END_EXCLUSIVE, tz="UTC") - pd.Timedelta(seconds=1)
 VAL_END_EXTENDED = VAL_END  # legacy alias (pre-2024-extension --extended-val); now a no-op
 
 # 95% normal CVaR multiplier — matches RiskAgent: -pdf(ppf(0.05))/0.05
@@ -344,6 +353,20 @@ class MARTATradingEnv(gym.Env):
             if in_split[t] and in_split[t + 1]:
                 valid[t] = True
         self._valid_starts[asset] = np.flatnonzero(valid)
+
+        # Contamination guard (P0.2): verify the resulting split actually respects the
+        # sacred test boundary, not just that _split_mask was written correctly. "all"
+        # (used by run_test_set.py and the in-sample regime_behavior_analysis windows)
+        # is deliberately exempt — those call sites are the one place 2025 is meant to
+        # be reachable.
+        if self.split in ("train", "val") and len(self._valid_starts[asset]):
+            max_used_ts = ts[self._valid_starts[asset]].max()
+            if max_used_ts >= pd.Timestamp(TEST_START, tz="UTC"):
+                raise TestSetContaminationError(
+                    f"{asset} ({self.split} split): env includes timestamps up to "
+                    f"{max_used_ts}, which is >= TEST_START ({TEST_START}). Sacred 2025 "
+                    f"test data must never reach RL training or validation."
+                )
 
     def _split_mask(self, ts: pd.DatetimeIndex) -> np.ndarray:
         if self.split == "train":

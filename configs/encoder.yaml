@@ -14,15 +14,14 @@ training:
   early_stopping_patience: 20
   warmup_epochs: 10
   gradient_clip_max_norm: 1.0
-  # 2026-07-13 walk-forward split (matches configs/assets.yaml and rl/env.py):
-  # train < 2024-01-01, val = 2024. Test (2025) is SACRED — the Kaggle upload is
-  # trimmed to <= 2024-12-31 so 2025 never reaches encoder training or validation.
-  # This value was stale at 2020-12-31/2021-01-01 (two split generations behind)
-  # until 2026-07-31 — it only worked because the Kaggle notebook %%writefile's its
-  # own inline override of this file; a local `python run_encoder.py` run would have
-  # silently retrained on the wrong split.
-  train_end: "2024-01-01"
-  val_start: "2024-01-01"
+  # Train/val split boundary now lives solely in configs/splits.py — encoder/train.py
+  # imports TRAIN_END_EXCLUSIVE/VAL_START directly and no longer reads them from here.
+  # This used to be a hardcoded copy that went stale at a two-generations-old boundary
+  # (2020-12-31/2021-01-01) for a full retrain cycle before a 2026-07-31 audit caught
+  # it — it only worked because the Kaggle notebook %%writefile's its own inline
+  # override of this file; a local `python run_encoder.py` run would have silently
+  # retrained on the wrong split. Test (2025) is SACRED — the Kaggle upload is trimmed
+  # to <= 2024-12-31 so 2025 never reaches encoder training or validation.
 
 data:
   assets:

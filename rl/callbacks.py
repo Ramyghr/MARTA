@@ -54,7 +54,9 @@ class CurriculumCallback(BaseCallback):
         # with only 3 trades and Sortino=4728 — a near-zero-variance statistical fluke, not
         # a validated result. This does NOT affect phase-advancement threshold checks
         # (whether the phase's target behavior was reached) — only best-checkpoint tracking.
-        min_trades_for_best: int = 5,
+        # Raised 5->30 in a follow-up audit after 5 still let a 9-trade eval get crowned
+        # "best" (Sharpe 1.893) — not enough trade outcomes to trust the ratio.
+        min_trades_for_best: int = 30,
     ) -> None:
         super().__init__(verbose)
         self.phases = phases

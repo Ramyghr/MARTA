@@ -1,0 +1,410 @@
+\chapter{Methodology}
+\label{chap:methodology}
+
+\section{Overview}
+\label{sec:methodology-overview}
+
+This chapter details the design and implementation of MARTA's five-layer architecture, introduced in Section~\ref{sec:proposed-solution} and developed across Phases 2--7 of the project plan (Table~\ref{tab:phases}). Each section below corresponds to one development phase, in the same order the system was built: Section~\ref{sec:data-feature-engineering} covers the data pipeline (Phase 2), Section~\ref{sec:regime-encoder-methodology} the contrastive regime encoder (Phase 3), Section~\ref{sec:regime-detection-methodology} the Gaussian HMM regime detector (Phase 4), Section~\ref{sec:multi-agent-methodology} the five-agent LLM deliberation system (Phase 5), Section~\ref{sec:rl-execution-methodology} the PPO execution agent (Phase 6), and Section~\ref{sec:dashboard-methodology} the monitoring dashboard and live-trading bridge (Phase 7). Section~\ref{sec:evaluation-methodology-full} describes the evaluation protocol --- walk-forward splitting, the ablation design, and the statistical testing procedure --- used to produce the results reported in Chapter~\ref{chap:results}.
+
+As established in Section~\ref{sec:methodology-planning}, each layer's design was constrained by empirical results from the layer built before it; where a design decision was revised after an earlier choice proved inadequate, both the original approach and the reason for revising it are reported, since the revision itself is part of the project's methodology.
+
+\section{Data and Feature Engineering}
+\label{sec:data-feature-engineering}
+
+\subsection{Data Sources and Coverage}
+\label{subsec:data-sources}
+
+MARTA operates on four hourly instruments spanning two asset classes: \textbf{BTC/USDT} and \textbf{ETH/USDT}, fetched via the CCXT library against Binance, and \textbf{EUR/USD} and \textbf{XAU/USD} (gold), fetched from histdata.com's genuine 1-minute tick archives and resampled to hourly OHLCV (\texttt{open}=first, \texttt{high}=max, \texttt{low}=min, \texttt{close}=last, \texttt{volume}=sum). A fifth instrument, WTI crude oil, was dropped from the pipeline entirely: its exchange-holiday and weekend gaps were the binding constraint on cross-asset timestamp alignment, and removing it substantially improved the overlap between the crypto (24/7) and traditional-asset (weekday-only) series without any loss of coverage on the four remaining assets.
+
+The crypto series are pulled forward continuously and reach mid-2026 at the time of writing; the forex/commodity series are capped at 2025-12-31 because histdata.com only publishes complete-year archives and no 2026 archive yet exists. This asymmetry is immaterial to the encoder, HMM, and RL training splits below (all of which end well before 2025), but is directly relevant to the live-trading bridge described in Section~\ref{sec:dashboard-methodology}.
+
+An earlier version of the EUR/USD and XAU/USD pipeline used daily yfinance data forward-filled to hourly resolution, which produced 23 near-duplicate hourly bars for every genuine daily observation and measurably contaminated the contrastive embedding space. Switching to histdata.com's genuine 1-minute data, resampled properly, removed this artifact.
+
+\subsection{Pipeline Stages}
+\label{subsec:pipeline-stages}
+
+The pipeline runs as five sequential stages (\texttt{fetch} $\rightarrow$ \texttt{features} $\rightarrow$ \texttt{normalize} $\rightarrow$ \texttt{align} $\rightarrow$ \texttt{validate}), each operating on one asset's data independently until the alignment stage joins them:
+
+\begin{enumerate}
+    \item \textbf{Fetch}: retrieves raw OHLCV via CCXT (crypto, batched request loop) or the histdata year-ZIP archive (forex/commodities), caching raw and intermediate artifacts to disk so repeated runs only fetch the missing tail. A sanitization pass enforces \texttt{high} $=\max(\text{open,high,close})$ and \texttt{low} $=\min(\text{open,low,close})$, and forward-fills zero-valued closes, guarding against malformed exchange data reaching any downstream stage.
+    \item \textbf{Features}: computes 13 technical indicators from the 5 raw OHLCV columns using the \texttt{ta} library and hand-rolled statistics, producing an 18-column intermediate frame (Table~\ref{tab:features}).
+    \item \textbf{Normalize}: applies a rolling 720-hour (30-day) z-score to 12 of the 13 indicators (minimum 168 hours of history required before a window is emitted), drops the raw OHLCV columns, and retains \texttt{close\_return} unmodified as the return target. One indicator, \texttt{realized\_vol\_raw}, is deliberately excluded from normalization (see below).
+    \item \textbf{Align}: inner-joins all four assets' normalized frames on the BTC timestamp index (BTC/USDT trades 24/7 and is therefore the backbone), producing one combined parquet with MultiIndex columns \texttt{(asset, feature)} alongside per-asset parquets.
+    \item \textbf{Validate}: runs structural checks (column presence, dtype, no unexpected NaNs --- CRITICAL severity), value-range checks, gap and distribution checks (WARNING severity), OHLCV sanity checks, and cross-asset timestamp-overlap checks, logging every metric to MLflow and writing a JSON validation report.
+\end{enumerate}
+
+\begin{table}[h]
+\centering
+\small
+\caption{The 14 features per asset used throughout the pipeline}
+\label{tab:features}
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Feature} & \textbf{Description} \\
+\hline
+\texttt{atr}, \texttt{adx}, \texttt{rsi}, \texttt{bb\_width}, \texttt{macd\_histogram} & Standard technical indicators (Average True Range, Average Directional Index, Relative Strength Index, Bollinger Band width, MACD histogram), rolling z-scored. \\
+\hline
+\texttt{obv\_raw} & On-Balance Volume, raw cumulative sum at feature-computation time; z-scored once (over 720h) at the normalize stage --- an earlier version applied a second, redundant 168h z-score on top, which was removed. \\
+\hline
+\texttt{vol\_zscore}, \texttt{realized\_vol}, \texttt{vol\_ratio} & Volatility-family indicators, rolling z-scored. \\
+\hline
+\texttt{return\_skew}, \texttt{return\_kurtosis}, \texttt{autocorr\_lag1} & Higher-moment and autocorrelation statistics of returns, rolling z-scored. \\
+\hline
+\texttt{realized\_vol\_raw} & Unnormalized annualized realized volatility --- the one feature the normalize stage does \emph{not} z-score, so it preserves absolute magnitude. Included specifically because the z-scored \texttt{realized\_vol} compresses extreme events (e.g.\ the March 2020 crash) into an ordinary-looking z-score, making them invisible to any downstream component that only sees the normalized value. \\
+\hline
+\texttt{close\_return} & Simple hourly return, passed through unnormalized as the return target used by GARCH fitting and reward computation. \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+FX/commodity data from histdata.com carries no centralized volume figure (unlike a single-exchange crypto feed), so \texttt{obv\_raw} and \texttt{vol\_zscore} are near-constant for EUR/USD and XAU/USD; for these two assets, the price-derived indicators carry the useful signal.
+
+\subsection{Train / Validation / Test Split}
+\label{subsec:train-val-test-split}
+
+All downstream components --- encoder pretraining, HMM fitting, and RL training --- share a single, strictly walk-forward split, defined once in a canonical module and imported everywhere it is needed rather than re-specified per component:
+
+\begin{center}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Split} & \textbf{Window} \\
+\hline
+Train & 2018-01-01 $\leq$ t $<$ 2024-01-01 \\
+Validation & 2024-01-01 $\leq$ t $<$ 2025-01-01 \\
+Test & 2025-01-01 $\leq$ t $<$ 2026-01-01 \\
+\hline
+\end{tabular}
+\end{center}
+
+The three splits are contiguous by construction (the train/validation boundary equals the validation/test boundary of the previous pair, with no gap and no overlap), and this invariant is asserted at import time rather than merely documented. The test split is treated as sacred: no code path involved in encoder training, HMM/PCA fitting, or RL training or model selection is permitted to read a 2025 timestamp, and each of those three components independently re-verifies, after applying its own slice of the data, that the resulting slice does not cross the test boundary --- catching a masking bug in the slicing logic itself, not just a mis-specified date constant. Test-set evaluation is performed exclusively through one dedicated, separate evaluation script, so that a mistake in an exploratory or diagnostic script can never silently contaminate model selection.
+
+This three-way split, and the discipline around it, exists because every earlier iteration of the project used a shorter or differently-placed boundary (see Section~\ref{sec:evaluation-methodology-full}); consolidating it into one canonical, self-validating module was a direct response to boundaries silently going stale in individual files during the several data-range extensions the project underwent.
+
+\section{Regime Encoder}
+\label{sec:regime-encoder-methodology}
+
+\subsection{Design Objective}
+\label{subsec:encoder-objective}
+
+Layer 1 of MARTA learns a fixed-length embedding of market state directly from the 14-feature, 60-candle window ending at each hourly timestamp, without relying on hand-labeled regimes. The embedding is trained with a self-supervised contrastive objective (InfoNCE \cite{infonce2018}) so that two different \emph{views} of the same underlying market window are pulled together in embedding space while views of unrelated windows are pushed apart --- the standard SimCLR-style contrastive pretraining recipe, applied here to multivariate financial time series instead of images.
+
+\subsection{Architecture}
+\label{subsec:encoder-architecture}
+
+The encoder is \emph{TFT-inspired} rather than a full Temporal Fusion Transformer \cite{tft2019}: it implements the core computational components of a TFT's encoder path --- a Variable Selection Network (VSN), a recurrent sequence encoder, and a gated residual connection --- but omits TFT's multi-horizon decoder, static covariate encoders, and interpretable multi-head attention block, none of which are needed for a fixed-window embedding task with no forecasting horizon. Table~\ref{tab:encoder-arch} lists the model's layers in forward-pass order.
+
+\begin{table}[h]
+\centering
+\caption{Regime encoder architecture (\texttt{TFTRegimeEncoder})}
+\label{tab:encoder-arch}
+\begin{tabular}{|l|l|p{6.3cm}|}
+\hline
+\textbf{Stage} & \textbf{Shape} & \textbf{Description} \\
+\hline
+Input & $(B, 60, 14)$ & 60-hour window $\times$ 14 normalized features \\
+\hline
+VSN gate & $(B, 60, 14)$ & Linear(14$\to$14) + softmax over the feature axis at every timestep, elementwise-multiplied with the input --- a learned, per-timestep feature-importance weighting. \\
+\hline
+LSTM encoder & $(B, 60, 128)$ & 2-layer \texttt{nn.LSTM}, hidden size 128, inter-layer dropout 0.1 \\
+\hline
+Mean pool & $(B, 128)$ & Unweighted mean over the 60 timesteps --- chosen for robustness to regime length over, e.g., last-timestep pooling. \\
+\hline
+Gated residual & $(B, 128)$ & $h \odot \sigma(\mathrm{Linear}(h))$ --- a sigmoid gate applied to the pooled representation, mirroring TFT's gated residual connections. This 128-dim vector is the embedding used everywhere downstream (Sections~\ref{sec:regime-detection-methodology}--\ref{sec:rl-execution-methodology}). \\
+\hline
+Projection head & $(B, 64)$ & Linear(128$\to$128) + ReLU + Linear(128$\to$64) --- used only by the contrastive loss during pretraining and discarded at inference time, following standard contrastive-learning practice (the projection head is known to distort the representation in ways that help the contrastive objective but do not help downstream tasks, so only the pre-projection embedding is kept). \\
+\hline
+\end{tabular}
+\end{table}
+
+The VSN's per-timestep softmax weights are also exposed directly (\texttt{get\_vsn\_weights}) and reused as the attention map consumed by the Technical Agent in Section~\ref{sec:multi-agent-methodology}, rather than re-deriving feature importance through a separate mechanism.
+
+\subsection{Contrastive Pair Construction}
+\label{subsec:contrastive-pairs}
+
+For each 60-candle window, a positive pair is formed by drawing two independently augmented views of the \emph{same} window; all other windows in the mini-batch serve as negatives, matching the standard in-batch-negatives InfoNCE setup. Four stochastic augmentations are available, each applied independently with its own probability:
+
+\begin{itemize}
+    \item \textbf{Amplitude scale} ($p=0.5$): multiply the entire window by a scalar drawn from $\mathrm{Uniform}(0.85, 1.15)$.
+    \item \textbf{Jitter} ($p=0.5$): add i.i.d.\ Gaussian noise, $\sigma=0.03$, to every element.
+    \item \textbf{Channel mask} ($p=0.5$): zero out 2 randomly chosen feature columns for the whole window.
+    \item \textbf{Time warp} ($p=0.3$): resample the time axis along a smooth sinusoidal warp (random phase, amplitude up to 5 steps), implemented via per-feature linear interpolation onto the original 60-step grid; the warp function is analytically monotone for the chosen amplitude bound, so no timestep ordering is ever inverted.
+\end{itemize}
+
+\subsection{Loss Function}
+\label{subsec:encoder-loss}
+
+The training objective is NT-Xent (the normalized temperature-scaled cross-entropy form of InfoNCE): both views' embeddings are L2-normalized, their pairwise cosine similarity matrix is scaled by a temperature $\tau$, and cross-entropy is computed against the identity matching (each anchor's positive is its corresponding row/column index). Temperature is not fixed but learned, parameterized as $\tau = \exp(-\ell)$ with $\ell$ a trainable scalar initialized so that $\tau_0 = 0.07$; this lets gradient descent anneal the sharpness of the similarity distribution over training rather than committing to a hand-tuned constant.
+
+An unconstrained learnable temperature can drift arbitrarily low, which collapses the contrastive loss into an near-trivial hard-argmax objective and was observed to happen during one training run (Section~\ref{sec:evaluation-methodology-full}). The loss module therefore hard-clamps $\ell$ after every optimizer step so that $\tau$ cannot leave a configured $[\tau_{\min}, \tau_{\max}] = [0.03, 0.30]$ band, structurally rather than just via a post-hoc warning.
+
+\subsection{Training Procedure}
+\label{subsec:encoder-training}
+
+\begin{table}[h]
+\centering
+\caption{Encoder training hyperparameters}
+\label{tab:encoder-training}
+\begin{tabular}{|l|l||l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Parameter} & \textbf{Value} \\
+\hline
+Window size & 60 h & Batch size & 512 \\
+\hline
+Learning rate & $1\times10^{-3}$ & Weight decay & $1\times10^{-4}$ \\
+\hline
+Max epochs & 200 & Early-stopping patience & 20 epochs \\
+\hline
+Warm-up & 10 epochs & Gradient clip (max norm) & 1.0 \\
+\hline
+\end{tabular}
+\end{table}
+
+Training runs only over the train split defined in Section~\ref{subsec:train-val-test-split}; validation loss on the 2024 window drives early stopping. Three convergence gates are checked at the end of training and recorded directly inside the saved checkpoint file (not only in the external experiment tracker, so that a checkpoint trained on a remote machine and copied back locally remains self-describing): validation loss below 4.0, top-1 contrastive retrieval accuracy above 0.20 (chance level is $1/512 \approx 0.002$ at this batch size), and learned temperature inside $[0.03, 0.30]$.
+
+\subsection{Ongoing Refinement: Pooling and Pair Construction}
+\label{subsec:encoder-refinement}
+
+A later diagnostic pass compared the encoder's embeddings against simple raw-feature baselines on short-horizon return predictability and found the learned embedding underperforming, pointing to two candidate causes rather than outright representational collapse: mean-pooling across the full 60-step window may discard recency-relevant information that the LSTM's own per-timestep hidden states already contain, and augmenting two views of the \emph{same} window (rather than pairing a window with a genuinely different, temporally adjacent one) may teach the encoder an invariance that is not useful for predicting near-term dynamics. Two isolated single-variable experiments are in progress to test these independently: swapping mean-pooling for last-timestep pooling on the already-trained checkpoint (no retraining required, since both reductions read from the same LSTM hidden states), and a CPC-style \cite{infonce2018} variant that pairs each context window with its immediately following, non-overlapping future window instead of an augmented copy of itself. Neither experiment had produced a conclusive result at the time of writing; both are reported here as methodology under active revision rather than as a settled design choice.
+
+\section{Regime Detection}
+\label{sec:regime-detection-methodology}
+
+\subsection{Design Objective}
+\label{subsec:regime-detection-objective}
+
+Layer 2 discretizes the continuous 128-dim embedding space from Layer 1 into a small number of interpretable regimes with explicit transition dynamics, using a Gaussian Hidden Markov Model \cite{hamilton1989} rather than a non-sequential clustering method, specifically to obtain the persistence and switching structure that downstream position-sizing and agent-conditioning logic depend on.
+
+\subsection{Dimensionality Reduction}
+\label{subsec:regime-pca}
+
+Before HMM fitting, the 128-dim embedding is reduced to 16 dimensions via PCA, fit exclusively on training-split embeddings to avoid any leakage of validation or test structure into the projection. The pipeline asserts that the retained components explain more than 75\% of training-set variance before proceeding; the production fit retains approximately 85\%.
+
+\subsection{Model Selection}
+\label{subsec:regime-model-selection}
+
+A GaussianHMM is fit independently for each candidate state count $n \in \{2, \ldots, 8\}$ using diagonal covariance, 100 EM iterations, tolerance $10^{-3}$, on a fixed 20,000-row subsample of the training embeddings (both fitting and scoring use the same subsample, so log-likelihoods are directly comparable across candidates). Each candidate is scored by BIC,
+\[
+\mathrm{BIC}(n) = -2\,\mathrm{LL}(n) + \big(n^2 + 2n\cdot d\big)\ln(n_{\mathrm{train}}),
+\]
+where $d=16$ is the PCA dimensionality and the parameter count $n^2 + 2nd$ accounts for the transition matrix ($n^2$ entries) plus per-state diagonal mean and variance ($2d$ parameters per state). The candidate with the lowest BIC is not selected outright: a flat-curve guard instead selects the \emph{smallest} $n$ within 5\% of the globally best BIC, on the reasoning that if several state counts fit the data almost equally well, the simplest one should be preferred. This guard was tightened during the project after an earlier version --- which only compared the top two BIC candidates rather than every candidate against the global best --- was found to produce a state count with duplicate, statistically indistinguishable states that never persisted more than a single hourly bar; an empirical audit combining KS/ANOVA distinctness tests with observed dwell times confirmed the corrected guard's selection was the genuine structural elbow in the BIC curve.
+
+\subsection{Final Fit and Regime Stream Generation}
+\label{subsec:regime-final-fit}
+
+The selected state count is refit once more on the \emph{full} training split (not the BIC-search subsample), with diagonal covariance, 200 EM iterations, tolerance $10^{-4}$. Diagonal covariance is used for both the search and the final fit deliberately: an earlier version fit the final model with full covariance while the BIC parameter-count formula above still assumed diagonal covariance, a mismatch that let one state's covariance grow essentially unconstrained during EM, turning it into an "absorbing" catch-all state that any live, short-context HMM query collapsed into regardless of the actual input. Matching covariance structure between the BIC search and the deployed model closes that gap.
+
+The fitted HMM and PCA transform are then applied to the \emph{entire} dataset (train, validation, and test embeddings alike --- inference through an already-fit model does not touch the sacred boundary the way fitting would) to produce a regime probability stream: for every asset and timestamp, a hard regime label (Viterbi-style MAP state) and a full probability vector over all $n$ states, both stored for consumption by the agent layer and the RL environment.
+
+Not every regime label is populated for every asset: regime semantics are shaped jointly by all four assets' data during fitting, and some states (e.g.\ a stress/crisis state) are only ever visited by the forex/commodity series, which have a materially different volatility profile from crypto. Regime label semantics are also not guaranteed stable across refits of the HMM --- the mapping from an integer label to an economic interpretation (e.g.\ "calm bull") is derived post hoc from each state's empirical statistics rather than fixed by construction, so any component that displays a human-readable regime description re-derives it from the current fit's own statistics rather than hardcoding a label-to-description table.
+
+\section{Multi-Agent Deliberation System}
+\label{sec:multi-agent-methodology}
+
+\subsection{Design Objective}
+\label{subsec:agent-objective}
+
+Layer 3 conditions a structured, multi-perspective reasoning process on the regime signal from Layer 2, addressing the interpretability gap identified in Section~\ref{subsec:llm-limitations}: rather than a single LLM call producing an opaque recommendation, five specialized agents each analyze the current market state from a distinct angle, structured as an explicit two-round debate synthesized by a final decision-making agent --- the multi-agent debate pattern motivated in Section~\ref{subsec:multi-agent-debate}.
+
+\subsection{Orchestration and LLM Backend}
+\label{subsec:agent-orchestration}
+
+The debate is orchestrated as a LangGraph state machine. Every agent call goes through a shared base class that wraps a single local LLM, Mistral 7B Instruct served via Ollama with GPU acceleration, called with temperature 0.4, a 600-token generation budget, and the endpoint's native JSON-constrained output mode, under a 300-second timeout with one retry on failure. Because a locally-hosted 7B model does not reliably emit clean JSON even in constrained-output mode, every LLM response passes through a five-stage recovery procedure before being treated as unparseable: (1) direct Pydantic validation of the raw response, (2) extraction from a markdown code fence, (3) regex extraction of the first JSON object anywhere in the text, (4) a greedy first-brace-to-last-brace extraction with trailing-comma repair, and (5) the same greedy extraction with embedded literal newlines collapsed before repair. Only if all five stages fail is a safe, neutral default substituted --- and that fallback is always logged, so a systematic parsing failure is visible rather than silently corrupting a downstream decision.
+
+\subsection{Regime Context}
+\label{subsec:regime-context}
+
+Every agent call is grounded in a shared \texttt{RegimeContext} object built once per debate: the regime label and probability vector for the queried asset and timestamp (from Section~\ref{sec:regime-detection-methodology}), the corresponding market feature window, and any upcoming high-impact macroeconomic events. This ensures all five agents reason about the identical regime signal rather than each re-deriving their own, inconsistent notion of "current conditions."
+
+\subsection{Agent Roster}
+\label{subsec:agent-roster}
+
+\begin{table}[h]
+\centering
+\small
+\caption{The six agents of Layer 3 (five LLM-based deliberation agents plus one deterministic risk-limit agent)}
+\label{tab:agent-roster}
+\begin{tabular}{|l|p{9.5cm}|}
+\hline
+\textbf{Agent} & \textbf{Role} \\
+\hline
+MacroAgent & Cross-asset correlation matrix and contagion flag computed over a 168-candle (7-day) lookback window; LLM interprets the resulting statistics into a directional thesis. \\
+\hline
+TechnicalAgent & Momentum and volatility indicators plus the encoder's own VSN attention weights (Section~\ref{subsec:encoder-architecture}) over a 60-candle window --- the only agent that consumes the encoder's internal feature-importance signal directly. \\
+\hline
+SentimentAgent & FinBERT sentiment scores over news headlines within a 24-hour lookback window, aggregated with exponential recency decay (half-life 6 h); a 6-hour-vs-24-hour momentum comparison is also computed. FinBERT produces the quantitative scores; the LLM call interprets them into a narrative thesis, it does not re-score sentiment itself. \\
+\hline
+RiskAgent & The only non-LLM agent: fits a GARCH(1,1) model on the lookback window's hourly returns, converts the resulting one-step-ahead volatility forecast into 95\% VaR/CVaR under a Gaussian-tail assumption, and derives a hard maximum position size and leverage cap (Section~\ref{subsec:risk-agent-detail}). \\
+\hline
+ContrarianAgent & Devil's-advocate agent; activates only when the Round-1 average confidence across the other agents reaches 0.60. When active, its \texttt{directional\_bias} is \emph{forced} to the opposite of the emerging consensus regardless of what the LLM itself argues, and it retrieves historical analogues --- past occurrences of the same regime label with probability $>0.80$ --- reporting the empirical loss rate and average 24-hour forward return across up to 100 such cases, to ground its counter-argument in data rather than rhetoric alone. \\
+\hline
+FundManagerAgent & Synthesizes the full debate (Round-1 theses, Round-2 rebuttals, risk limits) into a single final decision (Section~\ref{subsec:fund-manager-synthesis}); the only agent whose output is actually executable. \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+\subsection{Debate Flow}
+\label{subsec:debate-flow}
+
+The debate proceeds in three stages. \textbf{Round 1}: Macro, Technical, and Sentiment agents each independently produce a thesis (directional bias, confidence, up to four supporting factors, and an assessment of whether their view is aligned, contrary, neutral, or mixed with respect to the current regime); RiskAgent computes its risk limits in parallel, deterministically, with no LLM call. \textbf{Contrarian check}: the Contrarian agent evaluates the Round-1 average confidence and, if the 0.60 threshold is met, produces a forced-opposite thesis with historical grounding. \textbf{Round 2}: rebuttals are triggered under any of three conditions --- the Contrarian is active (which guarantees at least one point of opposition), two Round-1 agents already hold directly opposing biases, or Round-1 shows high average confidence ($>0.75$) with no internal disagreement at all (a groupthink check). When none of these hold, Round 2 is skipped entirely and no rebuttals are produced. When active, each participating agent may either maintain or revise its bias and confidence in light of the others' arguments, and the Contrarian itself posts a rebuttal targeting whichever opposing agent holds the highest confidence.
+
+\subsection{Risk Limit Computation}
+\label{subsec:risk-agent-detail}
+
+RiskAgent fits a GARCH(1,1) model on the trailing 90 days of hourly returns for the queried asset (falling back to the rolling sample standard deviation if the GARCH fit fails to converge), producing a one-step-ahead volatility forecast $\hat\sigma$. Value-at-risk and Conditional Value-at-Risk at the 95\% level are then computed under a normal-tail approximation,
+\[
+\mathrm{VaR}_{95} = \Phi^{-1}(0.05)\,\hat\sigma, \qquad
+\mathrm{CVaR}_{95} = -\frac{\phi(\Phi^{-1}(0.05))}{0.05}\,\hat\sigma,
+\]
+with $\Phi$ the standard normal CDF and $\phi$ its density. The maximum position size is capped so that a 2\%-of-capital daily CVaR budget is never exceeded, $\mathrm{max\_position} = \min(1, 0.02 / |\mathrm{CVaR}_{95}|)$, and a coarse risk-regime label (low/medium/high/extreme) is assigned from $\hat\sigma$ thresholds. This position cap is throttled further, independently of the LLM agents, ahead of scheduled high-impact macroeconomic releases (e.g.\ FOMC, CPI, NFP): to 50\% of its computed value inside a 6-hour window before the event, or 75\% inside 24 hours, so that event risk is capped by a hard, auditable rule rather than left entirely to whatever the agents happen to notice in their prompt context.
+
+\subsection{Fund Manager Synthesis}
+\label{subsec:fund-manager-synthesis}
+
+The FundManager computes a weighted consensus from all Round-1/Round-2 outputs: each agent's final (post-rebuttal, if any) confidence is signed by its directional bias and summed into a bullish score and a bearish score, with the Contrarian's contribution counted at half weight throughout (reflecting its role as a deliberate outlier check rather than an equal vote). Consensus is declared bullish or bearish only if one side exceeds the other by a margin of 0.15; otherwise the debate is recorded as split. A regime-dependent conviction multiplier is then applied — for instance, a bullish consensus is scaled to 40\% conviction in a stress/crisis regime and 50\% in a bear-trend regime, while a bearish consensus in a calm-bull regime is scaled to 70\% — and if the regime unambiguously contradicts the voted direction (bullish consensus during stress/crisis or a bear trend), the decision is overridden to \texttt{hold} entirely rather than merely down-weighted. A second, independent override condition fires whenever the Contrarian was active \emph{and} at least one other agent changed its bias after the Round-2 rebuttal --- treating a debate that visibly moved an agent's position as evidence the regime override should be flagged even without a hard regime contradiction. The final position size is $\min(0.8 \times \mathrm{conviction},\ \mathrm{max\_position\_size})$ from RiskAgent, and the FundManager's own LLM call is used only to produce a one-sentence natural-language rationale for the already fully-determined numerical decision — the action, size, and override flags are all computed deterministically before the LLM is consulted, so a parsing failure on the rationale text cannot corrupt the decision itself.
+
+\section{RL Execution Agent}
+\label{sec:rl-execution-methodology}
+
+\subsection{Design Objective}
+\label{subsec:rl-objective}
+
+Layer 4 translates the Layer 3 debate output, together with the regime embedding and current portfolio state, into a concrete position-sizing decision, learned end-to-end with reinforcement learning rather than a fixed sizing rule, so that risk exposure can be modulated by both regime and the debate's own confidence.
+
+\subsection{MDP Formulation}
+\label{subsec:rl-mdp}
+
+\textbf{State (156-dim, clipped to $[-10, 10]$):} a 128-dim regime embedding from the frozen Layer-1 encoder (no gradient flows back into it during RL training); a 16-dim agent-consensus vector (per-agent signed confidence, the FundManager's signed conviction, position size, regime-override flag, and dissent count --- zeroed when no cached debate exists for the current timestamp, the common case during training, since the debate system is never invoked live during RL training or rollout); an 8-dim portfolio-state block (four canonical per-asset signed position slots, plus normalized running PnL, drawdown, steps-since-last-trade, and the current GARCH volatility forecast); and a 4-dim one-hot asset identifier. The one-hot block was added after a multi-seed audit found that, without it, the shared policy's per-asset behavior was unstable immediately after a curriculum phase introduced a second asset: the only asset-identifying signal available to the network was the portfolio position slot, which reads as zero at the start of every episode and gives the network no reliable way to know which asset it is trading until it has already taken a position.
+
+\textbf{Action (hybrid):} a discrete direction $\in \{\text{long}, \text{short}, \text{hold}\}$ sampled from a Categorical head, and a continuous position fraction $\in (0,1)$ sampled from a Beta distribution whose shape parameters are constrained to $\alpha,\beta > 1$ via a softplus transform, keeping the distribution unimodal so it cannot collapse mass onto the 0/1 boundary the way an unconstrained Beta could. The Beta distribution was chosen specifically because it is natively bounded on $(0,1)$, so the position fraction requires no post-hoc clipping and carries no boundary-gradient bias the way a clipped Gaussian head would.
+
+\textbf{Reward:}
+\[
+r_t = \frac{\Delta \mathrm{PnL}_t}{\mathrm{CVaR}_t} - \lambda \cdot \mathrm{drawdown}_t - \mathrm{idle\_penalty}_t,
+\]
+where $\mathrm{CVaR}_t$ uses the identical Cornish--Fisher-style normal-CVaR formula as RiskAgent (Section~\ref{subsec:risk-agent-detail}), computed from a GARCH(1,1) forecast that is refit on a weekly stride and forward-filled between refits (never refit per environment step, which would make training intractable), and reward is clipped to $[-10, 10]$ to keep gradients well-scaled for the value network. The drawdown penalty is continuous from the first bar of drawdown rather than gated behind a threshold, since a threshold gate leaves small, common drawdowns with zero training signal. The idle penalty is a small constant deduction applied whenever the agent holds a near-zero position, added specifically to break an "always-flat is the safest optimum" local minimum the policy otherwise converges to (Section~\ref{sec:evaluation-methodology-full}); it is a training-time-only signal and is always set to zero during validation and test evaluation, so that abstention is never artificially discouraged when measuring genuine trading performance.
+
+\subsection{Policy Network}
+\label{subsec:rl-policy}
+
+The actor-critic policy shares one MLP trunk (156 $\to$ 256 $\to$ 128 $\to$ 64, ReLU activations) feeding three independent linear heads: a 3-way Categorical logits head for direction, a 2-way head producing the Beta distribution's pre-softplus $(\alpha, \beta)$ parameters, and a scalar value head. This required overriding Stable-Baselines3's default policy-construction and action-distribution machinery directly, since SB3's built-in PPO implementation supports only a single, homogeneous action distribution and has no native support for a hybrid discrete/continuous action space.
+
+\subsection{Curriculum Training}
+\label{subsec:rl-curriculum-training}
+
+Training follows a curriculum, motivated by the general practice (Section~\ref{subsec:rl-curriculum}) of mastering a single, liquid asset before extending to less liquid or structurally different ones. Four phases are defined --- BTC only; BTC+ETH; +EUR/USD; +XAU/USD --- each with its own validation-Sharpe gate that must be met before the shared policy is allowed to advance, and the environment's active asset list is mutated in place between phases rather than restarting training, so that policy weights (and therefore any cross-asset transfer) persist across the whole curriculum. In practice, the two forex/commodity phases were found to actively erode the BTC/ETH policy learned in the first two phases: because histdata.com's underlying intraday bars carry comparatively little genuine hourly signal relative to the crypto pair, "hold" is close to the reward-minimizing-variance action for those assets, and continuing training into Phases 3--4 pulls the shared policy toward an always-flat behavior that also degrades its BTC/ETH performance. Production training therefore caps the curriculum at Phase 2 (BTC+ETH) by default; Phases 3--4 remain fully implemented and are used only for the explicit ablation and diagnostic runs described in Section~\ref{sec:evaluation-methodology-full}, not for the headline checkpoint.
+
+\begin{table}[h]
+\centering
+\small
+\caption{PPO training configuration}
+\label{tab:ppo-hyperparams}
+\begin{tabular}{|l|l||l|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Parameter} & \textbf{Value} \\
+\hline
+Learning rate & $3\times10^{-4}$ & Parallel environments & 8 \\
+\hline
+Rollout length (per env) & 512 & Rollout buffer size & 4096 \\
+\hline
+Minibatch size & 64 & Epochs per update & 10 \\
+\hline
+Discount $\gamma$ & 0.95 & GAE $\lambda$ & 0.95 \\
+\hline
+PPO clip range & 0.2 & Value-loss coefficient & 0.5 \\
+\hline
+Entropy coefficient & $0.05 \to 0.005$ (decayed over 100k steps) & Max gradient norm & 0.5 \\
+\hline
+Drawdown penalty $\lambda$ & 0.01 & Max steps/episode & 2000 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Eight parallel environments, each starting from an independently randomized start point within the active split, are used specifically to decorrelate the rollout buffer: a single environment produces one long autocorrelated trajectory per buffer, which was found to destabilize training, whereas 8 independent trajectories give PPO a buffer closer to the i.i.d.\ assumption its advantage estimates rely on. The discount factor was lowered from an initial 0.99 (an effective $\sim$100-step horizon) to 0.95, and the entropy coefficient is annealed from a comparatively high 0.05 down to 0.005, both changes made after diagnosing that a lower-entropy, longer-horizon initial configuration collapsed too quickly to an always-hold policy before it could discover profitable trading behavior.
+
+\subsection{Evaluation Determinism}
+\label{subsec:rl-determinism}
+
+Because the validation window contains relatively few meaningful trades, small sources of non-determinism were found to be sufficient to flip the sign of the measured Sharpe ratio between otherwise-identical evaluation runs. Two concrete sources were identified and fixed: the frozen encoder's forward pass ran on GPU (unseeded cuDNN kernels) once per environment step during evaluation, and neither PyTorch nor NumPy's global RNG was seeded before an evaluation pass. All evaluation-only environments and model loads are now forced onto CPU (with the shared encoder module deep-copied before being moved, since moving it in place would otherwise silently drag a live training environment's encoder onto CPU too), and both RNGs are seeded immediately before every evaluation pass. Repeated evaluation runs on an identical checkpoint now return bit-identical metrics.
+
+\section{Evaluation Methodology}
+\label{sec:evaluation-methodology-full}
+
+\subsection{Metrics}
+\label{subsec:eval-metrics}
+
+Trading performance is summarized by the annualized Sharpe ratio (hourly returns annualized by $\sqrt{24 \times 365}$), maximum drawdown, and Calmar ratio, alongside execution-level diagnostics: because the continuous Beta position head produces a nonzero-sized change on almost every step, a raw trade count is not a meaningful measure of trading frequency, so a trade is only counted as \emph{meaningful} once the position change exceeds 0.5\% of capital, and mean turnover is reported separately as the actual measure of execution activity.
+
+\subsection{Ablation Design}
+\label{subsec:eval-ablation}
+
+The central empirical question of this work --- whether regime-awareness measurably improves risk-adjusted trading performance --- is answered through a seven-variant ablation isolating the contribution of the regime embedding, the multi-agent consensus, and the PPO execution layer independently:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Ablation variants}
+\label{tab:ablation-variants}
+\begin{tabular}{|l|l|p{7.7cm}|}
+\hline
+\textbf{Variant} & \textbf{Regime / Agents / PPO} & \textbf{Method} \\
+\hline
+\texttt{buy\_hold} & --- / --- / --- & Static long-only baseline. \\
+\hline
+\texttt{rsi\_strategy} & --- / --- / --- & Rule-based RSI(14) mean-reversion (overbought 70 / oversold 30). \\
+\hline
+\texttt{ma\_crossover} & --- / --- / --- & Rule-based moving-average(12,26) crossover. \\
+\hline
+\texttt{ppo\_no\_regime} & --- / --- / PPO & Zeroing the 128-dim regime slot pushes the trained policy out-of-distribution and it collapses to constant-hold, which would trivially read as "identical to hold" rather than isolating regime dependence; this variant instead runs a 3-bar unanimous-momentum rule at fixed 0.3 position size, representing "RL-like execution without regime awareness." \\
+\hline
+\texttt{agents\_no\_regime} & --- / Agents / --- & Rule-based on the cached multi-agent debate consensus, using nearest-debate interpolation (snapping each step to the closest cached debate within 7 days) since the debate cache is sparse relative to the evaluation window; FundManager position size is capped at 5\% to keep this variant's sizing comparable in scale to PPO's own risk-capped output. \\
+\hline
+\texttt{ppo\_agents\_no\_regime} & --- / Agents / PPO & As \texttt{ppo\_no\_regime}, with position size additionally scaled by the nearest cached debate's confidence. \\
+\hline
+\texttt{marta\_full} & Regime / Agents / PPO & The complete system. \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Each variant's result records which of these methods actually produced it, so that, for instance, a reader comparing \texttt{ppo\_no\_regime} against \texttt{marta\_full} is comparing "momentum execution without regime context" against "the trained policy with regime context," not silently comparing against a degenerate always-flat run mislabeled as a fair baseline.
+
+\subsection{Statistical Testing}
+\label{subsec:eval-bootstrap}
+
+Statistical significance of the Sharpe-ratio delta between \texttt{marta\_full} and each baseline is assessed with a block bootstrap (1000 resamples, fixed seed) rather than an i.i.d.\ bootstrap over individual hourly returns: returns are resampled in non-overlapping 168-hour (one-week) blocks, preserving the autocorrelation structure of the underlying return series, which an i.i.d.\ resampling scheme would otherwise understate. The reported delta is the bootstrap mean of the per-resample Sharpe difference, with the 2.5th/97.5th percentiles reported as a 95\% confidence interval; returns are trimmed to whole blocks before resampling.
+
+\subsection{In-Sample Regime Behavior Diagnostic}
+\label{subsec:eval-in-sample}
+
+A separate, explicitly diagnostic-only probe examines how the trained agent sizes positions across known crisis and bear episodes that fall inside the \emph{training} split --- the March 2020 crash and the 2018 crypto bear market --- reporting average position size per decision-time regime and per-regime-transition position changes. Because both windows are in-sample, this analysis is never combined with, or presented alongside, the out-of-sample validation/test metrics above; it answers a qualitative question (does the policy's behavior differ meaningfully across regimes it was trained on) rather than a performance claim.
+
+\section{Dashboard and Live System}
+\label{sec:dashboard-methodology}
+
+\subsection{Design Objective}
+\label{subsec:dashboard-objective}
+
+Layer 5 exposes regime detection, agent reasoning, and execution decisions from Layers 1--4 in a live, auditable interface, directly supporting the interpretability property identified as largely absent from prior work in Section~\ref{subsec:limitations-existing}.
+
+\subsection{Architecture}
+\label{subsec:dashboard-architecture}
+
+The backend is a FastAPI application; the frontend is a Next.js single-page application. Scheduling is handled by APScheduler, running an hourly cron-triggered signal tick rather than a message-queue-based task system, since the system's decision cadence (one debate and one execution decision per asset per hour, matching the pipeline's native hourly resolution) does not require queue-based task distribution. Real-time price, regime, and debate state are pushed to the frontend over WebSocket connections; trade execution runs against Alpaca's paper-trading API, with Telegram used for out-of-band alerting and a chat interface for ad hoc natural-language queries against the live system state.
+
+\subsection{Live Regime Lookup}
+\label{subsec:dashboard-live-regime}
+
+Regime lookup exists in two distinct forms that are deliberately not interchangeable. A static lookup resolves the nearest row in the pre-computed regime probability stream (Section~\ref{subsec:regime-final-fit}) for a given historical timestamp, which is correct and cheap for genuinely past bars but is a frozen snapshot that stops advancing the moment the offline regime pipeline last ran. A live lookup instead recomputes PCA and HMM inference fresh from a rolling 168-hour embedding sequence ending at the query time; a single-frame HMM query was tried first and found to be dominated by the model's stationary prior rather than the actual current observation, which is why a full sequence, not a single point, is required for a live query to actually move. Every component that reasons about "now" (the live price feed's regime tag, the chat assistant, the hourly signal tick) uses the live lookup; only genuinely historical queries use the static one.
+
+\subsection{Live Feature Bridge}
+\label{subsec:dashboard-live-bridge}
+
+Because EUR/USD and XAU/USD's training-time data is capped at 2025-12-31 (Section~\ref{subsec:data-sources}), a separate live feature bridge pulls real hourly OHLC bars from a market-data API and reproduces the exact same feature-engineering and normalization functions used at training time (Section~\ref{subsec:pipeline-stages}), rather than a parallel reimplementation, appending them onto an append-only raw-bar accumulator that is itself never passed back through feature computation. This last detail matters operationally: an earlier version fed its own already-warmup-trimmed output back in as the next cycle's context, losing tens of rows to indicator warm-up against a single new bar per hourly cycle, which erodes the usable history to nothing within days; keeping a separate, untouched accumulator avoids that failure mode. BTC and ETH's own training-time data reaches materially further forward already and do not yet have an equivalent bridge, since the resulting staleness for those two assets is measured in weeks rather than months.
+
+\subsection{Auditability}
+\label{subsec:dashboard-auditability}
+
+Every quantity displayed alongside a trading decision --- win rate, best/worst trade, position history --- is sourced from the same evaluation run that produced the headline Sharpe ratio shown next to it, rather than a separately generated snapshot that could silently drift out of sync with the number it is displayed beside; this was a deliberate design correction after an earlier version combined numbers from two different data sources on the same dashboard card.

@@ -1,0 +1,53 @@
+\begin{thebibliography}{1}
+
+\bibitem{hamilton1989}
+James~D. Hamilton.
+\newblock A new approach to the economic analysis of nonstationary time series
+  and the business cycle.
+\newblock {\em Econometrica}, 57(2):357--384, 1989.
+
+\bibitem{questdb-hmm}
+Market regime detection using hidden markov models.
+\newblock QuestDB Glossary.
+\newblock Accessed 2026.
+
+\bibitem{finrl2020}
+Xiao-Yang Liu, Hongyang Yang, Qian Chen, Runjia Zhang, Liuqing Yang, Bowen
+  Xiao, and Christina~Dan Wang.
+\newblock Finrl: A deep reinforcement learning library for automated stock
+  trading in quantitative finance.
+\newblock {\em arXiv preprint arXiv:2011.09607}, 2020.
+
+\bibitem{hmm-finrl-2025}
+Hmm-based market regime detection with rl for portfolio management.
+\newblock {\em International Conference on Data Security and Privacy Protection
+  (DataSec)}, 2025.
+
+\bibitem{finagent2024}
+Wentao Zhang et~al.
+\newblock A multimodal foundation agent for financial trading: Tool-augmented,
+  diversified, and generalist.
+\newblock 2024.
+
+\bibitem{tradingagents2024}
+Yijia Xiao, Edward Sun, Di~Luo, and Wei Wang.
+\newblock Tradingagents: Multi-agents llm financial trading framework.
+\newblock {\em arXiv preprint arXiv:2412.20138}, 2024.
+
+\bibitem{infonce2018}
+Aaron van~den Oord, Yazhe Li, and Oriol Vinyals.
+\newblock Representation learning with contrastive predictive coding.
+\newblock {\em arXiv preprint arXiv:1807.03748}, 2018.
+
+\bibitem{tft2019}
+Bryan Lim, Sercan~O. Arik, Nicolas Loeff, and Tomas Pfister.
+\newblock Temporal fusion transformers for interpretable multi-horizon time
+  series forecasting.
+\newblock {\em International Journal of Forecasting}, 37(4):1748--1764, 2021.
+
+\bibitem{ppo2017}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal policy optimization algorithms.
+\newblock {\em arXiv preprint arXiv:1707.06347}, 2017.
+
+\end{thebibliography}

@@ -45,6 +45,7 @@ from rl.ablation import (
     ma_crossover_strategy,
     rsi_strategy,
 )
+from configs.splits import TEST_END_EXCLUSIVE, TEST_START
 from rl.env import MARTATradingEnv, VAL_END, VAL_START
 from rl.evaluate import compute_metrics, run_walk_forward
 from utils.logger import logger
@@ -54,8 +55,9 @@ RESULTS_PATH = Path("data/results/test_set_results.json")
 CHECKPOINT = "rl/checkpoints/ppo_best.zip"
 ASSET = "BTC_USDT"
 
-TEST_START = "2025-01-01"
-TEST_END = "2025-12-31"
+# TEST_END kept as an inclusive date string (day before the canonical exclusive cutoff)
+# since resolve_test_window() below appends " 23:59:59" to it.
+TEST_END = (pd.Timestamp(TEST_END_EXCLUSIVE) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
 STRATEGY_LABELS: dict[str, str] = {
     "marta_ppo": "MARTA PPO",

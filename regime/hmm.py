@@ -38,6 +38,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="hmmlearn")
 
+from configs.splits import TEST_START, TRAIN_END_EXCLUSIVE, TestSetContaminationError  # noqa: E402
 from utils.logger import logger  # noqa: E402
 
 
@@ -291,11 +292,22 @@ def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict
         timestamps = timestamps.copy()
         timestamps["asset"] = asset_col
 
-    # training mask: rows before config["training"]["train_end"] (2023-01-01 →
-    # PCA/HMM fit on 2018-2022 only; val 2023 and test 2024 stay out of the fit)
-    train_cutoff = pd.Timestamp(config["training"]["train_end"], tz="UTC")
+    # training mask: rows before the canonical TRAIN_END_EXCLUSIVE (configs/splits.py) —
+    # PCA/HMM fit on train only; val and test stay out of the fit.
+    train_cutoff = pd.Timestamp(TRAIN_END_EXCLUSIVE, tz="UTC")
     ts_series = pd.to_datetime(timestamps["timestamp"], utc=True)
     train_mask = (ts_series < train_cutoff).values
+
+    # Contamination guard (P0.2): verify the resulting mask actually respects the
+    # sacred test boundary, not just that train_cutoff was computed correctly.
+    if train_mask.any():
+        max_train_ts = ts_series[train_mask].max()
+        if max_train_ts >= pd.Timestamp(TEST_START, tz="UTC"):
+            raise TestSetContaminationError(
+                f"HMM/PCA training mask includes timestamps up to {max_train_ts}, which "
+                f"is >= TEST_START ({TEST_START}). Sacred 2025 test data must never reach "
+                f"HMM/PCA fitting."
+            )
 
     n_train = int(train_mask.sum())
     n_total = len(train_mask)

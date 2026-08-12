@@ -25,9 +25,11 @@ from rl.env import MARTATradingEnv
 from rl.evaluate import compute_metrics, run_walk_forward
 from rl.train import build_env_factory, load_data, load_debate_results
 from utils.logger import logger
+from utils.reproducibility import set_seed
 
 _CHECKPOINT_DIR = Path("rl/checkpoints")
 _RESULTS_PATH = Path("data/results/checkpoint_evaluation.json")
+_EVAL_SEED = 42  # matches rl/evaluate.py's _EVAL_SEED — same reproducible-eval convention
 
 CONFIG: dict[str, Any] = {
     "all_assets": ["BTC_USDT", "ETH_USDT"],
@@ -62,6 +64,10 @@ def evaluate_checkpoint(
 
 
 def main() -> None:
+    # P0.3: explicit top-level seed for this entrypoint. run_walk_forward() (rl/evaluate.py)
+    # already seeds internally before each pass, so this is defense-in-depth / makes this
+    # script self-documenting rather than relying implicitly on that internal call.
+    set_seed(_EVAL_SEED)
     checkpoints = sorted(_CHECKPOINT_DIR.glob("*.zip"))
     if not checkpoints:
         logger.warning(f"No checkpoints found under {_CHECKPOINT_DIR}")

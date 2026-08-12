@@ -433,8 +433,14 @@ def run_ablation(
     config: dict,
     model: BaseAlgorithm,
     env_factory: Callable[..., MARTATradingEnv],
+    output_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Run all 7 variants and bootstrap Sharpe CIs of MARTA-full vs each baseline."""
+    """Run all 7 variants and bootstrap Sharpe CIs of MARTA-full vs each baseline.
+
+    ``output_path`` overrides the fixed ``_RESULTS_PATH`` — see the matching parameter
+    on ``rl.evaluate.evaluate_ppo`` for why this exists (last-write-wins bug across a
+    multi-seed sweep, fixed 2026-08).
+    """
     variant_results: dict[str, Any] = {}
     returns_by_variant: dict[str, np.ndarray] = {}
 
@@ -459,7 +465,8 @@ def run_ablation(
         }
 
     result = {"variants": variant_results, "bootstrap_ci": bootstrap}
-    _RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _RESULTS_PATH.write_text(json.dumps(result, indent=2, default=float))
-    logger.success(f"Ablation results written to {_RESULTS_PATH}")
+    path = output_path or _RESULTS_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2, default=float))
+    logger.success(f"Ablation results written to {path}")
     return result

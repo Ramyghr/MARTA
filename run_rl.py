@@ -38,6 +38,7 @@ from rl.evaluate import (
 from rl.env import CANONICAL_ASSETS, TRAIN_END, VAL_END_EXTENDED
 from rl.train import CURRICULUM_PHASES, train_ppo
 from utils.logger import logger
+from utils.reproducibility import set_seed
 
 _console = Console()
 _EXPERIMENT = "marta_ppo_training"
@@ -84,8 +85,12 @@ def build_config(quick: bool) -> dict[str, Any]:
         # Minimum meaningful trades an eval needs before it's eligible to become the new
         # best_sharpe / overwrite ppo_best.zip (rl/callbacks.py:CurriculumCallback). Added
         # 2026-08 after a checkpoint got crowned "best" off 3 trades and Sortino=4728 — a
-        # statistical fluke, not a validated result.
-        "min_trades_for_best": 5,
+        # statistical fluke, not a validated result. Raised 5->30 after a second 2026-08
+        # audit found 5 still let a 9-trade eval (Sharpe 1.893, one seed's reported
+        # "headline" result) through the guard — 9 trade outcomes over a ~247-day val
+        # window has no real statistical power. 30 is still thin but is the practical
+        # floor below which a Sharpe estimate shouldn't be trusted at all.
+        "min_trades_for_best": 30,
         # Reward excess return over buy-and-hold instead of an absolute risk-adjusted
         # return (rl/env.py's benchmark_relative — see its docstring). Default False
         # preserves every prior result exactly; flip to True as a distinct experiment
@@ -279,6 +284,9 @@ def _print_ablation(abl: dict) -> None:
     table.add_column("Sortino", justify="right")
     table.add_column("Max DD", justify="right")
     table.add_column("Total Ret", justify="right")
+    # n_meaningful_trades sits next to every Sharpe so a thin-trade-count number (no
+    # statistical power) can't be read at face value the way the 9-trade "1.893" was.
+    table.add_column("N Trades", justify="right")
     for name, m in abl["variants"].items():
         table.add_row(
             name,
@@ -286,6 +294,7 @@ def _print_ablation(abl: dict) -> None:
             f"{m['sortino']:.3f}",
             f"{m['max_drawdown']:.3f}",
             f"{m['total_return']:.3%}",
+            str(m.get("n_meaningful_trades", m.get("n_trades", "?"))),
         )
     _console.print(table)
 
@@ -424,6 +433,11 @@ def _run_single_seed(config: dict, seed: int) -> dict:
 
     cfg = _copy.deepcopy(config)
     cfg["seed"] = seed
+    # P0.3: seed Python random/NumPy/torch globally before training starts. SB3's own
+    # PPO(seed=...) constructor argument (rl/train.py) only covers randomness inside SB3's
+    # own scope (policy init, its internal RNG) — it does not touch this repo's own
+    # env-level or data-prep randomness that can run before .learn() is called.
+    set_seed(seed)
     # Isolate this seed's checkpoints from every other seed's — see CurriculumCallback's
     # checkpoint_suffix docstring. Before this fix, every seed saved to the same bare
     # "ppo_best.zip"/"ppo_phase_N.zip", so only the LAST seed to run in a --seeds sweep
@@ -447,29 +461,45 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     else:
         model = train_out["model"]
 
-    eval_res = evaluate_ppo(model, env_factory, cfg)
-    abl = run_ablation(cfg, model, env_factory)
+    # Seed-specific paths — see evaluate_ppo/run_ablation docstrings. Every seed's full
+    # result is preserved on disk (useful for an appendix / reproducibility check); the
+    # canonical fixed-path files are written explicitly by _aggregate_seeds' caller once
+    # the median seed is chosen, not by whichever seed happens to run last.
+    eval_path = Path(f"data/results/ppo_evaluation_seed{seed}.json")
+    abl_path = Path(f"data/results/ablation_results_seed{seed}.json")
+    eval_res = evaluate_ppo(model, env_factory, cfg, output_path=eval_path)
+    abl = run_ablation(cfg, model, env_factory, output_path=abl_path)
     return {"eval": eval_res, "ablation": abl, "curriculum": train_out["curriculum_history"],
             "best_sharpe": train_out["best_sharpe"], "seed": seed}
 
 
-def _aggregate_seeds(seed_results: list[dict]) -> None:
-    """Log and save cross-seed Sharpe statistics."""
+def _aggregate_seeds(seed_results: list[dict], median_seed: int) -> None:
+    """Log and save cross-seed Sharpe statistics.
+
+    Includes n_meaningful_trades per seed alongside each Sharpe — a Sharpe from a
+    handful of trades over a ~247-day val window carries far less weight than one from
+    hundreds, and the bare ratio alone hid exactly that in the 2026-08 audit (a 9-trade
+    eval read as a headline 1.893 with nothing in the summary to flag it as thin).
+    """
     sharpes = [r["eval"]["marta_ppo"]["sharpe"] for r in seed_results]
+    n_trades = [r["eval"]["marta_ppo"]["n_meaningful_trades"] for r in seed_results]
     seeds = [r["seed"] for r in seed_results]
     summary = {
         "seeds": seeds,
         "sharpes": sharpes,
+        "n_meaningful_trades": n_trades,
         "mean_sharpe": statistics.mean(sharpes),
         "std_sharpe": statistics.stdev(sharpes) if len(sharpes) > 1 else 0.0,
         "min_sharpe": min(sharpes),
         "max_sharpe": max(sharpes),
+        "median_seed": median_seed,
     }
     out = Path("data/results/multi_seed_summary.json")
     out.write_text(json.dumps(summary, indent=2))
     _console.rule("[bold]Multi-Seed Summary")
     _console.print(f"Seeds: {seeds}")
-    _console.print(f"Sharpe per seed: {[f'{s:.3f}' for s in sharpes]}")
+    _console.print(f"Sharpe per seed: {[f'{s:.3f}' for s in sharpes]}  "
+                    f"(n_meaningful_trades: {n_trades})")
     _console.print(f"Mean: {summary['mean_sharpe']:.3f}  Std: {summary['std_sharpe']:.3f}  "
                    f"Range: [{summary['min_sharpe']:.3f}, {summary['max_sharpe']:.3f}]")
     _console.print(f"Results saved → {out}")
@@ -518,6 +548,11 @@ def main() -> None:
     args = parser.parse_args()
 
     config = build_config(args.quick)
+    # P0.3: seed Python random/NumPy/torch globally before anything else runs. The
+    # --seeds sweep re-seeds per-seed inside _run_single_seed; this covers the
+    # single-seed (default) path, which previously relied solely on SB3's internal
+    # PPO(seed=...) handling and was never seeded at the script level.
+    set_seed(config["seed"])
     # Eval-only is BTC-focused (val metrics, ablation, baselines are all BTC) → keep it light.
     if args.eval_only:
         config["all_assets"] = ["BTC_USDT"]
@@ -553,21 +588,48 @@ def main() -> None:
                 res = _run_single_seed(config, seed)
                 mlflow.log_metric("val/sharpe", res["eval"]["marta_ppo"]["sharpe"])
                 seed_results.append(res)
-        _aggregate_seeds(seed_results)
-        # Print summary from the median-Sharpe seed — NOT the best one. A 2026-08 audit
-        # found this used to compute argmax (the single best-performing seed) despite the
-        # comment already claiming "median": with 3 seeds landing at [1.902, 1.201, 0.000]
-        # (mean 1.034, std 0.962 — std nearly as large as the mean), printing the best
-        # seed's full eval/ablation/significance tables gave a badly misleading picture of
-        # "the" result. argsort + middle index is the actual median for an odd seed count;
-        # for an even count this picks the lower of the two middle values (a concrete seed's
+        # Select the median-Sharpe seed — NOT the best one. A 2026-08 audit found this
+        # used to compute argmax (the single best-performing seed) despite the comment
+        # already claiming "median": with 3 seeds landing at [1.902, 1.201, 0.000] (mean
+        # 1.034, std 0.962 — std nearly as large as the mean), printing the best seed's
+        # full eval/ablation/significance tables gave a badly misleading picture of "the"
+        # result. argsort + middle index is the actual median for an odd seed count; for
+        # an even count this picks the lower of the two middle values (a concrete seed's
         # full result dict is needed to print, so there's no seed to interpolate to).
         sharpes = [r["eval"]["marta_ppo"]["sharpe"] for r in seed_results]
         order = np.argsort(sharpes)
         median_idx = int(order[len(order) // 2])
+        median_seed = seed_results[median_idx]["seed"]
+
+        _aggregate_seeds(seed_results, median_seed)
+
+        # Explicitly persist the chosen (median) seed's full eval + ablation to the
+        # canonical fixed paths that every downstream consumer (dashboard, ablation
+        # table, writeup) reads. A 2026-08 audit found this step never existed —
+        # evaluate_ppo/run_ablation wrote to the same fixed path once per seed inside
+        # _run_single_seed, so whichever seed ran LAST silently overwrote the other two.
+        # In that run seed 2 (the worst of three, Sharpe 0.227) ran last and its result
+        # sat in data/results/ablation_results.json — described in CLAUDE.md as the
+        # project's "central research result" — instead of the median seed the code's
+        # own comments already said it intended to report.
+        canonical_eval_path = Path("data/results/ppo_evaluation.json")
+        canonical_abl_path = Path("data/results/ablation_results.json")
+        eval_out = dict(seed_results[median_idx]["eval"])
+        eval_out["_source_seed"] = median_seed
+        eval_out["_selection"] = "median of multi-seed sweep"
+        abl_out = dict(seed_results[median_idx]["ablation"])
+        abl_out["_source_seed"] = median_seed
+        abl_out["_selection"] = "median of multi-seed sweep"
+        canonical_eval_path.write_text(json.dumps(eval_out, indent=2, default=float))
+        canonical_abl_path.write_text(json.dumps(abl_out, indent=2, default=float))
+        logger.success(
+            f"Canonical results (median seed={median_seed}) written to "
+            f"{canonical_eval_path} and {canonical_abl_path}"
+        )
+
         logger.info(
             f"Printing detailed eval/ablation for the MEDIAN seed: "
-            f"seed={seed_results[median_idx]['seed']} sharpe={sharpes[median_idx]:.3f} "
+            f"seed={median_seed} sharpe={sharpes[median_idx]:.3f} "
             f"(all seeds: {[round(s, 3) for s in sharpes]})"
         )
         _print_eval(seed_results[median_idx]["eval"])

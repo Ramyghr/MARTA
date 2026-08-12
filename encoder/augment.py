@@ -66,10 +66,26 @@ def time_warp(window: np.ndarray, p: float = 0.3, max_shift: float = 5.0) -> np.
     return result.astype(np.float32)
 
 
-def augment_window(window: np.ndarray) -> np.ndarray:
-    """Apply all four augmentations sequentially and independently."""
-    x = amplitude_scale(window)
-    x = add_jitter(x)
-    x = channel_mask(x)
-    x = time_warp(x)
+def augment_window(
+    window: np.ndarray,
+    use_amplitude_scale: bool = True,
+    use_jitter: bool = True,
+    use_channel_mask: bool = True,
+    use_time_warp: bool = True,
+) -> np.ndarray:
+    """Apply the enabled augmentations sequentially and independently.
+
+    All four flags default to True, matching the original unconditional behavior
+    exactly — any existing caller that doesn't pass these kwargs is unaffected.
+    The first step always returns a fresh copy (either via amplitude_scale's own
+    copy-or-transform branch, or the explicit .copy() below), so disabling any
+    subset of augmentations never returns a view onto the caller's original array.
+    """
+    x = amplitude_scale(window) if use_amplitude_scale else window.copy()
+    if use_jitter:
+        x = add_jitter(x)
+    if use_channel_mask:
+        x = channel_mask(x)
+    if use_time_warp:
+        x = time_warp(x)
     return x

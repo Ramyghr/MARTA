@@ -39,6 +39,32 @@ _MACRO_ASSETS = {"macro", "EURUSD"}
 _FEAR_GREED_ASSETS = {"BTC_USDT", "ETH_USDT"}
 
 
+def _load_finbert_pipeline(model_path: str):
+    """Try GPU first, fall back to CPU if CUDA isn't available or the model can't
+    actually be used on it (e.g. the GPU's 4GB VRAM already claimed by encoder
+    training or Ollama — a real, observed contention case on this project's dev box).
+
+    torch.cuda.is_available() only confirms a driver/device exists, not that there's
+    free VRAM right now, so this also runs one cheap canary inference before trusting
+    the GPU load — surfaces an OOM here, at process startup, instead of mid-debate.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            try:
+                pipe = hf_pipeline("text-classification", model=model_path, device=0, top_k=None)
+                pipe("canary")
+                logger.info("SentimentAgent: FinBERT loaded on GPU (cuda:0)")
+                return pipe
+            except Exception as exc:
+                logger.warning(f"SentimentAgent: FinBERT GPU load failed ({exc}) — falling back to CPU")
+    except ImportError:
+        pass
+    pipe = hf_pipeline("text-classification", model=model_path, device=-1, top_k=None)
+    logger.info("SentimentAgent: FinBERT loaded on CPU")
+    return pipe
+
+
 class SentimentAgent(BaseAgent):
     name = "SentimentAgent"
 
@@ -50,12 +76,7 @@ class SentimentAgent(BaseAgent):
     ) -> None:
         super().__init__(model=model, temperature=temperature)
         if _TRANSFORMERS_AVAILABLE and _FINBERT_PATH.exists():
-            self._finbert = hf_pipeline(
-                "text-classification",
-                model=str(_FINBERT_PATH),
-                device=-1,
-                top_k=None,
-            )
+            self._finbert = _load_finbert_pipeline(str(_FINBERT_PATH))
         else:
             self._finbert = None
             if not _TRANSFORMERS_AVAILABLE:

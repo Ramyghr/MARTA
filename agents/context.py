@@ -126,6 +126,9 @@ class RegimeContext:
     price_features: dict[str, float]
     window_features: dict[str, float]
     live_headlines: list | None = None  # injected by dashboard live mode
+    upcoming_events: list | None = None  # injected by dashboard live mode — see
+    # pipeline/live/economic_calendar.get_upcoming_events(). None in historical/replay
+    # debates (a past debate can't know the future's economic calendar).
 
 
 def build_regime_context(
@@ -221,11 +224,14 @@ def serialize_context_for_prompt(ctx: RegimeContext, include_regime: bool = True
         f"  {k}: {v:.4f}" for k, v in ctx.window_features.items()
     )
 
+    events_block = _serialize_upcoming_events(ctx.upcoming_events)
+
     if not include_regime:
         return (
             f"Asset: {ctx.asset} | Timestamp: {ctx.timestamp}\n\n"
             f"=== PRICE FEATURES (latest) ===\n{price_lines}\n\n"
             f"=== MARKET CHARACTER (60-candle window) ===\n{window_lines}\n"
+            f"{events_block}"
         )
 
     probs_str = ", ".join(
@@ -239,4 +245,23 @@ def serialize_context_for_prompt(ctx: RegimeContext, include_regime: bool = True
         f"Regime probabilities: {probs_str}\n\n"
         f"=== PRICE FEATURES (latest) ===\n{price_lines}\n\n"
         f"=== MARKET CHARACTER (60-candle window) ===\n{window_lines}\n"
+        f"{events_block}"
     )
+
+
+def _serialize_upcoming_events(events: list | None) -> str:
+    """Compact block for upcoming economic-calendar events (dashboard live mode only —
+    see RegimeContext.upcoming_events). Empty string when there are none, so historical
+    replay debates and quiet stretches don't grow the prompt for nothing."""
+    if not events:
+        return ""
+
+    def _line(e: dict) -> str:
+        base = f"  {e['hours_until']:+.1f}h | {e['currency']} | {e['impact'].upper()} | {e['title']}"
+        fcst, prev = e.get("forecast"), e.get("previous")
+        if fcst or prev:
+            base += f" | fcst={fcst} prev={prev}"
+        return base
+
+    lines = "\n".join(_line(e) for e in events[:8])  # cap prompt growth — soonest-first
+    return f"\n=== UPCOMING ECONOMIC EVENTS ===\n{lines}\n"

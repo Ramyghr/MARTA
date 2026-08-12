@@ -30,7 +30,6 @@ from rich.progress import (
     TimeElapsedColumn,
 )
 from rich.table import Table
-from utils.assets import aligned_path
 from agents.contrarian_agent import ContrarianAgent
 from agents.fund_manager import FundManagerAgent
 from agents.graph import DebateGraph, run_debate
@@ -39,12 +38,12 @@ from agents.risk_agent import RiskAgent
 from agents.schemas import DebateResult
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
+from utils.freshness import load_debate_data
 from utils.logger import logger
 
 _DATA_DIR = Path("data/processed")
 _OUTPUT_DIR = Path("data/debates")
 _OUTPUT_PATH = _OUTPUT_DIR / "debate_results.json"
-_ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 _MLFLOW_EXPERIMENT = "marta_agent_deliberation"
 
 _TARGET_ASSET = "BTC_USDT"
@@ -53,13 +52,10 @@ _N_DOMINANT_REGIMES = 2  # debate in the window's two most frequent BTC regimes
 
 
 def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    regime_stream = pd.read_parquet(_DATA_DIR / "regime_stream.parquet", engine="pyarrow")
-    aligned_dfs: dict[str, pd.DataFrame] = {}
-    for asset in _ASSETS:
-        path = aligned_path(asset, _DATA_DIR)
-        if path.exists():
-            aligned_dfs[asset] = pd.read_parquet(path, engine="pyarrow")
-    return regime_stream, aligned_dfs
+    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4) —
+    raises StaleRegimeStreamError if regime_stream.parquet predates the deployed
+    encoder checkpoint."""
+    return load_debate_data()
 
 
 def _select_weekly_timestamps(

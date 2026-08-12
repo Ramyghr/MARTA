@@ -4,10 +4,12 @@ Master script for MARTA Week 2 — contrastive regime encoder pretraining.
 
 Usage:
     conda run -n marta python run_encoder.py
+    conda run -n marta python run_encoder.py --config configs/encoder_e2_nojittermask.yaml
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -61,7 +63,14 @@ def _print_summary(
 
 
 def main() -> None:
-    encoder_cfg_path = _ROOT / "configs" / "encoder.yaml"
+    parser = argparse.ArgumentParser(description="MARTA encoder contrastive pretraining")
+    parser.add_argument(
+        "--config", default="configs/encoder.yaml",
+        help="Path to the encoder config yaml (default: configs/encoder.yaml, unchanged behavior)",
+    )
+    args = parser.parse_args()
+
+    encoder_cfg_path = _ROOT / args.config
     config = _load_config(encoder_cfg_path)
 
     aligned_path = _ROOT / "data" / "processed" / "all_assets_aligned.parquet"

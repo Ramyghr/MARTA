@@ -20,14 +20,10 @@ date_range:
   # further for crypto (BTC/ETH reach 2026-07-12 via pipeline/fetch_2025.py); forex
   # (EURUSD/XAUUSD) is capped at 2025-12-31 by histdata.com's whole-year-only ZIPs.
   end: "2026-01-01"
-  # 2026-07-13 walk-forward: every split boundary bumped one year (encoder/HMM/RL
-  # train now reaches through 2023, val 2024, test 2025 — see
-  # kaggle_retrain_instructions.md and rl/env.py for the matching splits).
-  train_end: "2023-12-31"
-  val_start: "2024-01-01"
-  val_end: "2024-12-31"
-  test_start: "2025-01-01"
-  test_end: "2025-12-31"
+  # Train/val/test split boundaries used to be duplicated here (and disagreed, in
+  # representation if not in value, with the `model.training` block below and with
+  # rl/env.py). They were never actually read from this block by any code — the
+  # canonical values now live solely in configs/splits.py.
 
 timeframe:
   candle: "1h"
@@ -85,12 +81,11 @@ training:
   early_stopping_patience: 20
   warmup_epochs: 10
   gradient_clip_max_norm: 1.0
-  # Encoder split: train < train_end (through 2023-12-31), val >= val_start.
-  # regime/hmm.py reads the same train_end for its PCA/HMM training cutoff.
+  # Encoder/HMM split boundary now lives solely in configs/splits.py
+  # (TRAIN_END_EXCLUSIVE/VAL_START) — encoder/train.py and regime/hmm.py import it
+  # directly and no longer read train_end/val_start from this file.
   # NOTE: 2025 must NOT reach encoder validation — the Kaggle upload is trimmed
   # to <= 2024-12-31 (see kaggle_retrain_instructions.md) so 2025 stays untouched.
-  train_end: "2024-01-01"
-  val_start: "2024-01-01"
 
 data:
   processed_dir: "data/processed"

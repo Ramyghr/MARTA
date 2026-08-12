@@ -14,6 +14,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 from rl.env import MARTATradingEnv, VAL_END, VAL_END_EXTENDED, VAL_START
 from utils.logger import logger
+from utils.reproducibility import set_seed
 
 _ANNUALIZE = np.sqrt(24 * 365)  # hourly → annual
 _EVAL_SEED = 42  # fixed seed for reproducible evaluation (matches bootstrap_sharpe_ci's seed)
@@ -156,8 +157,7 @@ def run_walk_forward(
     # Fixed seed so a deterministic policy pass is actually reproducible run-to-run.
     # ``env``'s encoder runs on CPU for non-train splits (see build_env_factory), which
     # removes GPU/cuDNN nondeterminism; this seed covers anything else touching torch/np RNG.
-    torch.manual_seed(_EVAL_SEED)
-    np.random.seed(_EVAL_SEED)
+    set_seed(_EVAL_SEED)
     obs, info = env.reset(seed=_EVAL_SEED)
     portfolio_values = [info["portfolio_value"]]
     positions = [info["signed_position"]]
@@ -441,6 +441,7 @@ def evaluate_ppo(
     env_factory: Any,
     config: dict,
     val_end: pd.Timestamp | None = None,
+    output_path: Path | None = None,
 ) -> dict[str, Any]:
     """Full walk-forward evaluation on the validation set with per-regime + baselines.
 
@@ -451,6 +452,14 @@ def evaluate_ppo(
     ----------
     val_end:
         Override the validation end date. Defaults to ``VAL_END`` (2023-12-31).
+    output_path:
+        Where to write the result JSON. Defaults to the fixed ``_RESULTS_PATH``. A
+        2026-08 audit found ``run_rl.py --seeds`` called this once per seed with no
+        path override, so every seed's write clobbered the last one's — the file left
+        on disk was whichever seed happened to run *last*, not the median/best seed
+        the caller intended to report. Callers running a multi-seed sweep must pass a
+        seed-specific path per call and explicitly persist the chosen seed's result to
+        the canonical path afterward (see ``run_rl.py:_run_single_seed``).
     """
     end_label = str(val_end or VAL_END)[:10]
     start_label = str(VAL_START)[:10]
@@ -486,9 +495,10 @@ def evaluate_ppo(
         "val_window": {"start": start_label, "end": end_label},
     }
 
-    _RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _RESULTS_PATH.write_text(json.dumps(result, indent=2, default=float))
-    logger.success(f"Evaluation written to {_RESULTS_PATH}")
+    path = output_path or _RESULTS_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2, default=float))
+    logger.success(f"Evaluation written to {path}")
     return result
 
 

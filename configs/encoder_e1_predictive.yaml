@@ -1,0 +1,89 @@
+# E1-predictive — CPC-style predictive positive pairs (2026-08-12 objective experiment).
+#
+# Copy of configs/encoder.yaml with ONLY the following intentional differences:
+#   - training.positive_pair_mode: "predictive" — the ONE variable under test. Selects
+#     PredictiveContrastiveDataset (encoder/dataset.py): positive = non-overlapping FUTURE
+#     window immediately following the context window, instead of a second augmented view
+#     of the SAME window. See encoder/dataset.py's docstring for the leakage argument.
+#   - training.future_size: 24 — future window length (hours). Ties to the same 24h
+#     evaluation horizon used throughout this investigation.
+#   - training.augment_kwargs: ALL FOUR real augmentations OFF. Unlike SimCLR pairs
+#     (which need augmentation to prevent a trivial "same window = same window" shortcut),
+#     context and future are already different, non-overlapping bars — no such shortcut
+#     exists here, so there's no a-priori reason to carry over a knob already implicated
+#     (jitter) or untested (channel_mask/time_warp) in this new setting. First experiment
+#     tests the pairing change ALONE.
+#   - model.pooling: NOT changed — stays "mean" (config key omitted = default), matching
+#     production, deliberately NOT combined with the last-timestep-pooling change from
+#     the earlier E1 experiments. Isolates positive-pair construction as the only variable
+#     under test, per the "don't combine interventions" principle from that investigation.
+#     (Flagging this explicitly — override to "last" if you'd rather test the combination
+#     first; my recommendation is to keep this run mean-pool-only.)
+#   - training.seed: 42, training.val_end: "2024-12-31" — same as every other local-run
+#     config prepared today, required for the TestSetContaminationError guard.
+#   - data.output_dir, checkpoints.run_tag/save_periodic, mlflow.run_name — isolated
+#     artifacts, identical pattern to configs/encoder_e2_nojittermask.yaml and
+#     configs/encoder_e1_trained_lastpool.yaml.
+#
+# Everything else (architecture, batch_size, lr, weight_decay, max_epochs=200,
+# early_stopping_patience=20, warmup_epochs, gradient_clip_max_norm, assets,
+# convergence thresholds) is IDENTICAL to configs/encoder.yaml, copied verbatim.
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  # pooling: "mean"  (omitted -> default; deliberately not combined with "last")
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  positive_pair_mode: "predictive"
+  future_size: 24
+  augment_kwargs:
+    use_amplitude_scale: false
+    use_jitter: false
+    use_channel_mask: false
+    use_time_warp: false
+
+data:
+  assets:
+    - BTC_USDT
+    - ETH_USDT
+    - EURUSD
+    - XAUUSD
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e1_predictive"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_predictive"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_predictive"
+  save_periodic: true

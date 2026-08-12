@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -20,6 +19,10 @@ from rl.callbacks import CurriculumCallback, EntropyDecayCallback, MLflowCallbac
 from rl.env import CANONICAL_ASSETS, MARTATradingEnv
 from rl.policy import MARTAActorCriticPolicy
 from utils.assets import aligned_path
+from utils.freshness import (
+    StaleRegimeStreamError,
+    check_encoder_regime_stream_freshness,
+)
 from utils.logger import logger
 
 _PROCESSED = Path("data/processed")
@@ -72,40 +75,15 @@ CURRICULUM_PHASES: list[dict] = [
 ]
 
 
-class StaleRegimeStreamError(RuntimeError):
-    """regime_stream.parquet predates the deployed encoder checkpoint."""
-
-
-def check_encoder_regime_stream_freshness(
-    encoder_path: Path = _ENCODER_PATH,
-    regime_stream_path: Path = _REGIME_STREAM_PATH,
-) -> None:
-    """Raise if ``regime_stream.parquet`` was last built before the currently-deployed
-    encoder checkpoint — i.e. the HMM/PCA/regime labels (and anything derived from them,
-    including the debate consensus cache) were fit on embeddings from a DIFFERENT encoder
-    than the one about to be used for training/eval.
-
-    This exact drift happened silently for 6 days (2026-07-14 -> 2026-07-20): a walk-forward
-    retrain swapped in a new best_encoder.pt without regenerating embeddings/HMM/regime_stream
-    to match. Nothing caught it until it was found by inspecting file mtimes by hand.
-    """
-    if not encoder_path.exists() or not regime_stream_path.exists():
-        return  # the reads below raise a clearer FileNotFoundError on a missing file
-    encoder_mtime = encoder_path.stat().st_mtime
-    stream_mtime = regime_stream_path.stat().st_mtime
-    if encoder_mtime > stream_mtime:
-        raise StaleRegimeStreamError(
-            f"{encoder_path} was modified {datetime.fromtimestamp(encoder_mtime)}, which is "
-            f"AFTER {regime_stream_path} ({datetime.fromtimestamp(stream_mtime)}). The regime "
-            f"stream was not regenerated since the encoder last changed — HMM/PCA/regime "
-            f"labels and the debate consensus cache built on it reflect a stale embedding "
-            f"space. Fix: `python regime/regenerate_embeddings.py` then `python run_regime.py` "
-            f"before training or evaluating."
-        )
-
-
 def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTRegimeEncoder]:
-    """Load aligned parquets, the regime stream, and the frozen encoder."""
+    """Load aligned parquets, the regime stream, and the frozen encoder.
+
+    StaleRegimeStreamError/check_encoder_regime_stream_freshness moved to
+    utils/freshness.py (P0.4) so the debate-generation scripts can reuse the same guard
+    without importing this module's SB3/torch training stack. Re-imported above for
+    backward compatibility (nothing currently does `from rl.train import
+    StaleRegimeStreamError`, but this keeps that working if it ever did).
+    """
     check_encoder_regime_stream_freshness()
     assets = config.get("all_assets", CANONICAL_ASSETS)
     aligned_dfs = {
