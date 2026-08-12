@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import type { RegimeState, FundManagerDecision, DebateResult } from "./types";
-import { REGIME_NAMES } from "./types";
+import { persist } from "zustand/middleware";
+import type { RegimeState, FundManagerDecision, DebateResult, IndicatorKey } from "./types";
+import { REGIME_NAMES, INDICATOR_DEFS } from "./types";
 import type { WsStatus } from "./websocket";
 
 export type AppMode = "historical" | "live";
@@ -106,3 +107,47 @@ export const useMARTAStore = create<MARTAStore>((set) => ({
   regimeNames: { ...REGIME_NAMES },
   setRegimeNames: (regimeNames) => set({ regimeNames }),
 }));
+
+// ── Indicator visibility (Settings → Indicators) ──────────────────────────────────
+//
+// Which of the 13 indicator values show up in the Dashboard's Indicators panel. This is
+// a real user preference (not session-local like showContrarian above), so it's a
+// separate persisted store rather than a field on useMARTAStore — localStorage-backed,
+// survives reloads/tab close, no backend round-trip needed since it's pure display state
+// (nothing server-side reads it, unlike approvalMode).
+
+interface IndicatorSettingsStore {
+  visible: Record<IndicatorKey, boolean>;
+  setVisible: (key: IndicatorKey, visible: boolean) => void;
+  showAll: () => void;
+  hideAll: () => void;
+}
+
+const ALL_INDICATOR_KEYS = INDICATOR_DEFS.map((d) => d.key);
+
+function allIndicators(value: boolean): Record<IndicatorKey, boolean> {
+  return Object.fromEntries(ALL_INDICATOR_KEYS.map((k) => [k, value])) as Record<IndicatorKey, boolean>;
+}
+
+export const useIndicatorSettingsStore = create<IndicatorSettingsStore>()(
+  persist(
+    (set) => ({
+      // Default: everything visible — Settings lets the user narrow it down.
+      visible: allIndicators(true),
+      setVisible: (key, value) => set((s) => ({ visible: { ...s.visible, [key]: value } })),
+      showAll: () => set({ visible: allIndicators(true) }),
+      hideAll: () => set({ visible: allIndicators(false) }),
+    }),
+    {
+      name: "marta-indicator-visibility",
+      // Merge stored prefs over current defaults so a newly-added indicator (a future
+      // features.py column) defaults to visible instead of `undefined` for users with an
+      // older persisted blob.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<IndicatorSettingsStore>),
+        visible: { ...current.visible, ...(persisted as IndicatorSettingsStore)?.visible },
+      }),
+    },
+  ),
+);

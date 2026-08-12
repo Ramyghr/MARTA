@@ -24,6 +24,14 @@ interface Props {
   forceLiveRun?: { timestamp: string } | null;
 }
 
+// "Now", floored to the top of the current hour, formatted for a datetime-local input.
+function currentHourLocal(): string {
+  const d = new Date();
+  d.setMinutes(0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`;
+}
+
 const AGENT_COLORS: Record<string, string> = {
   MacroAgent:       "#4a9eff",
   TechnicalAgent:   "#00d4ff",
@@ -497,7 +505,10 @@ export default function DebateStream({ scenarios, asset, dataRange, onDecision, 
             Replay
           </button>
           <button
-            onClick={() => setMode("custom")}
+            onClick={() => {
+              setMode("custom");
+              setCustomDate(currentHourLocal());
+            }}
             className="text-[10px] px-2 py-1 transition-colors border-l border-[#222]"
             style={{ background: mode === "custom" ? "rgba(74,158,255,0.1)" : "transparent", color: mode === "custom" ? "#4a9eff" : "#555" }}
           >

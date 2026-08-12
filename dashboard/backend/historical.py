@@ -16,6 +16,16 @@ ASSET_FILE_MAP = {
     "GOLD":     "XAUUSD_features.parquet",
 }
 
+# Raw (pre-normalize.py, human-scale) indicator columns present in *_features.parquet —
+# see features.py's 13-indicator layout. Exposed per-candle so the dashboard's Indicators
+# panel can show real units (RSI 0-100, ATR in price terms, ...) rather than the 720h
+# rolling z-scores normalize.py produces for model input.
+INDICATOR_COLUMNS = [
+    "atr", "adx", "rsi", "bb_width", "macd_histogram", "obv_raw", "vol_zscore",
+    "realized_vol", "vol_ratio", "return_skew", "return_kurtosis", "autocorr_lag1",
+    "realized_vol_raw",
+]
+
 # yfinance tickers used to backfill traditional assets.
 _YF_TICKERS = {
     "EURUSD": "EURUSD=X",
@@ -204,6 +214,9 @@ def _append_live_candle(asset: str, records: list[dict]) -> list[dict]:
         "regime_label": last["regime_label"] if last else 0,
         "regime_description": last["regime_description"] if last else "",
         "is_live": True,
+        # No indicator computation for a synthetic live-bridge tick — the frontend falls
+        # back to the last candle that does carry indicators (see IndicatorsPanel).
+        "indicators": None,
     }
     return records + [synthetic]
 
@@ -223,6 +236,38 @@ def get_history_range(asset: str, start: str, end: str) -> list[dict]:
         step = len(df) // 2000
         df = df.iloc[::step]
     return _build_records(asset, df)
+
+
+def get_latest_indicators(asset: str) -> dict:
+    """Most recent row that actually carries real indicator values.
+
+    Deliberately NOT "the latest candle" — for any asset with a nontrivial gap between
+    its precomputed *_features.parquet and now (BTC/ETH's `_extend()` live-fills that gap
+    with ccxt/yfinance OHLCV only, per the module comment above; the gap has run to
+    ~700+ hours in practice, i.e. the *entire* 200-300 candle window the dashboard
+    normally displays), every candle in that recent window has null indicators. Scanning
+    backward through the same cached df for the last non-null row finds the real last
+    computed value instead of reporting "no data" for an asset that in fact has plenty —
+    it's just not caught up to the live tick yet.
+    """
+    df = _load(asset)
+    probe_col = "rsi" if "rsi" in df.columns else INDICATOR_COLUMNS[0]
+    valid = df[df[probe_col].notna()] if probe_col in df.columns else df.iloc[0:0]
+    if valid.empty:
+        raise ValueError(f"No indicator data available for {asset}")
+    row = valid.iloc[-1]
+    ts = valid.index[-1]
+    indicators = {
+        col: (float(row[col]) if col in row.index and pd.notna(row[col]) else None)
+        for col in INDICATOR_COLUMNS
+    }
+    age_hours = (pd.Timestamp.now(tz="UTC") - ts).total_seconds() / 3600
+    return {
+        "asset": asset,
+        "timestamp": ts.isoformat(),
+        "age_hours": round(age_hours, 1),
+        "indicators": indicators,
+    }
 
 
 def get_data_range(asset: str) -> dict:
@@ -254,6 +299,13 @@ def _build_records(asset: str, df: pd.DataFrame) -> list[dict]:
     records = []
     for i, (ts, row) in enumerate(df.iterrows()):
         regime_label = regimes[i]["regime_label"] if i < len(regimes) else 0
+        # Extension rows appended by _extend() (live ccxt/yfinance backfill) only carry
+        # OHLCV — indicator columns are reindexed to NaN there (see _extend's docstring),
+        # so those candles legitimately report indicators=None rather than a stale value.
+        indicators = {
+            col: (float(row[col]) if col in row.index and pd.notna(row[col]) else None)
+            for col in INDICATOR_COLUMNS
+        }
         records.append({
             "timestamp":          ts.isoformat(),
             "open":               float(row["open"])            if pd.notna(row.get("open"))   else None,
@@ -263,5 +315,6 @@ def _build_records(asset: str, df: pd.DataFrame) -> list[dict]:
             "volume":             float(row.get("volume", 0))  if pd.notna(row.get("volume")) else 0.0,
             "regime_label":       regime_label,
             "regime_description": REGIME_DESCRIPTIONS.get(regime_label, ""),
+            "indicators":         indicators,
         })
     return records

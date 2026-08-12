@@ -1,3 +1,9 @@
+// Raw (human-scale) indicator values for one candle — see features.py's 13-indicator
+// layout. `null` for a given key means that candle didn't carry it (e.g. a live ccxt/
+// yfinance extension bar, or a synthetic live-bridge tick — indicators aren't computed
+// on the fly for those, only ever loaded from the precomputed *_features.parquet).
+export type IndicatorValues = Partial<Record<IndicatorKey, number | null>>;
+
 export interface Candle {
   timestamp: string;
   open: number;
@@ -8,7 +14,50 @@ export interface Candle {
   regime_label: number;
   regime_description?: string;
   is_live?: boolean;
+  indicators?: IndicatorValues | null;
 }
+
+export type IndicatorKey =
+  | "atr" | "adx" | "rsi" | "bb_width" | "macd_histogram" | "obv_raw" | "vol_zscore"
+  | "realized_vol" | "vol_ratio" | "return_skew" | "return_kurtosis" | "autocorr_lag1"
+  | "realized_vol_raw";
+
+export interface LatestIndicators {
+  asset: string;
+  /** Timestamp of the last row that actually has computed indicators — NOT "now". See
+   * historical.get_latest_indicators: recent candles are frequently still inside an
+   * OHLCV-only live-extension window with every indicator null. */
+  timestamp: string;
+  age_hours: number;
+  indicators: IndicatorValues;
+}
+
+export interface IndicatorDef {
+  key: IndicatorKey;
+  label: string;
+  description: string;
+  /** Fixed decimal places for display; RSI/ADX etc. read better with fewer. */
+  decimals: number;
+}
+
+// Mirrors CLAUDE.md's 13 z-scored-at-normalize indicators (features.py output, pre-
+// normalize.py) — the raw, human-scale values, not the 720h rolling z-scores the model
+// actually trains on.
+export const INDICATOR_DEFS: IndicatorDef[] = [
+  { key: "rsi",              label: "RSI",              description: "Relative Strength Index (14)", decimals: 1 },
+  { key: "adx",               label: "ADX",              description: "Average Directional Index (trend strength)", decimals: 1 },
+  { key: "atr",               label: "ATR",              description: "Average True Range (volatility, price units)", decimals: 2 },
+  { key: "bb_width",          label: "BB Width",         description: "Bollinger Band width", decimals: 4 },
+  { key: "macd_histogram",    label: "MACD Histogram",   description: "MACD − signal line", decimals: 3 },
+  { key: "obv_raw",           label: "OBV",              description: "On-Balance Volume (cumulative)", decimals: 0 },
+  { key: "vol_zscore",        label: "Volume Z-Score",   description: "Volume, 720h rolling z-score", decimals: 2 },
+  { key: "realized_vol",      label: "Realized Vol",     description: "Annualized realized volatility", decimals: 4 },
+  { key: "realized_vol_raw",  label: "Realized Vol (raw)", description: "Unnormalized realized vol — the March-2020 crash signal", decimals: 4 },
+  { key: "vol_ratio",         label: "Volume Ratio",     description: "Volume vs. its rolling average", decimals: 2 },
+  { key: "return_skew",       label: "Return Skew",      description: "Rolling skewness of returns", decimals: 3 },
+  { key: "return_kurtosis",   label: "Return Kurtosis",  description: "Rolling kurtosis of returns", decimals: 3 },
+  { key: "autocorr_lag1",     label: "Autocorrelation",  description: "Lag-1 return autocorrelation", decimals: 3 },
+];
 
 export interface AssetInfo {
   id: string;

@@ -191,6 +191,17 @@ def get_history_range(asset: str, start: str = Query(...), end: str = Query(...)
     return {"candles": historical.get_history_range(asset, start, end)}
 
 
+@app.get("/api/indicators/{asset}/latest")
+def get_latest_indicators(asset: str):
+    """Latest real (non-extension) indicator values — see historical.get_latest_indicators
+    for why this is not simply "the latest candle": recent candles are frequently still
+    inside the OHLCV-only live-extension window and would report every indicator as null."""
+    try:
+        return historical.get_latest_indicators(asset)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @app.get("/api/portfolio")
 def get_portfolio():
     return portfolio_service.get_portfolio()

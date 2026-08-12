@@ -18,6 +18,34 @@ MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.
 # the event loop free while it runs rather than promising concurrency the GPU can't give.
 _debate_executor = ThreadPoolExecutor(max_workers=1)
 
+# Live news feed for SentimentAgent, used only by stream_debate_live() below (live
+# dashboard debates). Historical/replay debates (run_debate.py etc.) deliberately keep
+# SentimentAgent() with no live_feed — reproducibility on the static 2018-2021 cache.
+# Lazily constructed (loads its own FinBERT instance) and polling is started once, in
+# the background, the first time a live debate actually runs — not at import time.
+_news_feed = None
+_news_feed_polling_started = False
+
+
+def _get_news_feed():
+    global _news_feed, _news_feed_polling_started
+    if _news_feed is None:
+        import sys
+        sys.path.insert(0, str(MARTA_ROOT))
+        from pipeline.live.news import LiveNewsFeed
+        _news_feed = LiveNewsFeed()
+    if not _news_feed_polling_started:
+        _news_feed_polling_started = True
+        try:
+            asyncio.create_task(_news_feed.start_polling())
+        except RuntimeError:
+            # No running event loop (e.g. called from a sync context) — get_sentiment()
+            # falls back to a synchronous fetch-if-empty on first use, so this is a
+            # freshness nice-to-have, not a hard requirement.
+            _news_feed_polling_started = False
+    return _news_feed
+
+
 _debates: list[dict] | None = None
 
 
@@ -218,9 +246,24 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
 
         context = build_regime_context(ts, asset, regime_stream_df, aligned_df)
 
+        # Upcoming economic-calendar events — narrative context for every agent
+        # (serialize_context_for_prompt) + RiskAgent's quantitative position throttle.
+        # Never blocks a debate on a feed hiccup.
+        try:
+            from pipeline.live.economic_calendar import get_upcoming_events
+            context.upcoming_events = get_upcoming_events(asset, hours_ahead=48)
+        except Exception as exc:
+            logger.warning(f"Economic calendar fetch failed for {asset}: {exc}")
+
+        try:
+            sentiment_agent = SentimentAgent(live_feed=_get_news_feed())
+        except Exception as exc:
+            logger.warning(f"Live news feed unavailable ({exc}) — SentimentAgent falls back to static cache")
+            sentiment_agent = SentimentAgent()
+
         graph = DebateGraph(
             MacroAgent(), TechnicalAgent(), RiskAgent(),
-            FundManagerAgent(), SentimentAgent(), ContrarianAgent(),
+            FundManagerAgent(), sentiment_agent, ContrarianAgent(),
         )
 
         # Stream R1 thinking indicators

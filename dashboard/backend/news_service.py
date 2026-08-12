@@ -9,12 +9,25 @@ _headlines: list[dict] | None = None
 
 
 def _load() -> list[dict]:
+    """Load the static 2018-2021 news cache and FinBERT-score it once per process.
+
+    This used to ship with no `sentiment` field at all — NewsPanel.tsx's client-side
+    sentimentFromText() keyword-match filled the gap whenever `liveMode` was off,
+    same crude-heuristic problem the live panel had (see news_live.py's fix). Reuses
+    news_live's FinBERT singleton rather than loading a fourth model instance into this
+    process; scored once here since the cache is static (109 headlines, never grows on
+    its own) — no TTL/refresh needed the way the live feeds need one.
+    """
     global _headlines
     if _headlines is None:
         path = MARTA_ROOT / "data" / "news_cache.json"
         if path.exists():
             with open(path) as f:
                 _headlines = json.load(f)["headlines"]
+            import news_live
+            labels = news_live._finbert_sentiment_batch([h["headline"] for h in _headlines])
+            for h, label in zip(_headlines, labels):
+                h["sentiment"] = label
         else:
             _headlines = []
     return _headlines

@@ -12,6 +12,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { ActionBadge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LearningPanel } from "@/components/LearningPanel";
+import { IndicatorsPanel } from "@/components/IndicatorsPanel";
 import { MartaWebSocket, fetchApi } from "@/lib/websocket";
 import { api } from "@/lib/api";
 import { useMARTAStore } from "@/lib/store";
@@ -352,6 +353,18 @@ export default function DashboardPage() {
           </Panel>
         </div>
       </div>
+
+      <Panel
+        title="Indicator Values"
+        className="mt-2 h-56 shrink-0"
+        actions={
+          <Link href="/settings" className="flex items-center gap-1 text-[10px] text-[#4a9eff] hover:text-[#6db4ff] transition-colors">
+            Configure <ArrowRight size={11} />
+          </Link>
+        }
+      >
+        <IndicatorsPanel asset={selectedAsset} />
+      </Panel>
 
       <LearningPanel>
         The regime encoder compresses 60 hours × 14 features into a 128-dim fingerprint. The HMM

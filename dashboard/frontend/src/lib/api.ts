@@ -3,7 +3,7 @@ import type {
   AssetInfo, RegimeState, Candle, Portfolio, Scenario, PositionState,
   TradeReasoning, TradeWithReasoning, TradeOutcomeStats, Notification,
   LiveSignal, TradeEntry, PendingTrade, AccountState,
-  StockTwitsMessage, FearGreedIndex, AlpacaOrder,
+  StockTwitsMessage, FearGreedIndex, AlpacaOrder, LatestIndicators,
 } from "./types";
 
 export interface AblationResults {
@@ -167,6 +167,7 @@ export const api = {
   getHistoryRange: (asset: string, start: string, end: string) =>
     fetchApi<{ candles: Candle[] }>(`/api/history/${asset}/range?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`),
   getDataRange: (asset: string) => fetchApi<{ asset: string; start: string; end: string; n_rows: number }>(`/api/data-range/${asset}`),
+  getLatestIndicators: (asset: string) => fetchApi<LatestIndicators>(`/api/indicators/${asset}/latest`),
   getPortfolio: () => fetchApi<Portfolio>("/api/portfolio"),
   getPositions: () => fetchApi<PositionState>("/api/rl/positions"),
   getDebates: () => fetchApi<{ debates: DebateListItem[] }>("/api/debates"),

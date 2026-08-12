@@ -8,8 +8,9 @@ import { Spinner } from "@/components/ui/Spinner";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { LearningPanel } from "@/components/LearningPanel";
 import { fetchApi, API_URL, WS_URL } from "@/lib/websocket";
-import { useMARTAStore } from "@/lib/store";
+import { useMARTAStore, useIndicatorSettingsStore } from "@/lib/store";
 import { api } from "@/lib/api";
+import { INDICATOR_DEFS } from "@/lib/types";
 import type { SystemStatus, SystemModels } from "@/lib/api";
 
 interface AssetFreshness {
@@ -340,6 +341,59 @@ function ExecutionControlsSection() {
   );
 }
 
+// ── Section 3c — Indicator Visibility ──────────────────────────────────────────
+
+function IndicatorVisibilitySection() {
+  const visible = useIndicatorSettingsStore((s) => s.visible);
+  const setVisible = useIndicatorSettingsStore((s) => s.setVisible);
+  const showAll = useIndicatorSettingsStore((s) => s.showAll);
+  const hideAll = useIndicatorSettingsStore((s) => s.hideAll);
+  const shownCount = INDICATOR_DEFS.filter((d) => visible[d.key]).length;
+
+  return (
+    <div className="flex flex-col gap-2 text-[11px]">
+      <div className="flex items-center justify-between shrink-0">
+        <span className="text-[10px] text-[#444]">{shownCount}/{INDICATOR_DEFS.length} shown on the Dashboard</span>
+        <div className="flex items-center gap-2">
+          <button onClick={showAll} className="text-[10px] px-2 py-1 rounded border border-[#2a2a2a] text-[#666] hover:text-[#00ff7f] hover:border-[#00ff7f44] transition-colors">
+            Show All
+          </button>
+          <button onClick={hideAll} className="text-[10px] px-2 py-1 rounded border border-[#2a2a2a] text-[#666] hover:text-[#ff3737] hover:border-[#ff373744] transition-colors">
+            Hide All
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-col">
+        {INDICATOR_DEFS.map((d) => {
+          const on = visible[d.key] ?? true;
+          return (
+            <label key={d.key} className="flex items-center justify-between gap-2 py-1.5 border-b border-[#161616] last:border-0 cursor-pointer">
+              <div className="min-w-0">
+                <div className="text-[#999] truncate">{d.label}</div>
+                <div className="text-[10px] text-[#3a3a3a] truncate">{d.description}</div>
+              </div>
+              <button
+                onClick={() => setVisible(d.key, !on)}
+                className="relative w-9 h-5 rounded-full transition-colors shrink-0"
+                style={{ background: on ? "#00ff7f33" : "#1a1a1a" }}
+              >
+                <span
+                  className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+                  style={{ left: on ? 18 : 2, background: on ? "#00ff7f" : "#555" }}
+                />
+              </button>
+            </label>
+          );
+        })}
+      </div>
+      <div className="text-[10px] text-[#3a3a3a] leading-relaxed border-t border-[#161616] pt-2">
+        Controls the Dashboard&apos;s &ldquo;Indicator Values&rdquo; panel. Saved to this browser
+        (localStorage) — not synced across devices.
+      </div>
+    </div>
+  );
+}
+
 // ── Section 4 — System Status ──────────────────────────────────────────────────
 
 function latencyColor(ms: number | null): string {
@@ -418,6 +472,7 @@ export default function SettingsPage() {
         <Panel title="Model Configuration"><ModelConfigSection /></Panel>
         <Panel title="Agent Configuration"><AgentConfigSection /></Panel>
         <Panel title="Execution Controls"><ExecutionControlsSection /></Panel>
+        <Panel title="Indicator Visibility"><IndicatorVisibilitySection /></Panel>
         <Panel title="System Status"><SystemStatusSection /></Panel>
       </div>
 
