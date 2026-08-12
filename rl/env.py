@@ -78,6 +78,13 @@ ASSET_ID_DIM = 4  # one-hot over CANONICAL_ASSETS — see module docstring, adde
 STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156
 N_POSITION_SLOTS = 4  # first 4 portfolio dims hold per-asset signed positions
 
+# obs_mode="raw"/"raw_regime" (added 2026-08-12, raw-feature-baseline pivot — see project
+# memory: the contrastive encoder never beat raw_14 features on predictability). Replaces
+# the 128-dim encoder slot with the flattened 60x14 raw feature window itself — zero
+# learned compression. window_size=60, 14 features/bar (see rl/env.py's _arrays, which
+# already holds exactly this window before it's ever passed to the encoder).
+RAW_WINDOW_DIM = 60 * 14  # 840
+
 # Derived from configs/splits.py (the canonical source — see that module's docstring).
 # TRAIN_END/VAL_END keep the historical inclusive "day before the exclusive cutoff,
 # 23:59:59" form so every existing `ts <= TRAIN_END`/`ts <= VAL_END` comparison in this
@@ -206,7 +213,7 @@ class MARTATradingEnv(gym.Env):
         assets: list[str],
         aligned_dfs: dict[str, pd.DataFrame],
         regime_stream_df: pd.DataFrame,
-        encoder: TFTRegimeEncoder,
+        encoder: TFTRegimeEncoder | None,
         debate_results: list[dict] | None,
         initial_capital: float = 10_000.0,
         window_size: int = 60,
@@ -216,6 +223,14 @@ class MARTATradingEnv(gym.Env):
         device: str = "cpu",
         # --- additive options (not part of the core spec interface) ---
         split: Literal["train", "val", "all"] = "train",
+        # obs_mode (2026-08-12, raw-feature-baseline pivot):
+        #   "encoder"     - default, exact prior behavior. 128-dim encoder embedding slot.
+        #   "raw"         - replaces the regime slot with the flattened 60x14 raw window
+        #                   (840-dim by default). `encoder` may be None in this mode.
+        #   "raw_regime"  - "raw" plus the regime probability vector (dim = however many
+        #                   regime_prob_* columns `regime_stream_df` has) appended after
+        #                   the raw window. `encoder` may be None in this mode too.
+        obs_mode: Literal["encoder", "raw", "raw_regime"] = "encoder",
         sequential: bool = False,
         max_steps: int = 2000,
         zero_regime: bool = False,
@@ -269,7 +284,10 @@ class MARTATradingEnv(gym.Env):
         self.assets = list(assets)
         self.aligned_dfs = aligned_dfs
         self.regime_stream_df = regime_stream_df
-        self.encoder = encoder.to(device).eval()
+        self.obs_mode = obs_mode
+        if obs_mode == "encoder" and encoder is None:
+            raise ValueError("obs_mode='encoder' requires a non-None encoder")
+        self.encoder = encoder.to(device).eval() if encoder is not None else None
         self.initial_capital = float(initial_capital)
         self.window_size = int(window_size)
         self.transaction_cost = float(transaction_cost)
@@ -287,6 +305,13 @@ class MARTATradingEnv(gym.Env):
         self.max_drawdown_termination = float(max_drawdown_termination)
         self.benchmark_relative = bool(benchmark_relative)
 
+        # regime_prob_* column count — dynamic, not hardcoded, so this env works with
+        # any HMM's regime_stream_df (n_states=4 production, n_states=6 raw-baseline, ...).
+        self._regime_prob_cols = [
+            c for c in regime_stream_df.columns if c.startswith("regime_prob_")
+        ]
+        self._n_regime_prob_dims = len(self._regime_prob_cols)
+
         # Per-asset cached arrays: raw feature matrix, returns, vol, cvar, valid starts.
         self._arrays: dict[str, np.ndarray] = {}
         self._returns: dict[str, np.ndarray] = {}
@@ -294,6 +319,7 @@ class MARTATradingEnv(gym.Env):
         self._index: dict[str, pd.DatetimeIndex] = {}
         self._valid_starts: dict[str, np.ndarray] = {}
         self._regime_labels: dict[str, np.ndarray] = {}
+        self._regime_probs: dict[str, np.ndarray] = {}
         for asset in CANONICAL_ASSETS:
             if asset in aligned_dfs:
                 self._prepare_asset(asset)
@@ -301,8 +327,18 @@ class MARTATradingEnv(gym.Env):
         # Consensus lookup keyed by (asset, timestamp) → 16-dim vector.
         self._consensus_lookup = self._build_consensus_lookup(debate_results)
 
+        # Observation dim depends on obs_mode — see module docstring for the three modes.
+        if self.obs_mode == "encoder":
+            obs_dim = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156, == STATE_DIM
+        elif self.obs_mode == "raw":
+            obs_dim = self.window_size * 14 + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+        else:  # "raw_regime"
+            obs_dim = (
+                self.window_size * 14 + self._n_regime_prob_dims
+                + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+            )
         self.observation_space = spaces.Box(
-            low=-10.0, high=10.0, shape=(STATE_DIM,), dtype=np.float32
+            low=-10.0, high=10.0, shape=(obs_dim,), dtype=np.float32
         )
         # Flattened Box action (training interface for SB3).
         self.action_space = spaces.Box(
@@ -343,6 +379,8 @@ class MARTATradingEnv(gym.Env):
         self._index[asset] = df.index
         self._vol[asset] = precompute_vol_forecast(df, asset)
         self._regime_labels[asset] = self._build_regime_label_series(asset, df.index)
+        if self.obs_mode == "raw_regime":
+            self._regime_probs[asset] = self._build_regime_prob_series(asset, df.index)
 
         ts = df.index
         n = len(df)
@@ -386,6 +424,20 @@ class MARTATradingEnv(gym.Env):
         aligned = sub.reindex(index, method="pad")  # forward-fill only — never use future labels
         return aligned.fillna(-1).to_numpy(dtype=np.int64)
 
+    def _build_regime_prob_series(
+        self, asset: str, index: pd.DatetimeIndex
+    ) -> np.ndarray:
+        """Same forward-fill contract as _build_regime_label_series, but for the full
+        regime_prob_* vector (used by obs_mode='raw_regime'). Missing rows -> all-zero
+        (a flat/uninformative prior), never a future value."""
+        n = self._n_regime_prob_dims
+        sub = self.regime_stream_df[self.regime_stream_df["asset"] == asset]
+        if sub.empty or n == 0:
+            return np.zeros((len(index), max(n, 1)), dtype=np.float32)
+        sub = sub.set_index("timestamp")[self._regime_prob_cols].sort_index()
+        aligned = sub.reindex(index, method="pad")
+        return aligned.fillna(0.0).to_numpy(dtype=np.float32)
+
     def _build_consensus_lookup(
         self, debate_results: list[dict] | None
     ) -> dict[tuple[str, pd.Timestamp], np.ndarray]:
@@ -426,6 +478,20 @@ class MARTATradingEnv(gym.Env):
             emb = self.encoder.encode(tensor)  # (1, 128)
         return emb.squeeze(0).cpu().numpy().astype(np.float32)
 
+    def _raw_window_vec(self, asset: str, t: int) -> np.ndarray:
+        """Flattened (window_size, 14) raw feature window — zero learned compression.
+        Used by obs_mode='raw'/'raw_regime'. Same window slice _encode_window feeds the
+        encoder, just returned flat instead of passed through TFTRegimeEncoder."""
+        window = self._arrays[asset][t - self.window_size + 1 : t + 1]  # (60, 14)
+        return window.reshape(-1).astype(np.float32)  # (840,)
+
+    def _regime_prob_vec(self, asset: str, t: int) -> np.ndarray:
+        if self.zero_regime:
+            return np.zeros(self._n_regime_prob_dims, dtype=np.float32)
+        arr = self._regime_probs[asset]
+        idx = min(t, len(arr) - 1)
+        return arr[idx]
+
     def _consensus_vec(self, asset: str, t: int) -> np.ndarray:
         if self.zero_consensus:
             return np.zeros(CONSENSUS_DIM, dtype=np.float32)
@@ -452,11 +518,19 @@ class MARTATradingEnv(gym.Env):
         return vec
 
     def _build_observation(self) -> np.ndarray:
-        regime = self._encode_window(self._asset, self._t)
         consensus = self._consensus_vec(self._asset, self._t)
         portfolio = self._portfolio_vec(self._asset, self._t)
         asset_id = self._asset_id_vec(self._asset)
-        obs = np.concatenate([regime, consensus, portfolio, asset_id]).astype(np.float32)
+        if self.obs_mode == "encoder":
+            regime_block = [self._encode_window(self._asset, self._t)]
+        elif self.obs_mode == "raw":
+            regime_block = [self._raw_window_vec(self._asset, self._t)]
+        else:  # "raw_regime"
+            regime_block = [
+                self._raw_window_vec(self._asset, self._t),
+                self._regime_prob_vec(self._asset, self._t),
+            ]
+        obs = np.concatenate([*regime_block, consensus, portfolio, asset_id]).astype(np.float32)
         return np.clip(obs, -10.0, 10.0)
 
     def _current_drawdown(self) -> float:

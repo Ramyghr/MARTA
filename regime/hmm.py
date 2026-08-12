@@ -219,10 +219,14 @@ def generate_regime_stream(
     timestamps: pd.DataFrame,
     asset_labels: Optional[np.ndarray],
     hmm_model: GaussianHMM,
-    pca: PCA,
+    pca: Optional[PCA],
 ) -> pd.DataFrame:
-    """Apply PCA + HMM to full embeddings; return labelled DataFrame."""
-    emb_reduced = pca.transform(embeddings.astype(np.float64))
+    """Apply PCA (if given) + HMM to full embeddings; return labelled DataFrame.
+
+    pca=None means the HMM was fit directly on `embeddings` with no reduction
+    (raw-feature baseline mode — see run_hmm_pipeline's pca_n_components).
+    """
+    emb_reduced = pca.transform(embeddings.astype(np.float64)) if pca is not None else embeddings.astype(np.float64)
 
     regime_labels = hmm_model.predict(emb_reduced)
     regime_probs = hmm_model.predict_proba(emb_reduced)
@@ -245,11 +249,24 @@ def generate_regime_stream(
     return df
 
 
-def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict[str, Any]:
+def run_hmm_pipeline(
+    config: dict,
+    force_n_states: Optional[int] = None,
+    checkpoint_dir: Optional[Path] = None,
+    pca_n_components: Optional[int] = 16,
+) -> dict[str, Any]:
     """
     Orchestrate the full Week 3 HMM pipeline.
 
     force_n_states: skip BIC search, fit only this n_states (see fit_hmm_bic docstring).
+    checkpoint_dir: where hmm_model.pkl/pca_model.pkl/bic_results.json are written.
+        Defaults to regime/checkpoints/ (production location) — pass an isolated path
+        for experimental runs so they don't overwrite the production HMM/PCA.
+    pca_n_components: PCA dimensionality before the HMM. Defaults to 16 (production
+        behavior, unchanged). Pass None to skip PCA entirely and fit the HMM directly
+        on `embeddings` as-is — for a raw-feature baseline where embeddings.npy is
+        already low-dimensional (e.g. 14 raw features) and PCA would either fail
+        (n_components > n_features) or be pointless.
 
     Returns dict with keys:
         regime_df   : pd.DataFrame  — full regime probability stream
@@ -315,8 +332,14 @@ def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict
     mlflow.log_metric("n_train_samples", n_train)
     mlflow.log_metric("n_total_samples", n_total)
 
-    # Step 1 — PCA (16 dims; fit on training rows only to avoid leakage)
-    pca, emb_reduced = fit_pca(embeddings, train_mask, n_components=16)
+    # Step 1 — PCA (fit on training rows only to avoid leakage), or skip entirely
+    # when pca_n_components is None (raw-feature baseline mode).
+    if pca_n_components is not None:
+        pca, emb_reduced = fit_pca(embeddings, train_mask, n_components=pca_n_components)
+    else:
+        logger.info("pca_n_components=None — skipping PCA, fitting HMM directly on embeddings")
+        pca = None
+        emb_reduced = embeddings.astype(np.float64)
 
     # Step 2 — BIC selection (training data only)
     _train_model, best_n, bic_results = fit_hmm_bic(
@@ -341,10 +364,11 @@ def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict
         )
 
     # save checkpoints
-    ckpt_dir = _ROOT / "regime" / "checkpoints"
+    ckpt_dir = checkpoint_dir or (_ROOT / "regime" / "checkpoints")
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     joblib.dump(final_hmm, ckpt_dir / "hmm_model.pkl")
-    joblib.dump(pca, ckpt_dir / "pca_model.pkl")
+    if pca is not None:
+        joblib.dump(pca, ckpt_dir / "pca_model.pkl")
     logger.success(f"Saved checkpoints → {ckpt_dir}")
 
     # Step 4 — regime probability stream
@@ -361,8 +385,10 @@ def run_hmm_pipeline(config: dict, force_n_states: Optional[int] = None) -> dict
     with open(bic_json_path, "w") as fh:
         json.dump({str(k): v for k, v in bic_results.items()}, fh, indent=2)
 
-    for path in [ckpt_dir / "hmm_model.pkl", ckpt_dir / "pca_model.pkl",
-                 out_path, bic_json_path]:
+    artifact_paths = [ckpt_dir / "hmm_model.pkl", out_path, bic_json_path]
+    if pca is not None:
+        artifact_paths.append(ckpt_dir / "pca_model.pkl")
+    for path in artifact_paths:
         mlflow.log_artifact(str(path))
 
     return {

@@ -75,7 +75,7 @@ CURRICULUM_PHASES: list[dict] = [
 ]
 
 
-def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTRegimeEncoder]:
+def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTRegimeEncoder | None]:
     """Load aligned parquets, the regime stream, and the frozen encoder.
 
     StaleRegimeStreamError/check_encoder_regime_stream_freshness moved to
@@ -83,15 +83,33 @@ def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTR
     without importing this module's SB3/torch training stack. Re-imported above for
     backward compatibility (nothing currently does `from rl.train import
     StaleRegimeStreamError`, but this keeps that working if it ever did).
+
+    config["obs_mode"] (default "encoder", raw-feature-baseline pivot 2026-08-12):
+        "encoder"     - unchanged behavior: loads best_encoder.pt (frozen), production
+                         regime_stream.parquet, and runs the freshness guard.
+        "raw"/"raw_regime" - encoder is NOT loaded (returns None; MARTATradingEnv doesn't
+                         need it in these modes) and the freshness guard is skipped (it's
+                         encoder-vs-regime_stream staleness, meaningless with no encoder).
+                         regime_stream is read from config["regime_stream_path"] if set
+                         (e.g. data/processed/raw_baseline/regime_stream.parquet for
+                         raw_regime), else falls back to the production path (irrelevant
+                         content for "raw" mode, which never reads it).
     """
-    check_encoder_regime_stream_freshness()
+    obs_mode = config.get("obs_mode", "encoder")
     assets = config.get("all_assets", CANONICAL_ASSETS)
     aligned_dfs = {
         a: pd.read_parquet(aligned_path(a, _PROCESSED), engine="pyarrow")
         for a in assets
     }
-    regime_stream_df = pd.read_parquet(_REGIME_STREAM_PATH, engine="pyarrow")
+    regime_stream_path = Path(config.get("regime_stream_path", _REGIME_STREAM_PATH))
+    regime_stream_df = pd.read_parquet(regime_stream_path, engine="pyarrow")
 
+    if obs_mode != "encoder":
+        logger.info(f"obs_mode={obs_mode!r} — skipping encoder load and freshness guard "
+                    f"(no encoder involved in this mode)")
+        return aligned_dfs, regime_stream_df, None
+
+    check_encoder_regime_stream_freshness()
     device = config["device"]
     encoder = TFTRegimeEncoder(input_dim=14, hidden_dim=128)
     ckpt = torch.load(_ENCODER_PATH, map_location=device, weights_only=True)
@@ -112,7 +130,7 @@ def load_debate_results() -> list[dict] | None:
 def build_env_factory(
     aligned_dfs: dict[str, pd.DataFrame],
     regime_stream_df: pd.DataFrame,
-    encoder: TFTRegimeEncoder,
+    encoder: TFTRegimeEncoder | None,
     debate_results: list[dict] | None,
     config: dict,
 ) -> Callable[..., MARTATradingEnv]:
@@ -150,7 +168,11 @@ def build_env_factory(
         # after a CUDA train_env would silently drag the train_env's encoder to CPU too,
         # crashing the next GPU step). Deep-copy whenever this env's resolved device
         # differs from config["device"] so eval envs never mutate the training encoder.
-        env_encoder = encoder if resolved_device == config["device"] else copy.deepcopy(encoder)
+        # encoder=None (obs_mode="raw"/"raw_regime") skips this entirely — nothing to copy.
+        if encoder is None:
+            env_encoder = None
+        else:
+            env_encoder = encoder if resolved_device == config["device"] else copy.deepcopy(encoder)
         return MARTATradingEnv(
             assets=assets or ["BTC_USDT"],
             aligned_dfs=aligned_dfs,
@@ -166,6 +188,7 @@ def build_env_factory(
             split=split,
             sequential=sequential,
             max_steps=config["max_episode_steps"],
+            obs_mode=config.get("obs_mode", "encoder"),
             zero_regime=zero_regime,
             zero_consensus=zero_consensus,
             idle_penalty=idle_penalty,
