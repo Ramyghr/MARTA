@@ -101,8 +101,9 @@ def multi_horizon_report(X_train, X_val, y_train_ret, y_val_ret, name: str, hori
 def run_multi_horizon(shared: dict[str, Any]) -> list[dict[str, Any]]:
     _console.rule("[bold]Item 3 — multi-horizon predictability (1h/4h/12h/24h): raw vs encoder embedding")
     df = shared["df"]
-    train_idx = _valid_indices(df.index, "train")
-    val_idx = _valid_indices(df.index, "val")
+    rc = shared.get("require_contiguous", False)
+    train_idx = _valid_indices(df.index, "train", require_contiguous=rc, max_horizon=max(_HORIZONS))
+    val_idx = _valid_indices(df.index, "val", require_contiguous=rc, max_horizon=max(_HORIZONS))
 
     X_train_simple = build_simple_features(df, train_idx)
     X_val_simple = build_simple_features(df, val_idx)
@@ -149,8 +150,9 @@ def run_multi_horizon(shared: dict[str, Any]) -> list[dict[str, Any]]:
 def run_reconstruction(shared: dict[str, Any]) -> dict[str, Any]:
     _console.rule("[bold]Item 4/6 — reconstruction: Z(128-d embedding) -> raw 14 features, and raw -> Z")
     df = shared["df"]
-    train_idx = _valid_indices(df.index, "train")
-    val_idx = _valid_indices(df.index, "val")
+    rc = shared.get("require_contiguous", False)
+    train_idx = _valid_indices(df.index, "train", require_contiguous=rc, max_horizon=0)
+    val_idx = _valid_indices(df.index, "val", require_contiguous=rc, max_horizon=0)
 
     X_train_simple = build_simple_features(df, train_idx)
     X_val_simple = build_simple_features(df, val_idx)
@@ -234,7 +236,7 @@ def run_reconstruction(shared: dict[str, Any]) -> dict[str, Any]:
 def run_collapse_diagnostics(shared: dict[str, Any]) -> dict[str, Any]:
     _console.rule("[bold]Item 5 — embedding collapse statistics")
     df = shared["df"]
-    val_idx = _valid_indices(df.index, "val")
+    val_idx = _valid_indices(df.index, "val", require_contiguous=shared.get("require_contiguous", False), max_horizon=0)
     Z = build_marta_features(df, val_idx, shared["encoder"], device="cpu")[:, :REGIME_DIM]
 
     per_dim_mean = Z.mean(axis=0)
@@ -339,14 +341,28 @@ def main() -> None:
         help="Suffix for the output json filename (e.g. 'e2_best') so results from "
              "different checkpoints don't overwrite each other.",
     )
+    parser.add_argument(
+        "--file-suffix", default="_aligned",
+        help="Data source suffix (default '_aligned', exact prior behavior). Pass "
+             "'_normalized' to read the pre-alignment, gap-free file — see "
+             "encoder/train.py's _load_asset_split docstring. Should be paired with "
+             "--require-contiguous.",
+    )
+    parser.add_argument(
+        "--require-contiguous", action="store_true",
+        help="Reject any window/label whose span isn't genuinely hourly-contiguous "
+             "(2026-08-14 gap-corruption fix). Default off preserves exact prior results.",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(_SEED)
     np.random.seed(_SEED)
 
     encoder_path = Path(args.encoder_checkpoint) if args.encoder_checkpoint else None
-    shared = load_shared_data(device="cpu", encoder_path=encoder_path)
-    logger.info(f"Evaluating encoder checkpoint: {shared['encoder_path']}")
+    shared = load_shared_data(device="cpu", encoder_path=encoder_path, file_suffix=args.file_suffix)
+    shared["require_contiguous"] = args.require_contiguous
+    logger.info(f"Evaluating encoder checkpoint: {shared['encoder_path']}  "
+                f"(file_suffix={args.file_suffix!r}, require_contiguous={args.require_contiguous})")
 
     horizon_results = run_multi_horizon(shared)
     reconstruction_results = run_reconstruction(shared)

@@ -1,0 +1,84 @@
+# E1-predictive-BTC-only-v2 (2026-08-14) — fixes an under-training bug found in the v1 run.
+#
+# Copy of configs/encoder_e1_predictive_btc_only.yaml with ONE intentional difference:
+#   - training.max_epochs: 800 (was 200), training.early_stopping_patience: 80 (was 20).
+#
+# Why: v1 stopped at epoch 64 (best), val top-1 contrastive accuracy only 10.05% — vs 50.50%
+# for the 4-asset E1-predictive run. Root cause, verified by computing actual gradient steps
+# (not epochs): early_stopping_patience is measured in epochs, and BTC-only has 4x fewer
+# batches/epoch than the 4-asset pool (66 vs 266, same batch_size=512, 1/4 the data). v1's best
+# checkpoint had seen only 4,250 gradient steps vs the 4-asset run's 51,803 (12x fewer) —
+# solidly in the "still converging" regime for a contrastive objective, not a converged-but-
+# limited representation. This is the same class of bug as the phase_steps_multiplier issue
+# found in rl/callbacks.py's early stopping the same day — a stopping/scheduling parameter
+# calibrated in "epochs" silently meaning something very different when the per-epoch step
+# count changes. 4x on both max_epochs and patience restores a comparable total step budget
+# to the 4-asset run's ~51,803 steps (800 epochs x 66 steps/epoch = 52,800) while leaving
+# patience proportionally identical (80 epochs x 66 steps = 5,280 steps ~= 4-asset's
+# 20 epochs x 266 steps = 5,320 steps).
+#
+# warmup_epochs is NOT scaled (kept at 10) — warmup duration is about early optimizer
+# stability, not about total convergence budget; no evidence it needs to track dataset size.
+# batch_size is NOT reduced — contrastive learning benefits from large in-batch negative
+# pools; shrinking batch size would trade that away for more (but weaker) steps/epoch, a
+# different, unrelated lever from the one being tested here.
+#
+# Everything else identical to encoder_e1_predictive_btc_only.yaml: BTC_USDT only, mean
+# pooling, no augmentation, positive_pair_mode="predictive", future_size=24, seed=42,
+# val_end="2024-12-31".
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  # pooling: "mean"  (omitted -> default)
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 800
+  early_stopping_patience: 80
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  positive_pair_mode: "predictive"
+  future_size: 24
+  augment_kwargs:
+    use_amplitude_scale: false
+    use_jitter: false
+    use_channel_mask: false
+    use_time_warp: false
+
+data:
+  assets:
+    - BTC_USDT
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e1_predictive_btc_only_v2"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_predictive_btc_only_v2"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_predictive_btc_only_v2"
+  save_periodic: true

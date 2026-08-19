@@ -1,0 +1,115 @@
+{
+  "test_period": {
+    "start": "2025-01-01",
+    "end": "2025-12-31"
+  },
+  "n_steps": 5904,
+  "warning": "Single-asset (BTC), single-path test window \u2014 treat bootstrap CIs as sampling noise on one path, not as generalisation evidence",
+  "caveats": [
+    "2025 is untouched by every layer (encoder trained <2024 with the Kaggle dataset trimmed to \u22642024-12-31; HMM/PCA fit <2024; PPO train \u22642023, val 2024) \u2014 provided the trimmed-upload instruction was followed for the encoder",
+    "BTC 2025 was actually a DOWN year for buy-and-hold (Sharpe -0.185, -12.8% return, 40.3% max drawdown per the 2026-07-13 diagnosis session) \u2014 unlike 2024's bull run, long-biased baselines are NOT flattered here; a policy that merely avoids losses can look artificially good against buy-hold this year",
+    "No cached debates exist in 2025, so the PPO's 16-dim consensus slot is zeros (its usual state during training)",
+    "One asset, one path: results should be replicated across assets before any generalisation claim"
+  ],
+  "key_finding": null,
+  "diagnostics": {},
+  "checkpoint": "rl/checkpoints/ppo_best.zip",
+  "asset": "BTC_USDT",
+  "transaction_cost": 0.001,
+  "bootstrap_ci": {
+    "marta_ppo_vs_buy_hold": {
+      "delta_sharpe": -1.9758573325021935,
+      "ci_lower_95": -4.800137368497522,
+      "ci_upper_95": 1.2059881439849844,
+      "significant": false
+    },
+    "marta_ppo_vs_rsi_strategy": {
+      "delta_sharpe": -0.5637744629524067,
+      "ci_lower_95": -3.2869358219750944,
+      "ci_upper_95": 2.2859593901735242,
+      "significant": false
+    },
+    "marta_ppo_vs_ma_crossover": {
+      "delta_sharpe": 1.2765775585964847,
+      "ci_lower_95": -1.3447878064894963,
+      "ci_upper_95": 4.233212850442522,
+      "significant": false
+    },
+    "marta_ppo_vs_momentum": {
+      "delta_sharpe": 7.67611264119846,
+      "ci_lower_95": 4.72320069101195,
+      "ci_upper_95": 11.230410999487894,
+      "significant": true
+    }
+  },
+  "marta_ppo": {
+    "sharpe": -2.114679690634853,
+    "sortino": -0.16405411097157638,
+    "max_drawdown": 0.003058271066304404,
+    "calmar": -1.3141327688987687,
+    "total_return": -0.0027062358994373037,
+    "n_trades": 10,
+    "n_meaningful_trades": 10,
+    "mean_turnover": 0.0006259457791239265,
+    "hold_ratio": 0.9991532599491956,
+    "mean_trade_duration_hours": 1.0,
+    "median_trade_duration_hours": 1.0,
+    "method": "trained PPO (ppo_best.zip), frozen encoder, consensus zeros"
+  },
+  "buy_hold": {
+    "sharpe": -0.18477955107236804,
+    "sortino": -0.23453057759578574,
+    "max_drawdown": 0.4030482345972542,
+    "calmar": -0.22002883655838668,
+    "total_return": -0.12848679192768064,
+    "n_trades": 0,
+    "n_meaningful_trades": 0,
+    "mean_turnover": 0.0,
+    "hold_ratio": 0.0,
+    "mean_trade_duration_hours": 5905.0,
+    "median_trade_duration_hours": 5905.0,
+    "method": "buy-and-hold BTC over the test window"
+  },
+  "rsi_strategy": {
+    "sharpe": -1.5602687721616868,
+    "sortino": -0.8158550123829423,
+    "max_drawdown": 0.07326907446292158,
+    "calmar": -1.0732728145123493,
+    "total_return": -0.05243132386152105,
+    "n_trades": 358,
+    "n_meaningful_trades": 358,
+    "mean_turnover": 0.018191056910569107,
+    "hold_ratio": 0.8961896697713801,
+    "mean_trade_duration_hours": 3.4245810055865924,
+    "median_trade_duration_hours": 2.0,
+    "method": "Classic RSI mean-reversion (buy <30, sell >70, fixed 0.3 size), raw Wilder RSI(14)"
+  },
+  "ma_crossover": {
+    "sharpe": -3.4497815219608574,
+    "sortino": -4.786533903018503,
+    "max_drawdown": 0.3111013350847758,
+    "calmar": -1.597550727930079,
+    "total_return": -0.28962766981547383,
+    "n_trades": 257,
+    "n_meaningful_trades": 257,
+    "mean_turnover": 0.026067073170731703,
+    "hold_ratio": 0.004572396274343776,
+    "mean_trade_duration_hours": 5878.0,
+    "median_trade_duration_hours": 5878.0,
+    "method": "MA crossover (12h/26h, long above / short below, fixed 0.3 size)"
+  },
+  "momentum": {
+    "sharpe": -9.792359582883796,
+    "sortino": -8.008468865534764,
+    "max_drawdown": 0.38653159321304875,
+    "calmar": -1.7858708321443726,
+    "total_return": -0.37307888206734474,
+    "n_trades": 1438,
+    "n_meaningful_trades": 1438,
+    "mean_turnover": 0.07306910859456231,
+    "hold_ratio": 0.7639288738357324,
+    "mean_trade_duration_hours": 1.9388038942976356,
+    "median_trade_duration_hours": 1.0,
+    "method": "momentum rule (3-step unanimous close_return sign, fixed 0.3 size, CVaR risk cap via env) \u2014 same rule as ppo_no_regime in the ablation"
+  }
+}

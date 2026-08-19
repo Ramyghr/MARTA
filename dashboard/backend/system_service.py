@@ -143,10 +143,23 @@ def get_rl_info() -> dict:
     ckpt = MARTA_ROOT / "rl" / "checkpoints" / "ppo_best.zip"
     eval_path = MARTA_ROOT / "data" / "results" / "ppo_evaluation.json"
     sharpe = None
+    provenance = None
+    eval_stale_vs_checkpoint = None
     if eval_path.exists():
-        sharpe = json.loads(eval_path.read_text()).get("marta_ppo", {}).get("sharpe")
+        eval_data = json.loads(eval_path.read_text())
+        sharpe = eval_data.get("marta_ppo", {}).get("sharpe")
+        provenance = eval_data.get("_provenance")
+        # Flag when the on-disk checkpoint is newer than the checkpoint this eval JSON
+        # actually ran against — a fresher ppo_best.zip landed after the last canonical
+        # eval, so the Sharpe shown here no longer describes the checkpoint on disk.
+        if provenance and provenance.get("checkpoint") and ckpt.exists():
+            eval_ckpt_mtime = provenance["checkpoint"].get("mtime_utc")
+            current_ckpt_mtime = _mtime_iso(ckpt)
+            eval_stale_vs_checkpoint = eval_ckpt_mtime != current_ckpt_mtime
     return {
         "checkpoint_exists": ckpt.exists(),
         "checkpoint_mtime": _mtime_iso(ckpt) if ckpt.exists() else None,
         "best_sharpe": sharpe,
+        "eval_provenance": provenance,
+        "eval_stale_vs_checkpoint": eval_stale_vs_checkpoint,
     }

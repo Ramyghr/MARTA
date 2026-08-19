@@ -51,8 +51,21 @@ def _load_asset_split(
     future_size: int = 24,
     asset_id: int = 0,
     return_metadata: bool = False,
+    data_file_suffix: str = "_aligned",
+    require_contiguous: bool = False,
 ) -> tuple[Dataset, Dataset]:
-    df = pd.read_parquet(processed_dir / f"{asset}_aligned.parquet", engine="pyarrow")
+    # data_file_suffix is opt-in ("_aligned" preserves exact prior behavior — every
+    # existing config reads {asset}_aligned.parquet). "_normalized" reads the
+    # PRE-alignment, single-asset file instead — found 2026-08-14 investigating the
+    # BTC-only encoder experiment: align.py's inner-join against weekday-only forex data
+    # truncates crypto's native 24/7 calendar (BTC_USDT_aligned.parquet: 0 Saturday rows,
+    # ~72% Friday, ~27% Sunday), and encoder/dataset.py's window slicing is row-index-only
+    # (no timestamp awareness), so 99.3% of windows built from the aligned file silently
+    # span a real-time gap. {asset}_normalized.parquet is the same 14-column schema,
+    # pre-join, genuinely gap-free for BTC (26 minor gaps vs 2,254 in the aligned file).
+    # NEVER write to this file from here — it's live production data, read by
+    # dashboard/backend/ppo_inference.py's live inference path.
+    df = pd.read_parquet(processed_dir / f"{asset}{data_file_suffix}.parquet", engine="pyarrow")
     train_end_ts = pd.Timestamp(train_end, tz="UTC")
     val_start_ts = pd.Timestamp(val_start, tz="UTC")
 
@@ -99,10 +112,12 @@ def _load_asset_split(
         train_ds: Dataset = PredictiveContrastiveDataset(
             train_df, window_size=window_size, future_size=future_size, step=step,
             augment_kwargs=augment_kwargs, asset_id=asset_id, return_metadata=return_metadata,
+            require_contiguous=require_contiguous,
         )
         val_ds: Dataset = PredictiveContrastiveDataset(
             val_df, window_size=window_size, future_size=future_size, step=step,
             augment_kwargs=augment_kwargs, asset_id=asset_id, return_metadata=return_metadata,
+            require_contiguous=require_contiguous,
         )
     elif positive_pair_mode == "simclr":
         train_ds = RegimeContrastiveDataset(
@@ -254,6 +269,16 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
             raise ValueError("negative_exclusion_radius requires positive_pair_mode='predictive'")
         logger.info(f"Temporal negative exclusion ENABLED, radius={negative_exclusion_radius} bars")
 
+    # Opt-in (2026-08-14) — "_aligned" preserves exact prior behavior for every existing
+    # config. See _load_asset_split's docstring for the gap-corruption reason this exists.
+    data_file_suffix: str = str(dcfg.get("file_suffix", "_aligned"))
+    require_contiguous: bool = bool(tcfg.get("require_contiguous", False))
+    if data_file_suffix != "_aligned" or require_contiguous:
+        logger.info(
+            f"Non-default data source: file_suffix={data_file_suffix!r} "
+            f"require_contiguous={require_contiguous}"
+        )
+
     processed_dir = _ROOT / dcfg["processed_dir"]
     ckpt_dir = _ROOT / ckpt_cfg["dir"]
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -287,6 +312,7 @@ def train_encoder(config: dict) -> TFTRegimeEncoder:
             augment_kwargs=augment_kwargs, val_end=val_end,
             positive_pair_mode=positive_pair_mode, future_size=future_size,
             asset_id=asset_idx, return_metadata=return_metadata,
+            data_file_suffix=data_file_suffix, require_contiguous=require_contiguous,
         )
         if len(tr_ds) > 0:
             train_datasets.append(tr_ds)

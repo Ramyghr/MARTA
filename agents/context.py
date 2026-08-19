@@ -18,58 +18,120 @@ _ROOT = Path(__file__).resolve().parent.parent
 # can't go stale by forgetting a manual edit. Cached per-process; call
 # invalidate_regime_descriptions_cache() after regenerating regime_semantics.json within
 # a running process (e.g. the dashboard backend).
-_descriptions_cache: dict[int, str] | None = None
+_descriptions_cache: dict[str, dict[int, str]] = {}
+_stats_cache: dict[str, dict[int, dict]] = {}
+
+_DEFAULT_SEMANTICS_PATH = _ROOT / "data" / "validated" / "regime_semantics.json"
 
 
-def _load_regime_descriptions() -> dict[int, str]:
-    global _descriptions_cache
-    if _descriptions_cache is not None:
-        return _descriptions_cache
+def _load_regime_stats(semantics_path: Path | None = None) -> dict[int, dict]:
+    """Raw per-regime financial stats (sharpe, realized_vol_mean, annualized_return, ...)
+    loaded from a regime_semantics.json-style file — {"regimes": {"0": {...}, "1": {...}}}.
 
-    sem_path = _ROOT / "data" / "validated" / "regime_semantics.json"
-    if not sem_path.exists():
-        _descriptions_cache = {}
-        return _descriptions_cache
+    semantics_path is opt-in (2026-08-14) — None resolves to production's
+    data/validated/regime_semantics.json, preserving exact prior behavior for every
+    existing caller. Pass an explicit path (e.g. data/validated/btc_only_v3_regime_
+    semantics.json) to classify regimes from a different HMM's stream — see
+    classify_regime_kind, shared by this module's descriptions AND
+    agents/fund_manager.py's conviction/override logic, so both always agree with
+    whatever regime_semantics.json actually says instead of a hardcoded per-index table.
+    Cached per (resolved path); call invalidate_regime_descriptions_cache() after
+    regenerating a semantics file within a running process.
+    """
+    path = semantics_path or _DEFAULT_SEMANTICS_PATH
+    key = str(path)
+    if key in _stats_cache:
+        return _stats_cache[key]
 
+    if not path.exists():
+        _stats_cache[key] = {}
+        return {}
     try:
-        sem = json.loads(sem_path.read_text())
+        sem = json.loads(path.read_text())
     except Exception:
-        _descriptions_cache = {}
-        return _descriptions_cache
+        _stats_cache[key] = {}
+        return {}
+
+    stats = {int(label): s for label, s in sem.get("regimes", {}).items()}
+    _stats_cache[key] = stats
+    return stats
+
+
+def classify_regime_kind(stats: dict) -> str:
+    """Bucket a regime's raw stats into a semantic category, derived from sharpe/
+    realized_vol thresholds — NOT a hardcoded per-regime-index table. A per-index table
+    silently goes stale every time run_regime.py refits the HMM (label semantics are not
+    stable across refits) or a different regime stream is used entirely (e.g. the
+    BTC-only-v3 encoder's n=2 HMM vs production's n=4) — this generalizes to any stream
+    by construction, since it only ever looks at the regime's own financial character.
+
+    Returns one of: "bear_crash", "high_vol_bear", "mild_negative", "extreme_bull",
+    "high_vol_bull", "mild_positive", "neutral" (near-zero sharpe and vol, or missing data).
+    """
+    if not stats:
+        return "neutral"
+    rvol = float(stats.get("realized_vol_mean", 0.0))
+    sharpe = float(stats.get("sharpe", 0.0))
+    if sharpe <= -1.0:
+        return "bear_crash"
+    elif sharpe < 0 and rvol > 0.5:
+        return "high_vol_bear"
+    elif sharpe < 0:
+        return "mild_negative"
+    elif sharpe >= 1.5:
+        return "extreme_bull"
+    elif rvol > 0.5:
+        return "high_vol_bull"
+    elif sharpe > 0:
+        return "mild_positive"
+    else:
+        return "neutral"
+
+
+def _load_regime_descriptions(semantics_path: Path | None = None) -> dict[int, str]:
+    path = semantics_path or _DEFAULT_SEMANTICS_PATH
+    key = str(path)
+    if key in _descriptions_cache:
+        return _descriptions_cache[key]
+
+    stats_by_label = _load_regime_stats(semantics_path)
+    if not stats_by_label:
+        _descriptions_cache[key] = {}
+        return {}
+
+    _KIND_LABEL = {
+        "bear_crash": "Bear/crash regime",
+        "high_vol_bear": "High-volatility bear regime",
+        "mild_negative": "Neutral volatility / negative regime",
+        "extreme_bull": "Extreme bull / high-volatility regime",
+        "high_vol_bull": "High-volatility bull regime",
+        "mild_positive": "Neutral volatility / positive regime",
+        "neutral": "Low volatility regime",
+    }
 
     descriptions: dict[int, str] = {}
-    for label, stats in sem.get("regimes", {}).items():
-        rvol = float(stats.get("realized_vol_mean", 0.0))
+    for label, stats in stats_by_label.items():
         ann_return = float(stats.get("annualized_return", 0.0))
         ann_vol = float(stats.get("annualized_vol", 0.0))
         sharpe = float(stats.get("sharpe", 0.0))
         time_pct = float(stats.get("time_pct", 0.0))
         dom = str(stats.get("dominant_asset", ""))
+        kind = classify_regime_kind(stats)
 
-        if sharpe <= -1.0:
-            regime_kind = "Bear/crash regime"
-        elif sharpe >= 1.5:
-            regime_kind = "Extreme bull / high-volatility regime"
-        elif rvol > 0.5:
-            regime_kind = "High-volatility " + ("bull" if sharpe >= 0 else "bear") + " regime"
-        elif rvol > 0.0:
-            regime_kind = "Neutral volatility / " + ("positive" if sharpe >= 0 else "negative") + " regime"
-        else:
-            regime_kind = "Low volatility / " + ("positive" if sharpe >= 0 else "negative") + " regime"
-
-        descriptions[int(label)] = (
-            f"{regime_kind} — {dom}-dominant, ann. return {ann_return:+.1%}, "
+        descriptions[label] = (
+            f"{_KIND_LABEL[kind]} — {dom}-dominant, ann. return {ann_return:+.1%}, "
             f"ann. vol {ann_vol:.1%}, Sharpe {sharpe:.2f}, {time_pct:.1%} of time"
         )
 
-    _descriptions_cache = descriptions
-    return _descriptions_cache
+    _descriptions_cache[key] = descriptions
+    return descriptions
 
 
 def invalidate_regime_descriptions_cache() -> None:
     """Call after regime_semantics.json is regenerated so the next lookup re-reads it."""
-    global _descriptions_cache
-    _descriptions_cache = None
+    global _descriptions_cache, _stats_cache
+    _descriptions_cache = {}
+    _stats_cache = {}
 
 _WINDOW_INDICATORS = ["realized_vol", "rsi", "adx", "close_return"]
 
@@ -129,6 +191,14 @@ class RegimeContext:
     upcoming_events: list | None = None  # injected by dashboard live mode — see
     # pipeline/live/economic_calendar.get_upcoming_events(). None in historical/replay
     # debates (a past debate can't know the future's economic calendar).
+    regime_stale: bool = False  # True when build_regime_context() couldn't find an exact
+    # timestamp match in the regime stream and fell back to the nearest available row —
+    # found 2026-08-18 during the LLM layer audit: this fallback was previously silent,
+    # serving a regime row up to tens of hours old with no signal to the agent or the
+    # prompt. Never raises (a hard failure would take down live debates on any ordinary
+    # data gap) — surfaced as an explicit flag instead, both in the prompt text
+    # (serialize_context_for_prompt) and in this dataclass for programmatic checks.
+    regime_gap_hours: float = 0.0  # |requested timestamp - resolved regime row timestamp|
 
 
 def build_regime_context(
@@ -136,8 +206,18 @@ def build_regime_context(
     asset: str,
     regime_stream_df: pd.DataFrame,
     aligned_df: pd.DataFrame,
+    semantics_path: Path | None = None,
 ) -> RegimeContext:
-    """Build RegimeContext for a given timestamp and asset."""
+    """Build RegimeContext for a given timestamp and asset.
+
+    semantics_path is opt-in (2026-08-14) — None resolves to production's
+    data/validated/regime_semantics.json (exact prior behavior). Pass an explicit path
+    when regime_stream_df comes from a different HMM (e.g. the BTC-only-v3 encoder's),
+    so ctx.regime_description matches the regime stream actually being described instead
+    of silently describing a different HMM's regimes. Found 2026-08-14: without this,
+    a BTC-only regime stream's context showed production's "ETH_USDT-dominant" text for
+    a regime that, for BTC-only-v3, is 100% BTC_USDT by construction — same staleness
+    class as FundManagerAgent's now-fixed regime_kind lookup (agents/fund_manager.py)."""
     ts_utc = pd.Timestamp(timestamp).tz_convert("UTC") if pd.Timestamp(timestamp).tzinfo else pd.Timestamp(timestamp).tz_localize("UTC")
 
     # Resolve aligned index timezone
@@ -151,6 +231,8 @@ def build_regime_context(
     active_stream = _resolve_regime_stream(regime_stream_df, asset)
     mask = (active_stream["asset"] == asset) & (active_stream["timestamp"] == ts_utc)
     regime_rows = active_stream[mask]
+    regime_stale = False
+    regime_gap_hours = 0.0
     if regime_rows.empty:
         # Fall back to nearest available timestamp. get_indexer(method="nearest") requires
         # a uniquely-valued index — regime_stream_per_asset.parquet has one duplicated
@@ -163,6 +245,9 @@ def build_regime_context(
         asset_df = asset_df[~asset_df.index.duplicated(keep="last")]
         idx = asset_df.index.get_indexer([ts_utc], method="nearest")[0]
         row = asset_df.iloc[idx]
+        resolved_ts = asset_df.index[idx]
+        regime_gap_hours = abs((ts_utc - resolved_ts).total_seconds()) / 3600.0
+        regime_stale = regime_gap_hours > 1.0  # >1 candle away from the requested bar
     else:
         row = regime_rows.iloc[0]
 
@@ -202,10 +287,12 @@ def build_regime_context(
             if USE_PER_ASSET_REGIME
             and asset == "BTC_USDT"
             and regime_label in _BTC_REGIME_DESCRIPTIONS
-            else _load_regime_descriptions().get(regime_label, "Unknown regime")
+            else _load_regime_descriptions(semantics_path).get(regime_label, "Unknown regime")
         ),
         price_features=price_features,
         window_features=window_features,
+        regime_stale=regime_stale,
+        regime_gap_hours=round(regime_gap_hours, 2),
     )
 
 
@@ -238,9 +325,16 @@ def serialize_context_for_prompt(ctx: RegimeContext, include_regime: bool = True
         f"R{k.split('_')[-1]}={v:.2f}" for k, v in sorted(ctx.regime_probs.items()) if v > 0.01
     )
 
+    staleness_line = (
+        f"⚠ REGIME DATA STALE — nearest available row is {ctx.regime_gap_hours:.1f}h from "
+        f"the current timestamp, not exact. Weight this regime signal accordingly.\n"
+        if ctx.regime_stale else ""
+    )
+
     return (
         f"=== REGIME STATE ===\n"
         f"Asset: {ctx.asset} | Timestamp: {ctx.timestamp}\n"
+        f"{staleness_line}"
         f"Regime: R{ctx.regime_label} — {ctx.regime_description}\n"
         f"Regime probabilities: {probs_str}\n\n"
         f"=== PRICE FEATURES (latest) ===\n{price_lines}\n\n"

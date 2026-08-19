@@ -299,15 +299,28 @@ def build_env(
 
 
 # --------------------------------------------------------------------------- data loading
-def load_shared_data(device: str, encoder_path: Path | None = None) -> dict[str, Any]:
+def load_shared_data(
+    device: str, encoder_path: Path | None = None, file_suffix: str = "_aligned"
+) -> dict[str, Any]:
     """Load BTC_USDT aligned data + a frozen encoder checkpoint once.
 
     encoder_path defaults to the production _ENCODER_PATH (best_encoder.pt) — pass an
     explicit path (e.g. an E2 periodic/best/final checkpoint) to evaluate a different
     checkpoint with the exact same diagnostic protocol, without touching production.
+
+    file_suffix is opt-in (2026-08-14) — "_aligned" preserves exact prior behavior
+    (BTC_USDT_aligned.parquet, inner-joined against weekday-only forex, has real-time
+    gaps). Pass "_normalized" to read the pre-alignment, genuinely gap-free file instead
+    — pair with _valid_indices(..., require_contiguous=True) so window/label construction
+    downstream doesn't silently span a gap. See encoder/train.py's _load_asset_split
+    docstring for the full finding.
     """
     path = encoder_path if encoder_path is not None else _ENCODER_PATH
-    df = pd.read_parquet(aligned_path("BTC_USDT", _PROCESSED), engine="pyarrow").sort_index()
+    if file_suffix == "_aligned":
+        data_path = aligned_path("BTC_USDT", _PROCESSED)
+    else:
+        data_path = _PROCESSED / f"BTC_USDT{file_suffix}.parquet"
+    df = pd.read_parquet(data_path, engine="pyarrow").sort_index()
     encoder = TFTRegimeEncoder(input_dim=14, hidden_dim=128)
     ckpt = torch.load(path, map_location=device, weights_only=True)
     encoder.load_state_dict(ckpt["model_state"])

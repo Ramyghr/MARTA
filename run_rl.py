@@ -197,9 +197,33 @@ def sanity_check_env(env, n_steps: int = 200) -> tuple[float, float]:
     return mean_reward, mean_position
 
 
+def _apply_phase_steps_multiplier(config: dict) -> None:
+    """Scale config["phases"]' max_steps by config["phase_steps_multiplier"] (default 1.0,
+    no-op). MUST be called AFTER any phase-capping logic (the "cap at 2 phases" blocks
+    reset config["phases"] to a fresh, unscaled CURRICULUM_PHASES[:2] slice) — calling
+    this before capping silently discards the scaling, which is exactly the bug this
+    function fixes (found 2026-08-13: a --phase-steps-multiplier 3 run trained for the
+    unscaled 500k steps, not 1.5M, because it was applied too early)."""
+    mult = config.get("phase_steps_multiplier", 1.0)
+    if mult == 1.0:
+        return
+    for p in config["phases"]:
+        p["max_steps"] = int(p["max_steps"] * mult)
+    logger.info(
+        f"phase_steps_multiplier={mult}x applied — total steps now "
+        f"{sum(p['max_steps'] for p in config['phases']):,}"
+    )
+
+
 def check_regime_stream_compatibility(config: dict) -> int:
-    """Verify regime_stream.parquet covers the configured assets and training window."""
-    rs = pd.read_parquet("data/processed/regime_stream.parquet", engine="pyarrow")
+    """Verify regime_stream.parquet covers the configured assets and training window.
+
+    obs_mode="raw" never reads a regime stream at all — nothing to check, skipped by
+    the caller. obs_mode="raw_regime" reads config["regime_stream_path"] (e.g. the
+    raw-feature-baseline HMM stream) instead of the hardcoded production path.
+    """
+    regime_stream_path = config.get("regime_stream_path", "data/processed/regime_stream.parquet")
+    rs = pd.read_parquet(regime_stream_path, engine="pyarrow")
     n_states = int(rs["regime_label"].nunique())
 
     expected_assets = set(config["all_assets"])
@@ -467,7 +491,7 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     # the median seed is chosen, not by whichever seed happens to run last.
     eval_path = Path(f"data/results/ppo_evaluation_seed{seed}.json")
     abl_path = Path(f"data/results/ablation_results_seed{seed}.json")
-    eval_res = evaluate_ppo(model, env_factory, cfg, output_path=eval_path)
+    eval_res = evaluate_ppo(model, env_factory, cfg, output_path=eval_path, checkpoint_path=ckpt_path)
     abl = run_ablation(cfg, model, env_factory, output_path=abl_path)
     return {"eval": eval_res, "ablation": abl, "curriculum": train_out["curriculum_history"],
             "best_sharpe": train_out["best_sharpe"], "seed": seed}
@@ -545,9 +569,79 @@ def main() -> None:
             "diff the two ppo_evaluation results)."
         ),
     )
+    parser.add_argument(
+        "--obs-mode",
+        choices=["encoder", "raw", "raw_regime"],
+        default="encoder",
+        help=(
+            "observation source (rl/env.py's obs_mode, added 2026-08-12 raw-feature-"
+            "baseline pivot). 'encoder' (default) is unchanged prior behavior. 'raw' "
+            "replaces the 128-dim encoder embedding with the flattened 60x14 raw "
+            "feature window (840-dim), no encoder loaded. 'raw_regime' adds the regime "
+            "probability vector on top (see --regime-stream-path). Checkpoints get a "
+            "'_<obs_mode>' suffix so they never collide with the default encoder-mode run."
+        ),
+    )
+    parser.add_argument(
+        "--regime-stream-path",
+        default=None,
+        metavar="PATH",
+        help=(
+            "override regime_stream.parquet path (rl/train.py's load_data). Only "
+            "meaningful with --obs-mode raw_regime — e.g. "
+            "data/processed/raw_baseline/regime_stream.parquet for the raw-feature "
+            "HMM (n_states=6) validated in Step 1 of the raw-feature-baseline pivot."
+        ),
+    )
+    parser.add_argument(
+        "--phase-steps-multiplier",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help=(
+            "scale every curriculum phase's max_steps by X (default 1.0, exact prior "
+            "behavior). Added for the raw-feature-baseline agents (2026-08-12): both "
+            "obs_mode='raw'/'raw_regime' agents took large (mean ~0.43), ~50/50-win-rate "
+            "directional bets at the default 500k steps — steady bleed, not overtrading "
+            "or transaction-cost drag (both were checked and ruled out). Hypothesis: an "
+            "840-dim raw window needs more steps than the pre-compressed 128-dim encoder "
+            "embedding to learn well-calibrated position sizing, not just direction. "
+            "Adds a '_Nx' checkpoint_suffix marker so a scaled run never collides with "
+            "the default-length run's checkpoints/eval output."
+        ),
+    )
+    parser.add_argument(
+        "--early-stop-sharpe",
+        type=float,
+        default=None,
+        metavar="S",
+        help=(
+            "override CurriculumCallback's early_stop_sharpe (default -0.5, patience 3 "
+            "evals — rl/callbacks.py). Found 2026-08-13: a --phase-steps-multiplier 3 run "
+            "still finished in 7 minutes because early stopping triggered at step 30,000 "
+            "(3 consecutive evals below -0.5), before the multiplier could ever be tested "
+            "— both the 1x and 3x runs are seeded identically and diverge only after step "
+            "30k, so they produced byte-identical results. Pass e.g. -10 to effectively "
+            "disable early stopping for one diagnostic run."
+        ),
+    )
     args = parser.parse_args()
 
     config = build_config(args.quick)
+    # NOTE: multiplier is APPLIED later (_apply_phase_steps_multiplier), right before each
+    # train_ppo() call — config["phases"] gets reset to a fresh CURRICULUM_PHASES[:2] slice
+    # by the "cap at 2 phases" logic further down in both the --seeds and default paths, so
+    # scaling here would be silently discarded. Only the checkpoint_suffix marker is set now.
+    if args.phase_steps_multiplier != 1.0:
+        config["phase_steps_multiplier"] = args.phase_steps_multiplier
+        config["checkpoint_suffix"] = (
+            config.get("checkpoint_suffix", "") + f"_{args.phase_steps_multiplier:g}x"
+        )
+    if args.early_stop_sharpe is not None:
+        config["early_stop_sharpe"] = args.early_stop_sharpe
+        config["checkpoint_suffix"] = (
+            config.get("checkpoint_suffix", "") + f"_es{args.early_stop_sharpe:g}"
+        )
     # P0.3: seed Python random/NumPy/torch globally before anything else runs. The
     # --seeds sweep re-seeds per-seed inside _run_single_seed; this covers the
     # single-seed (default) path, which previously relied solely on SB3's internal
@@ -559,14 +653,20 @@ def main() -> None:
     if args.benchmark_relative:
         config["benchmark_relative"] = True
         config["checkpoint_suffix"] = "_benchrel"
+    if args.obs_mode != "encoder":
+        config["obs_mode"] = args.obs_mode
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_{args.obs_mode}"
+        if args.regime_stream_path:
+            config["regime_stream_path"] = args.regime_stream_path
     logger.info(
         f"Device: {config['device']} | quick={args.quick} | eval_only={args.eval_only or False} "
-        f"| benchmark_relative={config['benchmark_relative']}"
+        f"| benchmark_relative={config['benchmark_relative']} | obs_mode={args.obs_mode}"
     )
 
     # Pre-training compatibility check: regime stream must cover all configured assets
     # and the full training window (fails fast on a stale regime_stream.parquet).
-    if not args.eval_only:
+    # Skipped entirely for obs_mode="raw" — no regime stream is read in that mode.
+    if not args.eval_only and config.get("obs_mode", "encoder") != "raw":
         check_regime_stream_compatibility(config)
 
     # Multi-seed path: run each seed independently, aggregate, then exit.
@@ -579,6 +679,7 @@ def main() -> None:
             # Phase 2 before Phase 3 is reached, but not always — and letting it run
             # further just burns wall-clock and log volume on a known-bad regime.
             config["phases"] = CURRICULUM_PHASES[:2]
+        _apply_phase_steps_multiplier(config)
         mlflow.set_experiment(_EXPERIMENT)
         seed_results = []
         for seed in args.seeds:
@@ -661,14 +762,13 @@ def main() -> None:
                 # Phases 3-4 add EURUSD/GOLD which have low intraday variance
                 # causing PPO to collapse to always-hold. Documented in CLAUDE.md.
                 config["phases"] = CURRICULUM_PHASES[:2]
+            _apply_phase_steps_multiplier(config)
             train_out = train_ppo(config, pre_train_check=sanity_check_env)
             env_factory = train_out["env_factory"]
             # Evaluate the best-by-val-Sharpe checkpoint, NOT the final model. The final
             # model can be a degraded policy — e.g. the curriculum collapses to always-flat
             # once daily-upsampled forex/commodity assets (zero intraday returns) are added
             # in phases 3-4. ppo_best.zip holds the best policy seen during training.
-            from pathlib import Path
-
             from stable_baselines3 import PPO
 
             from rl.policy import MARTAActorCriticPolicy
@@ -692,14 +792,26 @@ def main() -> None:
                 model = train_out["model"]
 
         # 2. Evaluate on validation set (optionally extended window / multi-asset).
+        # output_path carries checkpoint_suffix (e.g. "_raw", "_raw_regime", "_benchrel")
+        # so a non-default run never silently overwrites the canonical encoder-mode
+        # ppo_evaluation.json/ablation_results.json — found 2026-08-12 when a raw-mode
+        # run's eval clobbered the previous run's file (gitignored, no MLflow artifact
+        # backup, so it's an unrecoverable-but-non-production loss when this happens).
+        suffix = config.get("checkpoint_suffix", "")
+        eval_out_path = Path(f"data/results/ppo_evaluation{suffix}.json") if suffix else None
+        abl_out_path = Path(f"data/results/ablation_results{suffix}.json") if suffix else None
         val_end_override = VAL_END_EXTENDED if args.extended_val else None
-        eval_res = evaluate_ppo(model, env_factory, config, val_end=val_end_override)
+        eval_checkpoint_path = args.eval_only if args.eval_only else best_ckpt
+        eval_res = evaluate_ppo(
+            model, env_factory, config, val_end=val_end_override, output_path=eval_out_path,
+            checkpoint_path=eval_checkpoint_path,
+        )
         m = eval_res["marta_ppo"]
         for k, v in m.items():
             mlflow.log_metric(f"val/{k}", float(v))
 
         # 3. Ablation study.
-        abl = run_ablation(config, model, env_factory)
+        abl = run_ablation(config, model, env_factory, output_path=abl_out_path)
         for name, vm in abl["variants"].items():
             mlflow.log_metric(f"ablation/{name}_sharpe", float(vm["sharpe"]))
 

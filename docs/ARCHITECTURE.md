@@ -4,6 +4,17 @@
 
 *Final-Year Engineering Project (PFE) — ESPRIT, Finance Specialty*
 
+> **Update (2026-08-14):** the "Key finding" below (mean-pooling encoder discarding
+> short-horizon signal) was the diagnosis at the time this document was written, framed as an
+> open hypothesis. It has since been tested directly: four separate encoder retraining
+> variants (different pooling, weaker augmentation, predictive positive pairs, false-negative
+> exclusion) were each implemented, trained, and evaluated — **none beat raw, unlearned
+> features on predictive power**, and the best variant was traced through the full downstream
+> pipeline and found to produce a statistically incoherent regime detector. The project has
+> since pivoted to a raw-feature baseline. See `docs/RESULTS_AND_METHODOLOGY.md` for the full,
+> current account — read that document first, it supersedes the framing below wherever the two
+> disagree.
+
 ---
 
 ## 1. Executive Summary

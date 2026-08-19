@@ -333,15 +333,24 @@ def run_debate(
     regime_stream_df: pd.DataFrame,
     aligned_dfs: dict[str, pd.DataFrame],
     debate_graph: DebateGraph,
+    semantics_path=None,
 ) -> DebateResult:
-    """Main entry point: build context, run the debate graph, return DebateResult."""
+    """Main entry point: build context, run the debate graph, return DebateResult.
+
+    semantics_path is opt-in (2026-08-14) — None preserves exact prior behavior
+    (production's regime_semantics.json). Pass an explicit path when regime_stream_df
+    comes from a different HMM, so ctx.regime_description matches it — see
+    agents/context.py's build_regime_context docstring. Must be paired with passing the
+    SAME path to FundManagerAgent(semantics_path=...) when building debate_graph, or the
+    displayed description and the conviction/override logic will disagree about which
+    regime stream's semantics apply."""
     from agents.context import build_regime_context
 
     aligned_df = aligned_dfs.get(asset)
     if aligned_df is None:
         raise ValueError(f"No aligned data for asset {asset}")
 
-    ctx = build_regime_context(timestamp, asset, regime_stream_df, aligned_df)
+    ctx = build_regime_context(timestamp, asset, regime_stream_df, aligned_df, semantics_path=semantics_path)
     logger.info(f"Starting debate: {asset} @ {timestamp} | Regime R{ctx.regime_label}: {ctx.regime_description}")
 
     return debate_graph.run(ctx, aligned_dfs)

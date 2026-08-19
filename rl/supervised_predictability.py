@@ -53,7 +53,22 @@ _WINDOW = 60
 _ENCODE_BATCH = 1024
 
 
-def _valid_indices(index: pd.DatetimeIndex, split: str) -> np.ndarray:
+def _valid_indices(
+    index: pd.DatetimeIndex,
+    split: str,
+    require_contiguous: bool = False,
+    max_horizon: int = 24,
+) -> np.ndarray:
+    """require_contiguous is opt-in (2026-08-14) — default False preserves exact prior
+    behavior. Found investigating the BTC-only encoder experiment: window construction
+    (build_marta_features, t-_WINDOW+1..t) and horizon labels (build_horizon_labels,
+    t+1..t+horizon) are both pure row-index arithmetic with no timestamp awareness — if the
+    underlying df has a real-time gap (BTC_USDT_aligned.parquet: inner-joined against
+    weekday-only forex, 0 Saturday rows), a "window"/"horizon" can silently span many real
+    hours it never claims to. When True, additionally requires the FULL combined span
+    [t-_WINDOW+1, t+max_horizon] to be genuinely hourly-contiguous — checked once at
+    max_horizon=24 (the largest horizon tested) so the same idx array is valid for every
+    horizon <= max_horizon without re-deriving it per horizon."""
     if split == "train":
         mask = np.asarray(index <= TRAIN_END)
     else:
@@ -63,6 +78,17 @@ def _valid_indices(index: pd.DatetimeIndex, split: str) -> np.ndarray:
     for t in range(_WINDOW, n - 1):
         if mask[t] and mask[t + 1]:
             valid[t] = True
+
+    if require_contiguous:
+        hours_diff = index.to_series().diff().dt.total_seconds().to_numpy() / 3600.0
+        hours_diff[0] = 1.0
+        has_gap = hours_diff != 1.0
+        gap_cumsum = np.cumsum(has_gap)
+        for t in np.flatnonzero(valid):
+            lo, hi = t - _WINDOW + 1, min(t + max_horizon, n - 1)
+            if gap_cumsum[hi] - gap_cumsum[lo] != 0:
+                valid[t] = False
+
     return np.flatnonzero(valid)
 
 

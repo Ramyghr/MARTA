@@ -5,11 +5,23 @@ Usage:
 
 Test window: 2025-01-01 → 2025-12-31 (clamped to the aligned data's actual end).
 
+CHECKPOINT_OBS_MODE (2026-08-17 audit): ppo_best.zip's saved observation_space is
+868-dim = obs_mode="raw" (60x14 raw feature window + consensus + portfolio + asset-id),
+NOT the 156-dim encoder-mode space this docstring originally assumed. Verified by
+loading the checkpoint directly (model.observation_space.shape) rather than trusting
+the unsuffixed filename — the TFT encoder / HMM / regime vector are NOT part of this
+checkpoint's input at all. The provenance paragraph below (encoder trained <2024, HMM
+fit <2024) is therefore not applicable to what's actually being evaluated here; kept
+for context on the *data* pipeline the raw features themselves come from, not because
+this checkpoint reads the encoder or HMM output.
+
 Provenance under the 2026-07-13 walk-forward configuration (see configs/assets.yaml):
     - TFT encoder:   trained < 2024-01-01, early-stopped on 2024; the Kaggle training
                      dataset is trimmed to ≤ 2024-12-31, so 2025 never reaches the
-                     encoder in any form (not even model selection)
-    - HMM + PCA:     fitted on timestamps < 2024-01-01
+                     encoder in any form (not even model selection) — moot for this
+                     checkpoint since obs_mode="raw" never loads the encoder
+    - HMM + PCA:     fitted on timestamps < 2024-01-01 — also moot, obs_mode="raw"
+                     carries no regime_prob vector
     - RL PPO:        train ≤ 2023-12-31, val 2024-01-01 → 2024-12-31 (rl/env.py)
 
     ⇒ 2025 is untouched by every layer, including checkpoint selection.
@@ -53,7 +65,10 @@ from utils.logger import logger
 ALIGNED_PATH = Path("data/processed/BTC_USDT_aligned.parquet")
 RESULTS_PATH = Path("data/results/test_set_results.json")
 CHECKPOINT = "rl/checkpoints/ppo_best.zip"
+CHECKPOINT_OBS_MODE = "raw"  # verified empirically 2026-08-17 — see module docstring
 ASSET = "BTC_USDT"
+_RANDOM_SEED = 42
+_RANDOM_POSITION_SIZE = 0.3
 
 # TEST_END kept as an inclusive date string (day before the canonical exclusive cutoff)
 # since resolve_test_window() below appends " 23:59:59" to it.
@@ -65,7 +80,23 @@ STRATEGY_LABELS: dict[str, str] = {
     "rsi_strategy": "RSI Strategy",
     "ma_crossover": "MA Crossover",
     "momentum": "Momentum",
+    "random": "Random",
 }
+
+
+def random_strategy(
+    close_returns: np.ndarray,
+    position_size: float = _RANDOM_POSITION_SIZE,
+    seed: int = _RANDOM_SEED,
+) -> np.ndarray:
+    """Null-hypothesis baseline: a uniform-random long/short/hold choice each step,
+    independent of any market signal. Same fixed position size and no-lookahead
+    contract as rsi_strategy/ma_crossover_strategy (position at step i is drawn before
+    seeing return i, same _run_rule_positions harness applies transaction costs)."""
+    rng = np.random.default_rng(seed)
+    choices = rng.choice([-position_size, 0.0, position_size], size=len(close_returns))
+    choices[0] = 0.0  # no position before the first bar, matching the other rule strategies
+    return choices
 
 
 def resolve_test_window(
@@ -148,6 +179,7 @@ def evaluate_test_set() -> dict[str, Any]:
 
     config = build_config(quick=False)
     config["all_assets"] = [ASSET]
+    config["obs_mode"] = CHECKPOINT_OBS_MODE
     model, env_factory = _load_for_eval(config, CHECKPOINT)
 
     def make_test_env(**kwargs: Any) -> MARTATradingEnv:
@@ -183,6 +215,11 @@ def evaluate_test_set() -> dict[str, Any]:
             ),
             "momentum rule (3-step unanimous close_return sign, fixed 0.3 size, "
             "CVaR risk cap via env) — same rule as ppo_no_regime in the ablation",
+        ),
+        "random": (
+            lambda: _run_rule_positions(make_test_env(debate=False), random_strategy),
+            f"uniform-random long/short/hold each step (seed={_RANDOM_SEED}, fixed "
+            f"{_RANDOM_POSITION_SIZE} size) — null-hypothesis baseline, no market signal",
         ),
     }
     for name, (runner, method) in baseline_runs.items():

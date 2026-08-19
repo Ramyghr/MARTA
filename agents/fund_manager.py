@@ -4,29 +4,37 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from agents.base import BaseAgent
-from agents.context import RegimeContext, serialize_context_for_prompt
+from agents.context import RegimeContext, _load_regime_stats, classify_regime_kind, serialize_context_for_prompt
 from agents.schemas import AgentRebuttal, AgentThesis, FundManagerDecision, RiskLimits
 from utils.logger import logger
 
-# Regime-direction conviction multipliers: (bullish_mult, bearish_mult)
-_REGIME_CONVICTION_MULTIPLIERS: dict[int, tuple[float, float]] = {
-    0: (0.85, 0.85),  # mixed/transitional — reduce conviction either direction
-    1: (1.00, 0.70),  # calm bull — full bullish conviction, penalise bearish
-    2: (0.40, 1.00),  # stress/crisis — heavy penalty on bullish
-    3: (0.50, 1.00),  # bear trend — heavy penalty on bullish
-    4: (0.65, 0.90),  # calm bear — moderate penalty on bullish (contradiction)
-    5: (0.90, 0.85),  # trending forex A
-    6: (0.90, 0.85),  # trending forex B
+# Regime-kind conviction multipliers: (bullish_mult, bearish_mult). Was a per-regime-INDEX
+# dict (0-6) hardcoded against an old HMM's label semantics — went stale on every refit and
+# was structurally meaningless for a different regime stream entirely (e.g. the BTC-only-v3
+# encoder's n=2 HMM only ever produces labels 0/1, so indices 2-6 could never fire; found
+# 2026-08-14 during the downstream-pipeline validation). Same numeric values as before, now
+# keyed by classify_regime_kind's sharpe/vol-derived category so any regime stream's
+# semantics agree with what regime_semantics.json actually says. See
+# agents/context.py's classify_regime_kind docstring for the category definitions.
+_REGIME_KIND_CONVICTION_MULTIPLIERS: dict[str, tuple[float, float]] = {
+    "neutral": (0.85, 0.85),
+    "mild_positive": (1.00, 0.70),       # was regime 1 "calm bull"
+    "bear_crash": (0.40, 1.00),          # was regime 2 "stress/crisis"
+    "high_vol_bear": (0.50, 1.00),       # was regime 3 "bear trend"
+    "mild_negative": (0.65, 0.90),       # was regime 4 "calm bear"
+    "extreme_bull": (1.00, 0.70),        # same treatment as mild_positive — favor bullish
+    "high_vol_bull": (0.90, 0.85),       # was regimes 5/6 "trending forex A/B"
 }
 
-# Regimes where bullish consensus is overridden to hold
-_BULLISH_PENALTY_REGIMES = {2, 3}
-# Regimes where bullish consensus keeps long but is flagged as contradiction
-_BULLISH_CAUTION_REGIMES = {4}
-# Regimes where bearish consensus is flagged (calm bull regime)
-_BEARISH_PENALTY_REGIMES = {1}
+# Regime kinds where bullish consensus is overridden to hold entirely.
+_BULLISH_PENALTY_KINDS = {"bear_crash", "high_vol_bear"}
+# Regime kinds where bullish consensus keeps long but is flagged as a contradiction.
+_BULLISH_CAUTION_KINDS = {"mild_negative"}
+# Regime kinds where bearish consensus is flagged as a contradiction (favorable regime).
+_BEARISH_PENALTY_KINDS = {"mild_positive", "extreme_bull"}
 
 _CONSENSUS_MARGIN = 0.15
 _CONTRARIAN_WEIGHT = 0.5  # Contrarian votes count at half weight
@@ -34,6 +42,20 @@ _CONTRARIAN_WEIGHT = 0.5  # Contrarian votes count at half weight
 
 class FundManagerAgent(BaseAgent):
     name = "FundManager"
+
+    def __init__(self, semantics_path: Path | None = None, **kwargs) -> None:
+        """semantics_path is opt-in (2026-08-14) — None resolves to production's
+        data/validated/regime_semantics.json (exact prior behavior). Pass an explicit
+        path to derive conviction multipliers/overrides from a different regime stream's
+        actual semantics (e.g. data/validated/btc_only_v3_regime_semantics.json) instead
+        of production's — see classify_regime_kind for why this must track the regime
+        stream actually in use rather than a fixed table."""
+        super().__init__(**kwargs)
+        self._semantics_path = semantics_path
+
+    def _regime_kind(self, regime_label: int) -> str:
+        stats_by_label = _load_regime_stats(self._semantics_path)
+        return classify_regime_kind(stats_by_label.get(regime_label, {}))
 
     def _build_system_prompt(self, ctx: RegimeContext) -> str:
         return (
@@ -104,8 +126,10 @@ class FundManagerAgent(BaseAgent):
             round1_theses, round2_rebuttals, contrarian_thesis
         )
 
-        # Apply regime-aware conviction multiplier
-        mult_pair = _REGIME_CONVICTION_MULTIPLIERS.get(ctx.regime_label, (1.0, 1.0))
+        # Apply regime-aware conviction multiplier (derived from this regime's own
+        # sharpe/vol character via classify_regime_kind — see class docstring/__init__).
+        regime_kind = self._regime_kind(ctx.regime_label)
+        mult_pair = _REGIME_KIND_CONVICTION_MULTIPLIERS.get(regime_kind, (1.0, 1.0))
         if consensus == "bullish":
             regime_multiplier = mult_pair[0]
         elif consensus == "bearish":
@@ -117,10 +141,10 @@ class FundManagerAgent(BaseAgent):
 
         # Detect regime contradictions (direction contradicts regime character)
         regime_contradiction = (
-            ctx.regime_label in (_BULLISH_PENALTY_REGIMES | _BULLISH_CAUTION_REGIMES)
+            regime_kind in (_BULLISH_PENALTY_KINDS | _BULLISH_CAUTION_KINDS)
             and consensus == "bullish"
         ) or (
-            ctx.regime_label in _BEARISH_PENALTY_REGIMES
+            regime_kind in _BEARISH_PENALTY_KINDS
             and consensus == "bearish"
         )
 
@@ -129,16 +153,16 @@ class FundManagerAgent(BaseAgent):
         any_agent_flipped = any(not r.maintains_bias for r in round2_rebuttals)
         regime_override = False
 
-        if ctx.regime_label in _BULLISH_PENALTY_REGIMES and consensus == "bullish":
-            # Stress/crisis or bear trend + bullish consensus → override to hold
+        if regime_kind in _BULLISH_PENALTY_KINDS and consensus == "bullish":
+            # Stress/crisis or high-vol-bear + bullish consensus → override to hold
             final_action = "hold"
             regime_override = True
-        elif ctx.regime_label in _BULLISH_CAUTION_REGIMES and consensus == "bullish":
-            # Calm bear + bullish consensus → keep long but flag contradiction
+        elif regime_kind in _BULLISH_CAUTION_KINDS and consensus == "bullish":
+            # Mild-negative regime + bullish consensus → keep long but flag contradiction
             final_action = "long"
             regime_override = True
-        elif ctx.regime_label in _BEARISH_PENALTY_REGIMES and consensus == "bearish":
-            # Calm bull + bearish consensus → keep short but flag
+        elif regime_kind in _BEARISH_PENALTY_KINDS and consensus == "bearish":
+            # Favorable (bullish) regime + bearish consensus → keep short but flag
             final_action = "short"
             regime_override = True
         elif consensus == "bullish":

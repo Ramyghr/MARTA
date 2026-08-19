@@ -71,13 +71,52 @@ class PredictiveContrastiveDataset(Dataset):
         augment_kwargs: dict | None = None,
         asset_id: int = 0,
         return_metadata: bool = False,
+        require_contiguous: bool = False,
     ) -> None:
         self.data: np.ndarray = df.values.astype(np.float32)
         self.window_size = window_size
         self.future_size = future_size
-        self.indices: list[int] = list(
-            range(window_size - 1, len(df) - future_size, step)
-        )
+        candidate_indices = list(range(window_size - 1, len(df) - future_size, step))
+
+        # Opt-in (2026-08-14, found while investigating the BTC-only encoder experiment):
+        # window construction is pure row-index slicing, with no awareness of the
+        # DataFrame's actual timestamps. If df has any real-time gaps (e.g. df came from
+        # align.py's inner-join against weekday-only forex data, which truncates crypto's
+        # native 24/7 calendar to ~72% Friday / 0% Saturday / ~27% Sunday), a window whose
+        # rows are adjacent by POSITION can silently span many real hours or days — found
+        # 99.3% of windows affected on BTC_USDT_aligned.parquet specifically. Default False
+        # preserves exact prior behavior (every existing config/result is unaffected).
+        # When True, requires the full context+future span (df.index[t-window_size+1] to
+        # df.index[t+future_size]) to be genuinely hourly-contiguous — no gap anywhere in
+        # the span — dropping any index that isn't. Intended for use with a genuinely
+        # gap-free source file (e.g. the pre-alignment {asset}_normalized.parquet, not
+        # {asset}_aligned.parquet), where this should reject few or no windows; it is a
+        # safeguard/assertion of that property, not expected to do the heavy lifting itself.
+        if require_contiguous:
+            if not isinstance(df.index, pd.DatetimeIndex):
+                raise ValueError("require_contiguous=True needs a DatetimeIndex on df")
+            ts = df.index
+            hours_diff = ts.to_series().diff().dt.total_seconds().to_numpy() / 3600.0
+            hours_diff[0] = 1.0  # no predecessor for row 0; treat as contiguous
+            has_gap = hours_diff != 1.0
+            gap_cumsum = np.cumsum(has_gap)
+            kept = []
+            for t in candidate_indices:
+                lo, hi = t - window_size + 1, t + future_size  # inclusive span, row positions
+                # any gap strictly inside (lo, hi] means a non-contiguous jump somewhere
+                # in the combined context+future span
+                if gap_cumsum[hi] - gap_cumsum[lo] == 0:
+                    kept.append(t)
+            dropped = len(candidate_indices) - len(kept)
+            if dropped:
+                import logging
+                logging.getLogger(__name__).info(
+                    f"require_contiguous=True: dropped {dropped}/{len(candidate_indices)} "
+                    f"({dropped/len(candidate_indices):.1%}) windows spanning a real-time gap"
+                )
+            candidate_indices = kept
+
+        self.indices: list[int] = candidate_indices
         self.augment_kwargs: dict = augment_kwargs or {}
         # Opt-in (2026-08-12, E1-NegCtrl) — asset_id is a fixed integer for this dataset
         # instance's whole lifetime (one instance = one asset). Deliberately NOT derived

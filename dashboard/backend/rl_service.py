@@ -97,13 +97,73 @@ def get_full_results() -> dict:
 
 
 def get_equity_curve() -> dict:
+    """Equity curve for the Analytics chart.
+
+    Priority order mirrors get_positions(): (1) derive directly from ppo_evaluation.json's
+    trade_log — the same evaluate_ppo() run backing every other number on the page; (2) the
+    standalone equity_curve.json snapshot, only if trade_log is absent; (3) a synthetic
+    curve as a last resort.
+
+    Before this fix, equity_curve.json (last regenerated 2026-07-05, describing the OLD
+    pre-walk-forward 2021 val window) was served unconditionally — even after
+    ppo_evaluation.json moved to the 2024 val window with a real trade_log — producing the
+    same two-stale-sources-on-one-card bug get_positions() was fixed for in the 2026-07-31
+    audit, just for the equity curve instead of the trade list.
+    """
+    eval_data = _load_json("data/results/ppo_evaluation.json") or {}
+    trade_log = eval_data.get("trade_log")
+    if trade_log:
+        curve = _equity_curve_from_trade_log(eval_data, trade_log)
+        if curve is not None:
+            return curve
+
     path = MARTA_ROOT / "data/results/equity_curve.json"
     if path.exists():
         with open(path) as f:
-            return json.load(f)
+            curve = json.load(f)
+        curve["stale"] = True
+        curve["source"] = "equity_curve.json (no trade_log in ppo_evaluation.json — using standalone snapshot)"
+        return curve
 
     # Fallback: synthetic curve from saved metrics so the chart isn't empty
     return _synthetic_equity_curve()
+
+
+def _equity_curve_from_trade_log(eval_data: dict, trade_log: list) -> dict | None:
+    """Build a timestamps/marta/buy_hold series directly from trade_log's portfolio_value.
+
+    trade_log only has one row per *meaningful* trade (not every step), so this is a
+    step-function equity curve between trades rather than a full per-bar series — accurate
+    at every point it does have, unlike the synthetic sine-wave fallback.
+    """
+    if not trade_log:
+        return None
+    marta = eval_data.get("marta_ppo", {})
+    bh = (eval_data.get("baselines") or {}).get("buy_and_hold_btc", {})
+    val_window = eval_data.get("val_window", {})
+
+    timestamps = [t["timestamp"] for t in trade_log]
+    marta_vals = [round(float(t["portfolio_value"]), 2) for t in trade_log]
+
+    start_val = 10000.0
+    bh_return = float(bh.get("total_return", 0.0))
+    n = len(timestamps)
+    bh_vals = [round(start_val * (1 + bh_return * (i + 1) / max(n, 1)), 2) for i in range(n)]
+
+    return {
+        "timestamps": timestamps,
+        "marta": marta_vals,
+        "buy_hold": bh_vals,
+        "synthetic": False,
+        "stale": False,
+        "source": "ppo_evaluation.json trade_log",
+        "note": "Step function over meaningful trades only, not every bar.",
+        "marta_final_return": round(float(marta.get("total_return", 0.0)) * 100, 1),
+        "bh_final_return": round(bh_return * 100, 1),
+        "marta_max_dd": round(float(marta.get("max_drawdown", 0.0)) * 100, 1),
+        "bh_max_dd": round(float(bh.get("max_drawdown", 0.0)) * 100, 1),
+        "val_window": val_window,
+    }
 
 
 def _synthetic_equity_curve() -> dict:
@@ -166,6 +226,8 @@ def _synthetic_equity_curve() -> dict:
         "marta": marta_vals,
         "buy_hold": bh_vals,
         "synthetic": True,
+        "stale": True,
+        "source": "synthetic",
         "note": "Synthetic curve — run generate_equity_curve.py for real data",
         "marta_final_return": round(marta_return * 100, 1),
         "bh_final_return": round(bh_return * 100, 1),
@@ -217,7 +279,8 @@ def get_positions() -> dict:
             "total_return": float(marta.get("total_return", 0.0)),
             "n_trades": int(marta.get("n_meaningful_trades", len(trades))),
             "trades": trades,
-            "source": "backtest",
+            "source": "ppo_evaluation.json trade_log",
+            "stale": False,
         }
 
     curve = _load_json("data/results/equity_curve.json")
@@ -261,7 +324,8 @@ def get_positions() -> dict:
             "total_return": float(marta.get("total_return", 0.0)),
             "n_trades": int(marta.get("n_meaningful_trades", len(trades))),
             "trades": trades,
-            "source": "backtest",
+            "source": "equity_curve.json (fallback, no trade_log in ppo_evaluation.json)",
+            "stale": True,
         }
 
     # Fallback: synthesise a plausible trade log from saved stats
@@ -314,6 +378,7 @@ def _synthetic_positions(eval_data: dict) -> dict:
         "n_trades": n_meaningful,
         "trades": trades,
         "source": "synthetic",
+        "stale": True,
         "note": "Synthetic trade log — run generate_equity_curve.py for real positions",
     }
 

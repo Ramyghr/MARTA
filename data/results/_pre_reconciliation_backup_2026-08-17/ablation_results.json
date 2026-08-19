@@ -1,0 +1,140 @@
+{
+  "variants": {
+    "buy_hold": {
+      "sharpe": 1.1212694165501815,
+      "sortino": 1.4928201353662427,
+      "max_drawdown": 0.45323211011042774,
+      "calmar": 1.4348081317566026,
+      "total_return": 0.38566351266124665,
+      "n_trades": 0,
+      "n_meaningful_trades": 0,
+      "mean_turnover": 0.0,
+      "hold_ratio": 0.0,
+      "mean_trade_duration_hours": 5929.0,
+      "median_trade_duration_hours": 5929.0,
+      "method": "buy-and-hold BTC over the validation window"
+    },
+    "rsi_strategy": {
+      "sharpe": -3.236465646992857,
+      "sortino": -1.741483232785705,
+      "max_drawdown": 0.17260519756687556,
+      "calmar": -1.359728950897004,
+      "total_return": -0.14837007999789054,
+      "n_trades": 378,
+      "n_meaningful_trades": 378,
+      "mean_turnover": 0.019129554655870445,
+      "hold_ratio": 0.8755270703322652,
+      "mean_trade_duration_hours": 3.9047619047619047,
+      "median_trade_duration_hours": 2.0,
+      "method": "Classic RSI mean-reversion (buy <30, sell >70, fixed 0.3 size) \u2014 raw Wilder RSI(14) recomputed from close_return (aligned `rsi` column is z-scored)"
+    },
+    "ma_crossover": {
+      "sharpe": -1.1232611929506948,
+      "sortino": -1.5606607458551365,
+      "max_drawdown": 0.19815311262068352,
+      "calmar": -0.986744096356021,
+      "total_return": -0.13287164422580466,
+      "n_trades": 259,
+      "n_meaningful_trades": 259,
+      "mean_turnover": 0.02616396761133603,
+      "hold_ratio": 0.004553887670770787,
+      "mean_trade_duration_hours": 5902.0,
+      "median_trade_duration_hours": 5902.0,
+      "method": "MA crossover (12h fast / 26h slow, long above / short below, fixed 0.3 size, 26-bar warmup hold)"
+    },
+    "ppo_no_regime": {
+      "sharpe": -10.580840042446017,
+      "sortino": -8.803573839899133,
+      "max_drawdown": 0.460184749947187,
+      "calmar": -1.9171642833877778,
+      "total_return": -0.4508661039047893,
+      "n_trades": 1431,
+      "n_meaningful_trades": 1431,
+      "mean_turnover": 0.07177041203122798,
+      "hold_ratio": 0.768595041322314,
+      "mean_trade_duration_hours": 1.9215686274509804,
+      "median_trade_duration_hours": 1.0,
+      "method": "momentum rule (close_return sign, 3-step lookback, fixed 0.3 size) \u2014 PPO collapses to hold without the regime embedding"
+    },
+    "agents_no_regime": {
+      "sharpe": 2.050439273163901,
+      "sortino": 2.595688900610799,
+      "max_drawdown": 0.017873362180812827,
+      "calmar": 3.2027228568461754,
+      "total_return": 0.03922320907878163,
+      "n_trades": 46,
+      "n_meaningful_trades": 44,
+      "mean_turnover": 0.000587961779976838,
+      "hold_ratio": 0.062405127340192275,
+      "mean_trade_duration_hours": 694.875,
+      "median_trade_duration_hours": 704.0,
+      "method": "LLM agents debated without regime context \u2014 clean no-regime baseline. Nearest cached debate (\u2264 7-day lookup) drives direction/size \u2014 no PPO."
+    },
+    "ppo_agents_no_regime": {
+      "sharpe": -9.652636315816972,
+      "sortino": -7.773276792482818,
+      "max_drawdown": 0.4957712109692699,
+      "calmar": -1.966782750466065,
+      "total_return": -0.4848702285223614,
+      "n_trades": 1441,
+      "n_meaningful_trades": 1441,
+      "mean_turnover": 0.08044464189317924,
+      "hold_ratio": 0.7748355540563333,
+      "mean_trade_duration_hours": 1.8619246861924685,
+      "median_trade_duration_hours": 1.0,
+      "method": "momentum rule weighted by nearest cached debate confidence (\u2264 7-day lookup) \u2014 PPO collapses to hold without the regime embedding"
+    },
+    "marta_full": {
+      "sharpe": -2.7489082922418744,
+      "sortino": -3.286793824652716,
+      "max_drawdown": 0.39014694847777326,
+      "calmar": -1.6850323947785943,
+      "total_return": -0.3713959126860008,
+      "n_trades": 4694,
+      "n_meaningful_trades": 3930,
+      "mean_turnover": 0.12583287103587792,
+      "hold_ratio": 0.2627761848541069,
+      "mean_trade_duration_hours": 11.78167115902965,
+      "median_trade_duration_hours": 5.0,
+      "method": "trained PPO policy \u2014 full regime embedding + agent-consensus conditioning"
+    }
+  },
+  "bootstrap_ci": {
+    "marta_full_vs_buy_hold": {
+      "delta_sharpe": -3.8438940315718364,
+      "ci_lower_95": -6.3853070000199725,
+      "ci_upper_95": -1.169671002788603,
+      "significant": true
+    },
+    "marta_full_vs_rsi_strategy": {
+      "delta_sharpe": 0.6054389736425357,
+      "ci_lower_95": -2.1880318016555327,
+      "ci_upper_95": 3.5895816967137772,
+      "significant": false
+    },
+    "marta_full_vs_ma_crossover": {
+      "delta_sharpe": -1.5759401005895854,
+      "ci_lower_95": -4.375042072502287,
+      "ci_upper_95": 1.4097293133185094,
+      "significant": false
+    },
+    "marta_full_vs_ppo_no_regime": {
+      "delta_sharpe": 8.239802284845362,
+      "ci_lower_95": 4.753038055165056,
+      "ci_upper_95": 12.14228429211468,
+      "significant": true
+    },
+    "marta_full_vs_agents_no_regime": {
+      "delta_sharpe": -4.644341638206812,
+      "ci_lower_95": -7.938381903931594,
+      "ci_upper_95": -1.1493048144692628,
+      "significant": true
+    },
+    "marta_full_vs_ppo_agents_no_regime": {
+      "delta_sharpe": 7.319162171143744,
+      "ci_lower_95": 3.7780398300594316,
+      "ci_upper_95": 11.2347887962758,
+      "significant": true
+    }
+  }
+}

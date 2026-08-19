@@ -1,0 +1,82 @@
+# E1-predictive-BTC-only (2026-08-14, "Option A" from the PFE-advisor-recommendation audit).
+#
+# Copy of configs/encoder_e1_predictive.yaml with ONE intentional difference:
+#   - data.assets: [BTC_USDT] only — was [BTC_USDT, ETH_USDT, EURUSD, XAUUSD].
+#
+# Why: this is the one genuinely untested variable from the mentor's recommendation review.
+# EURUSD/XAUUSD come from histdata.com with ZERO volume, so obv_raw/vol_zscore are degenerate
+# (near-constant) for those two assets (documented in CLAUDE.md's data pipeline section). Every
+# encoder variant tried so far (production, E2, E1-lastpool, E1-predictive, E1-NegCtrl) trained
+# jointly on all 4 assets, forcing one shared representation across BTC's real-volume signal and
+# two assets where 2/14 input dims are near-garbage. This isolates whether that joint-training
+# dilution — not pooling, not augmentation, not positive-pair construction (all already tested
+# and rejected) — is what's capping BTC representation quality.
+#
+# E1-predictive was chosen as the base recipe (not production/E2/E1-lastpool) because it had the
+# best reconstruction (R²=0.748) and the only healthy training dynamic (reconstruction improves
+# with training) of every variant tried — the strongest starting point for isolating this one
+# remaining variable.
+#
+# Stop condition (agreed before running): if this doesn't beat raw_14 BTC AUC either, every
+# reasonable lever (pooling x2, augmentation, positive-pair construction, negative sampling,
+# asset scope) has been tested and rejected — that's a complete, closed investigation, not a
+# reason to try a 6th variant.
+#
+# Everything else identical to configs/encoder_e1_predictive.yaml: mean pooling, no
+# augmentation, positive_pair_mode="predictive", future_size=24, seed=42, val_end="2024-12-31".
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  # pooling: "mean"  (omitted -> default)
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 200
+  early_stopping_patience: 20
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  positive_pair_mode: "predictive"
+  future_size: 24
+  augment_kwargs:
+    use_amplitude_scale: false
+    use_jitter: false
+    use_channel_mask: false
+    use_time_warp: false
+
+data:
+  assets:
+    - BTC_USDT
+  processed_dir: "data/processed"
+  output_dir: "data/processed/encoder_experiments/e1_predictive_btc_only"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_predictive_btc_only"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_predictive_btc_only"
+  save_periodic: true

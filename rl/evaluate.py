@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +43,77 @@ IN_SAMPLE_WINDOWS = [
         "note": "IN-SAMPLE — for regime behavior analysis only",
     },
 ]
+
+
+def _git_commit() -> dict[str, Any]:
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5, check=True
+        ).stdout.strip()
+        dirty = bool(
+            subprocess.run(
+                ["git", "status", "--porcelain"], capture_output=True, text=True, timeout=5
+            ).stdout.strip()
+        )
+        return {"commit": commit, "dirty": dirty}
+    except Exception as e:
+        return {"commit": None, "dirty": None, "error": str(e)}
+
+
+def _file_stamp(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "mtime_utc": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        "size_bytes": stat.st_size,
+    }
+
+
+def _build_provenance(config: dict, checkpoint_path: str | Path | None) -> dict[str, Any]:
+    """Stamp an eval-output JSON with what actually produced it.
+
+    Reconciling backend eval output against dashboard display requires knowing which
+    checkpoint, code revision, env config, and data snapshot a given metric came from —
+    none of that was previously recorded in ppo_evaluation.json, so a stale file was
+    indistinguishable from a fresh one without manually cross-referencing file mtimes.
+    Metadata only; does not affect any metric computation.
+    """
+    env_config_keys = [
+        "obs_mode", "benchmark_relative", "lambda_drawdown", "transaction_cost",
+        "regime_stream_path", "idle_penalty",
+    ]
+    env_config_subset = {k: config.get(k) for k in env_config_keys if k in config}
+    env_py_path = Path(__file__).parent / "env.py"
+    env_py_bytes = env_py_path.read_bytes() if env_py_path.exists() else b""
+    env_config_hash = hashlib.sha256(
+        env_py_bytes + json.dumps(env_config_subset, sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+
+    ckpt_path = Path(checkpoint_path) if checkpoint_path else None
+    regime_stream_path = Path(config.get("regime_stream_path", "data/processed/regime_stream.parquet"))
+
+    run_id = None
+    try:
+        import mlflow
+        active = mlflow.active_run()
+        run_id = active.info.run_id if active else None
+    except Exception:
+        pass
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "mlflow_run_id": run_id,
+        "checkpoint": _file_stamp(ckpt_path) if ckpt_path else None,
+        "git": _git_commit(),
+        "env_config_hash": env_config_hash,
+        "env_config": env_config_subset,
+        "data_sources": {
+            "aligned_btc": _file_stamp(Path("data/processed/BTC_USDT_aligned.parquet")),
+            "regime_stream": _file_stamp(regime_stream_path),
+        },
+    }
 
 
 def compute_max_drawdown(portfolio_values: np.ndarray) -> float:
@@ -442,6 +516,7 @@ def evaluate_ppo(
     config: dict,
     val_end: pd.Timestamp | None = None,
     output_path: Path | None = None,
+    checkpoint_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Full walk-forward evaluation on the validation set with per-regime + baselines.
 
@@ -493,6 +568,7 @@ def evaluate_ppo(
         "n_val_steps": int(len(traj["returns"])),
         "final_portfolio_value": float(traj["portfolio_values"][-1]),
         "val_window": {"start": start_label, "end": end_label},
+        "_provenance": _build_provenance(config, checkpoint_path),
     }
 
     path = output_path or _RESULTS_PATH

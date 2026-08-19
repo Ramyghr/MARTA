@@ -1,0 +1,92 @@
+# E1-predictive-BTC-only-v3 (2026-08-14) — fixes a real-time-gap corruption bug found in
+# v1/v2: BTC_USDT_aligned.parquet is inner-joined against weekday-only forex data (0
+# Saturday rows, ~72% Friday, ~27% Sunday), and encoder/dataset.py's window slicing is
+# pure row-index (no timestamp awareness) -- 99.3% of v1/v2's training windows silently
+# spanned a real-time gap (mean 11.6h, max 77h), corrupting the "60h context / 24h future"
+# premise the whole predictive-pair objective is built on. This is NOT specific to
+# BTC-only -- every encoder variant this entire investigation trained on the same
+# aligned files -- but it's the variable under test here, so it's the one being fixed
+# first, and cleanly (verified, not assumed): see the regression/verification checks run
+# immediately before creating this file.
+#
+# Two changes from v2 (both new, opt-in options added to encoder/train.py + dataset.py):
+#   - data.file_suffix: "_normalized" instead of default "_aligned". Reads
+#     BTC_USDT_normalized.parquet (the PRE-alignment, single-asset, genuinely-gap-free
+#     file -- 26 minor gaps vs 2,254 in the aligned file, verified directly). Same
+#     14-column schema, so nothing else about the pipeline changes. This file is live
+#     production data (dashboard/backend/ppo_inference.py's inference path) -- read-only,
+#     never written here.
+#   - training.require_contiguous: true. Extra safeguard/assertion on top of the above --
+#     drops any window whose combined context+future span isn't genuinely hourly-
+#     contiguous (verified: drops only ~4% on the native file, vs ~99% on the aligned
+#     file, confirming the native file is a real fix, not just "fewer gaps").
+#
+# Epoch/patience budget kept at v2's scaled values (800/80) -- v2's under-training
+# hypothesis was tested and ruled out (more budget didn't move the plateau), but there's
+# no reason to shrink the budget back down either; more real (contiguous) data now exists
+# (~50k windows vs 34k) so leaving the larger budget costs nothing and removes one more
+# variable from this comparison.
+#
+# Everything else identical to encoder_e1_predictive_btc_only.yaml: BTC_USDT only, mean
+# pooling, no augmentation, positive_pair_mode="predictive", future_size=24, seed=42.
+# val_end removed -- irrelevant here since split boundaries are computed directly from
+# train_end/val_start/val_end in _load_asset_split regardless of source file; kept
+# identical value to avoid touching the split logic itself.
+
+model:
+  input_dim: 14
+  hidden_dim: 128
+  proj_dim: 64
+  n_lstm_layers: 2
+  # pooling: "mean"  (omitted -> default)
+
+training:
+  window_size: 60
+  step: 1
+  batch_size: 512
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  max_epochs: 800
+  early_stopping_patience: 80
+  warmup_epochs: 10
+  gradient_clip_max_norm: 1.0
+  val_end: "2024-12-31"
+  seed: 42
+  positive_pair_mode: "predictive"
+  future_size: 24
+  require_contiguous: true
+  augment_kwargs:
+    use_amplitude_scale: false
+    use_jitter: false
+    use_channel_mask: false
+    use_time_warp: false
+
+data:
+  assets:
+    - BTC_USDT
+  processed_dir: "data/processed"
+  file_suffix: "_normalized"
+  output_dir: "data/processed/encoder_experiments/e1_predictive_btc_only_v3"
+
+visualization:
+  tsne_n_samples: 3000
+  tsne_perplexity: 50
+  tsne_learning_rate: 200
+  tsne_n_iter: 1000
+
+mlflow:
+  experiment_name: "marta_encoder_pretraining"
+  run_name: "e1_predictive_btc_only_v3"
+
+convergence:
+  max_val_loss: 4.0
+  min_top1_acc: 0.20
+  min_temperature: 0.03
+  max_temperature: 0.30
+
+checkpoints:
+  dir: "encoder/checkpoints"
+  best: "best_encoder.pt"
+  final: "final_encoder.pt"
+  run_tag: "e1_predictive_btc_only_v3"
+  save_periodic: true

@@ -1,0 +1,12 @@
+[
+  {
+    "phase": 1,
+    "assets": [
+      "BTC_USDT"
+    ],
+    "steps": 50000,
+    "sharpe": 0.7073273900589404,
+    "threshold": 0.5,
+    "threshold_met": true
+  }
+]

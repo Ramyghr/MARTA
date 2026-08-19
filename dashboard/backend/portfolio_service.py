@@ -47,6 +47,8 @@ def get_portfolio() -> dict:
             "total_return": float(bh.get("total_return", 0)),
         },
         "per_regime": regime_breakdown,
+        "val_window": data.get("val_window", {}),
+        "provenance": data.get("_provenance"),
     }
 
 
@@ -65,4 +67,6 @@ def _empty_portfolio() -> dict:
         "n_val_steps": 0, "final_portfolio_value": 10000.0,
         "buy_and_hold": {"sharpe": 0.0, "max_drawdown": 0.0, "total_return": 0.0},
         "per_regime": [],
+        "val_window": {},
+        "provenance": None,
     }

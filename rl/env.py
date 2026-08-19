@@ -703,8 +703,13 @@ class MARTATradingEnv(gym.Env):
         # intraday returns make "hold everything" the minimum-variance policy.
         idle = self.idle_penalty if abs(self._signed_position) < 0.005 else 0.0
 
+        # Directional accuracy bonus: small reward for being on the correct side
+        # of the asset's actual return that bar.
+        bonus = 0.01 if (abs(self._signed_position) > 1e-9
+                          and self._signed_position * np.sign(benchmark_return) > 0) else 0.0
+
         # Clip to [-10, 10] — keeps reward magnitude in a range PPO's value net can learn.
-        return float(np.clip(risk_adjusted - penalty - idle, -10.0, 10.0))
+        return float(np.clip(risk_adjusted - penalty - idle + bonus, -10.0, 10.0))
 
     # -------------------------------------------------------------------- info
     def _sharpe_so_far(self) -> float:

@@ -36,6 +36,12 @@ def extract_embeddings(
 
     window_size: int = config["training"]["window_size"]
     assets: list[str] = config["data"]["assets"]
+    # Opt-in (2026-08-14) — "_aligned" preserves exact prior behavior. See
+    # encoder/train.py's _load_asset_split docstring for why "_normalized" exists (the
+    # pre-alignment, gap-free file); must match whatever file_suffix training itself used,
+    # or the embeddings extracted here would silently come from different (and possibly
+    # gap-corrupted) data than what the checkpoint was actually trained on.
+    file_suffix: str = str(config["data"].get("file_suffix", "_aligned"))
     processed_dir = _ROOT / config["data"]["processed_dir"]
     # Read path (processed_dir) may be a read-only mount (e.g. /kaggle/input).
     # Generated artifacts go to output_dir, which defaults to processed_dir but
@@ -51,7 +57,7 @@ def extract_embeddings(
 
     for asset in assets:
         df = pd.read_parquet(
-            processed_dir / f"{asset}_aligned.parquet", engine="pyarrow"
+            processed_dir / f"{asset}{file_suffix}.parquet", engine="pyarrow"
         )
         data = df.values.astype(np.float32)           # (T, 14)
         timestamps = df.index.tolist()
