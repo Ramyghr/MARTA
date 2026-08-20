@@ -24,7 +24,9 @@ VALIDATED_DIR = Path("data/validated")
 # Traditional: daily-upsampled to hourly, same intersection, minus warmup ≈ 15k.
 _MIN_ROWS_CRYPTO = 30_000
 _MIN_ROWS_TRADITIONAL = 15_000
-_CRYPTO_SYMBOLS = {"BTC_USDT", "ETH_USDT"}
+# BNB/LTC/XRP added for the crypto-only 5-asset panel (regime-layer audit, 2026-08-19) —
+# same CCXT/Binance hourly source as BTC/ETH, same crypto gap/row-count thresholds apply.
+_CRYPTO_SYMBOLS = {"BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"}
 
 INDICATOR_COLS = [
     "atr",
@@ -64,11 +66,16 @@ def validate_pipeline(
     aligned_assets: dict[str, pd.DataFrame],
     raw_assets: dict[str, pd.DataFrame],
     config: dict[str, Any],
+    output_filename: str = "validation_report.json",
 ) -> bool:
     """
     Run all validation checks on aligned and raw asset data.
     Logs results to MLflow and saves a JSON report.
     Returns True iff all CRITICAL checks pass.
+
+    output_filename: override to avoid clobbering the sacred production
+    validation_report.json — e.g. a new asset panel writes to
+    "validation_report_{tag}.json" instead (see regime/validate_crypto_panels.py).
     """
     VALIDATED_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -332,7 +339,7 @@ def validate_pipeline(
         "metrics": mlflow_metrics,
     }
 
-    report_path = VALIDATED_DIR / "validation_report.json"
+    report_path = VALIDATED_DIR / output_filename
     with open(report_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
 

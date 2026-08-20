@@ -113,3 +113,52 @@ def normalize_and_save(
     out.to_parquet(out_path, engine="pyarrow")
     logger.success(f"[{symbol}] Normalized → {out_path} ({len(out):,} rows, {len(out.columns)} cols)")
     return out
+
+
+# ---------------------------------------------------------------------------
+# Multi-horizon experiment (Phase 2, regime-layer audit, 2026-08-19) — additive only,
+# normalize_features()/FEATURE_COLS/normalize_and_save() above are untouched.
+#
+# Tests whether the 720h(30d) rolling z-score is silently capping how long a "regime"
+# the HMM discovers can persist (measured production dwell times were 13-20h — far
+# shorter than a classical multi-week market regime). See regime/build_multihorizon_features.py.
+# ---------------------------------------------------------------------------
+
+# Vol-shape features that get extra, longer normalization horizons — not applied to
+# every column: RSI/MACD/skew/kurtosis/autocorr are oscillator-like and not primarily
+# about how long a volatility regime has been running.
+EXTRA_HORIZON_COLS = ["realized_vol", "atr", "bb_width", "vol_ratio"]
+EXTRA_HORIZONS = [(2160, "90d"), (4320, "180d")]  # (window_hours, column-suffix)
+
+
+def normalize_features_multihorizon(df: pd.DataFrame, config: dict[str, Any]) -> pd.DataFrame:
+    """normalize_features()'s 14 columns, plus a 90d and 180d rolling z-score (in
+    addition to the production 720h/30d one) of each column in EXTRA_HORIZON_COLS.
+
+    Deliberately reuses the SAME min_periods as the production window
+    (config["normalization"]["min_periods"], currently 168h) rather than scaling it up
+    with the window — so these longer horizons don't drop any extra warmup rows beyond
+    what normalize_features() already drops: every column becomes non-NaN at the same
+    point, no extra row-alignment logic needed.
+
+    Returns 14 + len(EXTRA_HORIZON_COLS)*len(EXTRA_HORIZONS) columns (22 with the
+    current 4 cols x 2 horizons).
+    """
+    out = normalize_features(df, config)  # existing 14-column production path, unchanged
+    min_periods: int = config["normalization"]["min_periods"]
+
+    extra_cols: list[str] = []
+    for col in EXTRA_HORIZON_COLS:
+        raw = df[col]  # pre-normalization raw indicator value — df is untouched by normalize_features
+        for window_hours, suffix in EXTRA_HORIZONS:
+            new_col = f"{col}_z{suffix}"
+            out[new_col] = _rolling_zscore(raw, window=window_hours, min_periods=min_periods).reindex(out.index)
+            extra_cols.append(new_col)
+
+    rows_before_drop = len(out)
+    out.dropna(subset=extra_cols, inplace=True)
+    dropped = rows_before_drop - len(out)
+    if dropped:
+        logger.info(f"Multi-horizon normalization: dropped {dropped:,} additional NaN rows.")
+
+    return out

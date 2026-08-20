@@ -8,10 +8,21 @@ each candidate n_states on the real data and reports the two structural symptoms
 regime/regime_quality_audit.py to be decisive: near-duplicate states (state-mean distance)
 and single-bar-dwell "flicker" states — the fast, cheap proxies for the full 5-part audit.
 
-Run: python regime/n_states_sweep.py
+Generalized (2026-08-20, regime-layer audit Phase 4) via CLI args so the same empirical
+method can validate n_states for the crypto-only panels (crypto5/btc_only, raw features,
+no PCA) instead of just production's encoder+PCA(16) case — those panels were fit with
+n_states=6 inherited from the old, now-abandoned EURUSD/GOLD raw baseline's BIC pick,
+never actually validated for themselves. Running with no args reproduces the original
+production sweep exactly (same defaults).
+
+Run:
+  python regime/n_states_sweep.py
+  python regime/n_states_sweep.py --processed-dir data/processed/crypto5_multihorizon \
+      --no-pca --candidates 3,4,5,6,7,8
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -27,15 +38,39 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from configs.splits import TRAIN_END_EXCLUSIVE  # noqa: E402
-from regime.hmm import fit_pca  # noqa: E402
+from regime.hmm import _compute_lengths, fit_pca  # noqa: E402
 from utils.logger import logger  # noqa: E402
 
-_CANDIDATES = [3, 4, 5, 6]
+_DEFAULT_CANDIDATES = [3, 4, 5, 6]
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--processed-dir", type=str, default=None,
+        help="Dir with embeddings.npy/embedding_timestamps.parquet/embedding_asset_map.parquet "
+             "(default: configs/assets.yaml's data.processed_dir, production).",
+    )
+    parser.add_argument(
+        "--no-pca", action="store_true",
+        help="Skip PCA(16), fit the HMM directly on the raw embedding columns "
+             "(for raw-feature panels like crypto5/btc_only — no encoder involved).",
+    )
+    parser.add_argument(
+        "--candidates", type=str, default=None,
+        help="Comma-separated n_states candidates (default: 3,4,5,6, production).",
+    )
+    args = parser.parse_args()
+
+    candidates = [int(c) for c in args.candidates.split(",")] if args.candidates else _DEFAULT_CANDIDATES
+
     config = yaml.safe_load(open(_ROOT / "configs" / "assets.yaml"))
-    processed_dir = _ROOT / config["data"]["processed_dir"]
+    processed_dir = Path(args.processed_dir) if args.processed_dir else _ROOT / config["data"]["processed_dir"]
+    if not processed_dir.is_absolute():
+        processed_dir = _ROOT / processed_dir
+
+    logger.info(f"processed_dir={processed_dir}  pca={'off' if args.no_pca else 'on (16 components)'}  "
+                f"candidates={candidates}")
 
     embeddings = np.load(processed_dir / "embeddings.npy")
     timestamps = pd.read_parquet(processed_dir / "embedding_timestamps.parquet")
@@ -53,24 +88,33 @@ def main() -> None:
     ts_series = pd.to_datetime(timestamps["timestamp"], utc=True)
     train_mask = (ts_series < train_cutoff).values
 
+    # per-asset contiguous run lengths — passed to .fit()/.predict() so multi-asset
+    # sequences are modeled as independent chains, not one continuous one (see
+    # regime/hmm.py's _compute_lengths docstring).
+    train_lengths = _compute_lengths(timestamps.loc[train_mask, "asset"].to_numpy())
+    full_lengths = _compute_lengths(timestamps["asset"].to_numpy())
+
     mlflow.set_tracking_uri(str(_ROOT / "mlruns"))
     mlflow.set_experiment("marta_regime_hmm")
     mlflow.start_run(run_name="n_states_sweep")
 
-    pca, emb_reduced = fit_pca(embeddings, train_mask, n_components=16)
+    if args.no_pca:
+        emb_reduced = embeddings.astype(np.float64)
+    else:
+        _pca, emb_reduced = fit_pca(embeddings, train_mask, n_components=16)
 
-    for n in _CANDIDATES:
+    for n in candidates:
         model = GaussianHMM(
             n_components=n, covariance_type="diag", n_iter=200, random_state=42, tol=1e-4,
         )
-        model.fit(emb_reduced[train_mask])
+        model.fit(emb_reduced[train_mask], lengths=train_lengths)
 
         dist = squareform(pdist(model.means_))
         np.fill_diagonal(dist, np.inf)
         min_dist = float(dist.min())
         min_pair = np.unravel_index(np.argmin(dist), dist.shape)
 
-        labels = model.predict(emb_reduced)
+        labels = model.predict(emb_reduced, lengths=full_lengths)
         # dwell time on the full stream (one asset at a time so we don't blend
         # cross-asset boundaries into the run-length encoding)
         dwell_by_state: dict[int, list[int]] = {s: [] for s in range(n)}

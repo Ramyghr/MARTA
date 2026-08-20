@@ -3,10 +3,8 @@ regime/hmm.py
 Gaussian HMM fitting pipeline for MARTA regime discovery.
 PCA(16) on training embeddings → BIC-selected GaussianHMM → regime probability stream.
 
-BIC search strategy (fast):
-  - diag covariance, 100 iters, tol=1e-3, 20K-sample subsample of training data
-Final refit (accurate):
-  - diag covariance, 200 iters, tol=1e-4, all training data
+BIC search: diag covariance, 100 iters, tol=1e-3, full training data (no subsampling).
+Final refit: diag covariance, 200 iters, tol=1e-4, all training data, best-of-N seeds.
 
 Covariance type note (fixed 2026-07-20): the final refit previously used
 covariance_type="full" (136 free params/state in 16-dim space) while the BIC search
@@ -18,11 +16,41 @@ catch-all that any live (non-full-history) HMM query collapsed into regardless o
 actual input, because the model was never fit with any pressure keeping per-state
 covariances comparable. Diagonal covariance for both stages closes that gap and
 keeps the BIC formula's complexity accounting consistent with what's actually deployed.
+
+Sequence-boundary + robustness note (fixed 2026-08-19, regime-layer audit): two more
+correctness gaps, same family as the one above.
+
+  1. Every multi-asset embedding matrix is 4 (or fewer) assets' full histories
+     concatenated back-to-back. Every `.fit()`/`.score()`/`.predict()` call now passes
+     `lengths=` (via `_compute_lengths`) so hmmlearn treats each asset's block as an
+     independent chain — previously the model was fit and Viterbi-decoded as if BTC's
+     last training row transitioned directly into ETH's first training row.
+  2. `fit_hmm_bic` used to subsample 20,000 RANDOM, non-contiguous rows and fit them as
+     ONE sequence for the BIC search — consecutive "adjacent" rows in that subsample
+     could be hours or days apart in real time, corrupting the estimated self-transition
+     probability (biasing it toward looking like faster regime-switching than reality)
+     for every n_states candidate BIC scored. Removed entirely; BIC search now fits each
+     candidate on the full, correctly-segmented training data. Slower, not wrong.
+
+Also added: the final refit is now best-of-N (`n_seeds`, default 5) independent EM runs
+from different random initializations — hmmlearn has no built-in multi-restart, so this
+is done manually, keeping the highest-training-log-likelihood model — plus a seed-
+sensitivity report (pairwise Adjusted Rand Index / Normalized Mutual Information between
+every pair of seeds' decoded labels) saved alongside the checkpoint, so "how stable is
+this regime structure to EM initialization" is an artifact, not an assumption. The N
+seeds are fit in parallel worker processes (`n_jobs`, default: all cores) — hmmlearn/
+numpy have no GPU backend, and this workload (many small, sequential Baum-Welch
+iterations on tiny n_states x n_features matrices) is the wrong shape for a GPU to help
+with even if they did; independent per-seed CPU processes are the real lever.
 """
 from __future__ import annotations
 
+import itertools
 import json
+import multiprocessing
+import os
 import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 
@@ -32,6 +60,7 @@ import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
 from sklearn.decomposition import PCA
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -40,6 +69,23 @@ warnings.filterwarnings("ignore", category=UserWarning, module="hmmlearn")
 
 from configs.splits import TEST_START, TRAIN_END_EXCLUSIVE, TestSetContaminationError  # noqa: E402
 from utils.logger import logger  # noqa: E402
+
+
+def _compute_lengths(asset_labels: np.ndarray) -> np.ndarray:
+    """Contiguous per-asset run lengths, in order of appearance — the `lengths` array
+    hmmlearn needs to fit/score/decode a multi-asset embedding matrix as independent
+    chains instead of one continuous sequence. `asset_labels` must already be ordered
+    so each asset's rows form one contiguous block (true of every embeddings.npy this
+    module reads — encoder/embed.py and regime/build_raw_feature_embeddings.py both
+    write one contiguous block per asset). Works unchanged for a single-asset input
+    (returns one length covering everything).
+    """
+    asset_labels = np.asarray(asset_labels)
+    if len(asset_labels) == 0:
+        return np.array([], dtype=int)
+    change_points = np.flatnonzero(asset_labels[1:] != asset_labels[:-1]) + 1
+    boundaries = np.concatenate(([0], change_points, [len(asset_labels)]))
+    return np.diff(boundaries)
 
 
 def fit_pca(
@@ -86,23 +132,25 @@ def _compute_aic(
     return -2.0 * log_likelihood + 2.0 * n_params
 
 
-_BIC_SUBSAMPLE = 20_000  # rows used for BIC search; full data used for final refit
-
-
 def fit_hmm_bic(
     emb_reduced: np.ndarray,
     train_mask: np.ndarray,
+    lengths: np.ndarray,
     n_states_range: tuple[int, int] = (2, 9),
     force_n_states: Optional[int] = None,
 ) -> tuple[GaussianHMM, int, dict[int, dict[str, float]]]:
     """
     Grid-search GaussianHMM over n_states; select by BIC.
 
-    Speed strategy:
-      - diag covariance, 100 iters, tol=1e-3
-      - subsample training data to _BIC_SUBSAMPLE rows
-    Both BIC fit and BIC scoring use the subsample so the LL scale is consistent.
-    run_hmm_pipeline refits the winner on the full dataset with full covariance.
+    diag covariance, 100 iters, tol=1e-3, fit on the FULL training data (see module
+    docstring — this used to subsample 20K random non-contiguous rows, which corrupted
+    the estimated self-transition probability; removed, not worth the speedup).
+    run_hmm_pipeline refits the winner on the full dataset via best-of-N seeds.
+
+    `lengths` must be `_compute_lengths()` of the asset labels for
+    `emb_reduced[train_mask]`, in the same row order — passed to every `.fit()`/
+    `.score()` call so multi-asset sequences are modeled as independent chains, not one
+    continuous (and at the asset boundaries, nonsensical) sequence.
 
     force_n_states: bypass BIC selection entirely and fit only this n_states. Added
     2026-08-08 after a regime-quality audit (regime/regime_quality_audit.py) found the
@@ -114,22 +162,18 @@ def fit_hmm_bic(
     """
     if force_n_states is not None:
         n_states_range = (force_n_states, force_n_states + 1)
-    train_emb_full = emb_reduced[train_mask]
-    n_train_full = len(train_emb_full)
+    train_emb = emb_reduced[train_mask]
+    n_train = len(train_emb)
     pca_dim = emb_reduced.shape[1]
 
-    # subsample for fast BIC search
-    rng = np.random.default_rng(42)
-    sub_size = min(_BIC_SUBSAMPLE, n_train_full)
-    sub_idx = rng.choice(n_train_full, size=sub_size, replace=False)
-    sub_idx.sort()
-    train_emb = train_emb_full[sub_idx]
-    n_train = len(train_emb)
+    assert lengths.sum() == n_train, (
+        f"lengths sum to {lengths.sum()}, expected {n_train} (len(emb_reduced[train_mask]))"
+    )
 
     logger.info(
         f"BIC search: n_states {n_states_range[0]}–{n_states_range[1]-1}  "
-        f"subsample={n_train:,}/{n_train_full:,}  pca_dim={pca_dim}  "
-        f"cov=diag  n_iter=100"
+        f"n_train={n_train:,} (full training data, {len(lengths)} asset segment(s))  "
+        f"pca_dim={pca_dim}  cov=diag  n_iter=100"
     )
 
     results: dict[int, dict[str, float]] = {}
@@ -144,14 +188,14 @@ def fit_hmm_bic(
                 random_state=42,
                 tol=1e-3,
             )
-            model.fit(train_emb)
+            model.fit(train_emb, lengths=lengths)
 
             if not model.monitor_.converged:
                 logger.warning(
                     f"  n_states={n}: did not converge ({model.monitor_.iter} iters)"
                 )
 
-            ll = model.score(train_emb)
+            ll = model.score(train_emb, lengths=lengths)
             bic = _compute_bic(ll, n_train, n, pca_dim)
             aic = _compute_aic(ll, n, pca_dim)
 
@@ -225,11 +269,18 @@ def generate_regime_stream(
 
     pca=None means the HMM was fit directly on `embeddings` with no reduction
     (raw-feature baseline mode — see run_hmm_pipeline's pca_n_components).
+
+    Decodes with `lengths=` (per-asset contiguous run lengths from `timestamps["asset"]`)
+    so Viterbi decoding and the forward-backward posterior never bleed across an asset
+    boundary — the caller-supplied `asset_labels` param is unused for this (kept for
+    call-site compatibility with run_regime_live.py); `timestamps["asset"]` is what's
+    actually always populated by the time this is called.
     """
     emb_reduced = pca.transform(embeddings.astype(np.float64)) if pca is not None else embeddings.astype(np.float64)
+    lengths = _compute_lengths(timestamps["asset"].to_numpy())
 
-    regime_labels = hmm_model.predict(emb_reduced)
-    regime_probs = hmm_model.predict_proba(emb_reduced)
+    regime_labels = hmm_model.predict(emb_reduced, lengths=lengths)
+    regime_probs = hmm_model.predict_proba(emb_reduced, lengths=lengths)
     n_states = hmm_model.n_components
 
     df = timestamps[["timestamp", "asset"]].copy().reset_index(drop=True)
@@ -249,11 +300,129 @@ def generate_regime_stream(
     return df
 
 
+def _fit_one_seed(
+    args: tuple[np.ndarray, np.ndarray, int, int],
+) -> tuple[int, GaussianHMM, float, bool, np.ndarray]:
+    """Worker for _fit_multiseed's process pool — must be a module-level function so
+    it's picklable for ProcessPoolExecutor. Fits one GaussianHMM at one seed.
+
+    Runs single-threaded (BLAS thread env vars are set by the parent before the pool
+    is created — see _fit_multiseed) since n_jobs workers each spinning up their own
+    multi-threaded BLAS would oversubscribe the machine's cores against each other,
+    on top of being what triggers the fork-deadlock this function's callsite avoids
+    via a spawn context in the first place.
+    """
+    train_emb, lengths, n_states, seed = args
+    model = GaussianHMM(
+        n_components=n_states, covariance_type="diag",
+        n_iter=200, random_state=seed, tol=1e-4,
+    )
+    model.fit(train_emb, lengths=lengths)
+    ll = float(model.score(train_emb, lengths=lengths))
+    converged = bool(model.monitor_.converged)
+    labels = model.predict(train_emb, lengths=lengths)
+    return seed, model, ll, converged, labels
+
+
+def _fit_multiseed(
+    train_emb: np.ndarray,
+    lengths: np.ndarray,
+    n_states: int,
+    n_seeds: int = 5,
+    seed_base: int = 42,
+    n_jobs: Optional[int] = None,
+) -> tuple[GaussianHMM, dict[str, Any]]:
+    """Fit n_seeds independent GaussianHMMs (diag cov, 200 iter, tol=1e-4) at the given
+    n_states, each from a different EM initialization, and return the highest-training-
+    log-likelihood one — hmmlearn has no built-in n_init/multi-restart, so this is the
+    manual equivalent.
+
+    The n_seeds fits are independent of each other, so they run in parallel worker
+    processes (n_jobs, default: all cores) rather than sequentially — hmmlearn/numpy
+    have no GPU backend, so process-level CPU parallelism across seeds is the actual
+    lever here, not hardware.
+
+    Uses a "spawn" (not the Linux default "fork") multiprocessing context. By the time
+    this runs, the caller (run_hmm_pipeline's BIC search) has already done enough
+    NumPy work on a large array to trigger OpenBLAS's multi-threaded worker pool in
+    THIS process — fork()ing a process pool at that point duplicates only the calling
+    thread, leaving the BLAS worker threads' locks "phantom-held" in every child, which
+    deadlocks the first BLAS call each child makes (confirmed: workers sat at ~0% CPU
+    indefinitely under fork; spawn starts each worker as a fresh interpreter with no
+    inherited thread state). BLAS thread env vars are set here, before the pool is
+    created, so spawned children inherit them at OS process-creation time (before their
+    own NumPy import) and each runs single-threaded — n_jobs single-threaded workers is
+    the intended parallelism, not n_jobs workers each also spinning up its own
+    multi-threaded BLAS pool.
+
+    Also returns a seed-sensitivity report: per-seed convergence/log-likelihood, and
+    pairwise Adjusted Rand Index / Normalized Mutual Information between every pair of
+    seeds' Viterbi-decoded training labels. ARI/NMI near 1.0 means every seed converged
+    to essentially the same state assignment (the regime structure is stable); values
+    well below 1.0 mean the "regimes" are sensitive to EM initialization, not a robust
+    property of the data.
+    """
+    seeds = [seed_base + i for i in range(n_seeds)]
+    n_jobs = n_jobs or min(n_seeds, os.cpu_count() or 1)
+
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[var] = "1"
+    spawn_ctx = multiprocessing.get_context("spawn")
+
+    by_seed: dict[int, tuple[GaussianHMM, float, bool, np.ndarray]] = {}
+    with ProcessPoolExecutor(max_workers=n_jobs, mp_context=spawn_ctx) as executor:
+        futures = {
+            executor.submit(_fit_one_seed, (train_emb, lengths, n_states, seed)): seed
+            for seed in seeds
+        }
+        for future in as_completed(futures):
+            seed, model, ll, converged, labels = future.result()
+            by_seed[seed] = (model, ll, converged, labels)
+            logger.info(f"  seed={seed}: LL={ll:,.1f}  converged={converged}")
+
+    models = [by_seed[s][0] for s in seeds]
+    lls = [by_seed[s][1] for s in seeds]
+    converged = [by_seed[s][2] for s in seeds]
+    labels = [by_seed[s][3] for s in seeds]
+
+    best_idx = int(np.argmax(lls))
+    best_model = models[best_idx]
+
+    ari_pairs: dict[str, float] = {}
+    nmi_pairs: dict[str, float] = {}
+    for i, j in itertools.combinations(range(n_seeds), 2):
+        key = f"{seeds[i]}_vs_{seeds[j]}"
+        ari_pairs[key] = float(adjusted_rand_score(labels[i], labels[j]))
+        nmi_pairs[key] = float(normalized_mutual_info_score(labels[i], labels[j]))
+
+    report = {
+        "n_states": n_states,
+        "seeds": seeds,
+        "log_likelihoods": lls,
+        "converged": converged,
+        "best_seed": seeds[best_idx],
+        "pairwise_ari": ari_pairs,
+        "pairwise_nmi": nmi_pairs,
+        "mean_ari": float(np.mean(list(ari_pairs.values()))) if ari_pairs else 1.0,
+        "min_ari": float(np.min(list(ari_pairs.values()))) if ari_pairs else 1.0,
+        "mean_nmi": float(np.mean(list(nmi_pairs.values()))) if nmi_pairs else 1.0,
+        "min_nmi": float(np.min(list(nmi_pairs.values()))) if nmi_pairs else 1.0,
+    }
+    logger.info(
+        f"Seed sensitivity (n_states={n_states}, {n_seeds} seeds): "
+        f"mean ARI={report['mean_ari']:.3f}  min ARI={report['min_ari']:.3f}  "
+        f"mean NMI={report['mean_nmi']:.3f}  min NMI={report['min_nmi']:.3f}  "
+        f"(1.0 = identical across seeds; best_seed={report['best_seed']})"
+    )
+    return best_model, report
+
+
 def run_hmm_pipeline(
     config: dict,
     force_n_states: Optional[int] = None,
     checkpoint_dir: Optional[Path] = None,
     pca_n_components: Optional[int] = 16,
+    n_seeds: int = 5,
 ) -> dict[str, Any]:
     """
     Orchestrate the full Week 3 HMM pipeline.
@@ -268,12 +437,17 @@ def run_hmm_pipeline(
         already low-dimensional (e.g. 14 raw features) and PCA would either fail
         (n_components > n_features) or be pointless.
 
+    n_seeds: number of independent EM initializations for the final refit (best-of-N by
+        training log-likelihood). Also produces the seed-sensitivity report saved as
+        seed_sensitivity.json (see _fit_multiseed).
+
     Returns dict with keys:
-        regime_df   : pd.DataFrame  — full regime probability stream
-        bic_results : dict[int, dict[str, float]]
-        best_n      : int
-        hmm_model   : GaussianHMM   — fitted on full dataset
-        pca         : PCA
+        regime_df       : pd.DataFrame  — full regime probability stream
+        bic_results     : dict[int, dict[str, float]]
+        best_n          : int
+        hmm_model       : GaussianHMM   — fitted on full dataset (best-of-n_seeds)
+        pca             : PCA
+        seed_sensitivity: dict — see _fit_multiseed's report
     """
     processed_dir = _ROOT / config["data"]["processed_dir"]
 
@@ -341,27 +515,35 @@ def run_hmm_pipeline(
         pca = None
         emb_reduced = embeddings.astype(np.float64)
 
+    # lengths for the train-masked subset — every asset's train rows form one
+    # contiguous block (see _compute_lengths), needed so BIC search and the final
+    # refit model multi-asset sequences as independent chains, not one continuous one.
+    train_lengths = _compute_lengths(timestamps.loc[train_mask, "asset"].to_numpy())
+
     # Step 2 — BIC selection (training data only)
     _train_model, best_n, bic_results = fit_hmm_bic(
-        emb_reduced, train_mask, force_n_states=force_n_states
+        emb_reduced, train_mask, train_lengths, force_n_states=force_n_states
     )
 
-    # Step 3 — Refit winner on TRAINING DATA ONLY (diag covariance, more iterations —
-    # see module docstring for why this is diag, not full)
-    logger.info(f"Refitting best HMM (n_states={best_n}) on training data only …")
-    final_hmm = GaussianHMM(
-        n_components=best_n,
-        covariance_type="diag",
-        n_iter=200,
-        random_state=42,
-        tol=1e-4,
+    # Step 3 — Refit winner on TRAINING DATA ONLY, best-of-n_seeds (diag covariance,
+    # more iterations — see module docstring for why this is diag, not full, and why
+    # this is now multiple seeds rather than one fixed random_state=42 fit)
+    logger.info(
+        f"Refitting best HMM (n_states={best_n}) on training data only — "
+        f"{n_seeds} seeds, best-of-N by log-likelihood …"
     )
-    final_hmm.fit(emb_reduced[train_mask])          # <-- was emb_reduced (full dataset)
-    if not final_hmm.monitor_.converged:
-        logger.warning(
-            f"Final HMM (n_states={best_n}) did not converge "
-            f"({final_hmm.monitor_.iter} iters)"
-        )
+    final_hmm, seed_report = _fit_multiseed(
+        emb_reduced[train_mask], train_lengths, best_n, n_seeds=n_seeds, seed_base=42,
+    )
+    if not all(seed_report["converged"]):
+        n_failed = sum(1 for c in seed_report["converged"] if not c)
+        logger.warning(f"{n_failed}/{n_seeds} seeds did not converge for n_states={best_n}")
+
+    mlflow.log_metric("seed_sensitivity_mean_ari", seed_report["mean_ari"])
+    mlflow.log_metric("seed_sensitivity_min_ari", seed_report["min_ari"])
+    mlflow.log_metric("seed_sensitivity_mean_nmi", seed_report["mean_nmi"])
+    mlflow.log_metric("seed_sensitivity_min_nmi", seed_report["min_nmi"])
+    mlflow.log_param("best_seed", seed_report["best_seed"])
 
     # save checkpoints
     ckpt_dir = checkpoint_dir or (_ROOT / "regime" / "checkpoints")
@@ -380,12 +562,16 @@ def run_hmm_pipeline(
     regime_df.to_parquet(out_path, engine="pyarrow", index=False)
     logger.success(f"Saved regime stream → {out_path}  ({len(regime_df):,} rows)")
 
-    # persist BIC results as JSON artifact
+    # persist BIC results + seed-sensitivity report as JSON artifacts
     bic_json_path = ckpt_dir / "bic_results.json"
     with open(bic_json_path, "w") as fh:
         json.dump({str(k): v for k, v in bic_results.items()}, fh, indent=2)
 
-    artifact_paths = [ckpt_dir / "hmm_model.pkl", out_path, bic_json_path]
+    seed_json_path = ckpt_dir / "seed_sensitivity.json"
+    with open(seed_json_path, "w") as fh:
+        json.dump(seed_report, fh, indent=2)
+
+    artifact_paths = [ckpt_dir / "hmm_model.pkl", out_path, bic_json_path, seed_json_path]
     if pca is not None:
         artifact_paths.append(ckpt_dir / "pca_model.pkl")
     for path in artifact_paths:
@@ -397,4 +583,5 @@ def run_hmm_pipeline(
         "best_n": best_n,
         "hmm_model": final_hmm,
         "pca": pca,
+        "seed_sensitivity": seed_report,
     }

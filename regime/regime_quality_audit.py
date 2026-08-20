@@ -1,27 +1,52 @@
 """regime/regime_quality_audit.py
 
 Standalone statistical audit of HMM regime label quality — independent of the RL/PPO
-layer. Answers 5 questions about the labels in data/processed/regime_stream.parquet:
+layer. Answers 5 questions about the labels in a regime_stream.parquet:
 
   1. Distinctness — per-regime mean/vol/autocorr/skew on RAW close_return, then ANOVA
-     + pairwise KS tests on the return distributions.
+     + pairwise KS tests on the return distributions. Also (added 2026-08-19 — the
+     original audit only ever tested close_return, never the volatility features these
+     regimes are actually sold on) the same ANOVA+KS battery on realized_vol_raw, the
+     unnormalized crash-relevant vol feature.
   2. Stability — transition matrix + mean dwell time per regime (a "regime" that
      flips every step is noise, not a regime).
   3. Balance/production — confirms labels come from GaussianHMM.predict() (Viterbi
-     decode on PCA(16) embeddings), not quantile bucketing, and checks whether the
-     suspicious near-equal state counts trace back to near-duplicate HMM states.
+     decode), not quantile bucketing, and checks whether the suspicious near-equal
+     state counts trace back to near-duplicate HMM states.
   4. Predictive signal — logistic regression + gradient boosting predicting
-     sign(next return) from regime-only / regime+features / features-only.
+     sign(next return) from regime-only / regime+features / features-only, using both
+     the original 12-feature set (for comparability with historical runs) and (added
+     2026-08-19) whatever extra columns the target regime_stream's own aligned data
+     actually has beyond those 12 (e.g. multi-horizon z-scores, realized_vol_raw) —
+     the original audit never tested with the fuller feature set a candidate model was
+     actually built from.
   5. Embedding usage — input-gradient saliency on a trained PPO policy: does it
-     actually use the 128-dim regime block, or has it learned to ignore it?
+     actually use the 128-dim regime block, or has it learned to ignore it? PPO/RL-
+     specific — skipped unless explicitly requested (--sections includes 5), since it
+     requires a checkpoint trained on this exact regime encoding, which most candidate
+     models being audited here won't have.
 
-Run: python regime/regime_quality_audit.py
-Outputs: data/results/regime_quality_audit.json, regime/plots/regime_sequence_*.png
+Originally hardcoded to production's data/processed/regime_stream.parquet + 4-asset
+panel; generalized (2026-08-19) via CLI args so the same battery can run against any
+candidate model's regime stream (raw-feature baselines, crypto-only panels, etc.)
+without copy-pasting the script. Running with no args reproduces the original
+production audit exactly (same defaults).
+
+Run:
+  python regime/regime_quality_audit.py
+  python regime/regime_quality_audit.py \
+      --regime-stream data/processed/crypto5_multihorizon/regime_stream.parquet \
+      --processed-dir data/processed/crypto5_multihorizon \
+      --assets BTC_USDT,ETH_USDT,BNB_USDT,LTC_USDT,XRP_USDT \
+      --tag crypto5_multihorizon --sections 1,4
+Outputs: data/results/regime_quality_audit[_{tag}].json, regime/plots/regime_sequence_*.png
 """
 from __future__ import annotations
 
+import argparse
 import itertools
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -32,39 +57,84 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
 from scipy import stats
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score
 
-from utils.assets import aligned_path
-from utils.logger import logger
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-_PROCESSED = Path("data/processed")
-_RESULTS_PATH = Path("data/results/regime_quality_audit.json")
+from utils.assets import aligned_path  # noqa: E402
+from utils.logger import logger  # noqa: E402
+
 _PLOTS_DIR = Path("regime/plots")
-_ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
+_DEFAULT_ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 _FEATURE_COLS = [
     "atr", "adx", "rsi", "bb_width", "macd_histogram", "obv_raw",
     "vol_zscore", "realized_vol", "vol_ratio", "return_skew",
     "return_kurtosis", "autocorr_lag1",
 ]
 
+# Set by main() from CLI args before any section function runs.
+_PROCESSED = Path("data/processed")
+_REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
+_RESULTS_PATH = Path("data/results/regime_quality_audit.json")
+_ASSETS = list(_DEFAULT_ASSETS)
+
 
 def load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    regime_stream = pd.read_parquet(_PROCESSED / "regime_stream.parquet", engine="pyarrow")
+    regime_stream = pd.read_parquet(_REGIME_STREAM_PATH, engine="pyarrow")
     aligned = {a: pd.read_parquet(aligned_path(a, _PROCESSED), engine="pyarrow") for a in _ASSETS}
     return regime_stream, aligned
 
 
 def _merged(regime_stream: pd.DataFrame, aligned: dict[str, pd.DataFrame], asset: str) -> pd.DataFrame:
+    """Join regime labels onto ALL of the asset's aligned columns (not a hardcoded 12-
+    column subset) — so extra columns a given candidate model actually has (e.g.
+    realized_vol_raw, multi-horizon z-scores) flow through to every section below
+    without needing their own copy-pasted column list."""
     rs = regime_stream[regime_stream["asset"] == asset].sort_values("timestamp")
     df = aligned[asset]
-    sub = rs.set_index("timestamp")[["regime_label"]].join(
-        df[["close_return"] + _FEATURE_COLS], how="inner"
-    )
+    sub = rs.set_index("timestamp")[["regime_label"]].join(df, how="inner")
     return sub.dropna(subset=["close_return"])
+
+
+def _distinctness_for_column(m: pd.DataFrame, column: str) -> dict:
+    """ANOVA + pairwise KS across regimes for one column — shared by the close_return
+    and realized_vol_raw distinctness checks below."""
+    regimes = sorted(m["regime_label"].unique())
+    per_regime = {}
+    groups = {}
+    for r in regimes:
+        vals = m.loc[m["regime_label"] == r, column].to_numpy()
+        groups[r] = vals
+        per_regime[str(r)] = {
+            "n": int(len(vals)),
+            "mean": float(np.mean(vals)),
+            "std": float(np.std(vals)),
+            "skew": float(stats.skew(vals)) if len(vals) > 2 else float("nan"),
+        }
+
+    anova_f, anova_p = stats.f_oneway(*groups.values())
+
+    pairwise = {}
+    indistinguishable = []
+    for r1, r2 in itertools.combinations(regimes, 2):
+        ks_stat, ks_p = stats.ks_2samp(groups[r1], groups[r2])
+        key = f"{r1}_vs_{r2}"
+        pairwise[key] = {"ks_stat": float(ks_stat), "ks_p": float(ks_p)}
+        if ks_p > 0.05:
+            indistinguishable.append(key)
+
+    return {
+        "per_regime": per_regime,
+        "anova_f": float(anova_f),
+        "anova_p": float(anova_p),
+        "pairwise_ks": pairwise,
+        "indistinguishable_pairs_p_gt_0.05": indistinguishable,
+    }
 
 
 # ------------------------------------------------------------- 1. distinctness
@@ -72,42 +142,24 @@ def section_distinctness(regime_stream: pd.DataFrame, aligned: dict[str, pd.Data
     out: dict[str, Any] = {}
     for asset in _ASSETS:
         m = _merged(regime_stream, aligned, asset)
-        regimes = sorted(m["regime_label"].unique())
-        per_regime = {}
-        groups = {}
-        for r in regimes:
-            ret = m.loc[m["regime_label"] == r, "close_return"].to_numpy()
-            groups[r] = ret
-            per_regime[str(r)] = {
-                "n": int(len(ret)),
-                "mean_return": float(np.mean(ret)),
-                "volatility": float(np.std(ret)),
-                "autocorr_lag1": float(pd.Series(ret).autocorr(lag=1)) if len(ret) > 2 else float("nan"),
-                "skew": float(stats.skew(ret)) if len(ret) > 2 else float("nan"),
-            }
 
-        anova_f, anova_p = stats.f_oneway(*groups.values())
-
-        pairwise = {}
-        indistinguishable = []
-        for r1, r2 in itertools.combinations(regimes, 2):
-            ks_stat, ks_p = stats.ks_2samp(groups[r1], groups[r2])
-            key = f"{r1}_vs_{r2}"
-            pairwise[key] = {"ks_stat": float(ks_stat), "ks_p": float(ks_p)}
-            if ks_p > 0.05:
-                indistinguishable.append(key)
-
-        out[asset] = {
-            "per_regime": per_regime,
-            "anova_f": float(anova_f),
-            "anova_p": float(anova_p),
-            "pairwise_ks": pairwise,
-            "indistinguishable_pairs_p_gt_0.05": indistinguishable,
-        }
+        asset_out = {"close_return": _distinctness_for_column(m, "close_return")}
         logger.info(
-            f"[distinctness] {asset}: ANOVA p={anova_p:.2e} | "
-            f"indistinguishable pairs (KS p>0.05): {indistinguishable}"
+            f"[distinctness/close_return] {asset}: ANOVA p={asset_out['close_return']['anova_p']:.2e} | "
+            f"indistinguishable pairs (KS p>0.05): {asset_out['close_return']['indistinguishable_pairs_p_gt_0.05']}"
         )
+
+        if "realized_vol_raw" in m.columns:
+            asset_out["realized_vol_raw"] = _distinctness_for_column(m, "realized_vol_raw")
+            logger.info(
+                f"[distinctness/realized_vol_raw] {asset}: ANOVA p={asset_out['realized_vol_raw']['anova_p']:.2e} | "
+                f"indistinguishable pairs (KS p>0.05): "
+                f"{asset_out['realized_vol_raw']['indistinguishable_pairs_p_gt_0.05']}"
+            )
+
+        # backward-compatible flat keys (old consumers of this JSON expect these at
+        # the top level, not nested under "close_return")
+        out[asset] = {**asset_out["close_return"], **asset_out}
     return out
 
 
@@ -171,8 +223,8 @@ def section_stability(regime_stream: pd.DataFrame) -> dict:
 
 
 # ------------------------------------------------------- 3. balance/production
-def section_balance(regime_stream: pd.DataFrame) -> dict:
-    hmm = joblib.load("regime/checkpoints/hmm_model.pkl")
+def section_balance(regime_stream: pd.DataFrame, hmm_checkpoint: str = "regime/checkpoints/hmm_model.pkl") -> dict:
+    hmm = joblib.load(hmm_checkpoint)
     n_states = hmm.n_components
     means = hmm.means_
     from scipy.spatial.distance import pdist, squareform
@@ -233,15 +285,33 @@ def section_predictive_signal(regime_stream: pd.DataFrame, aligned: dict[str, pd
             continue
 
         regime_dummies = pd.get_dummies(m["regime_label"], prefix="regime").astype(float)
-        feat_cols = [c for c in _FEATURE_COLS if c in m.columns]
+        # base: the original 12-feature set, for comparability with historical runs.
+        feat_cols_base = [c for c in _FEATURE_COLS if c in m.columns]
+        # extended: every non-target, non-label column this candidate model's aligned
+        # data actually has (e.g. realized_vol_raw, multi-horizon z-scores) — the
+        # original audit never tested with the fuller set a candidate was built from.
+        feat_cols_extended = [c for c in m.columns if c not in ("regime_label", "close_return", "target")]
 
         X_regime = regime_dummies
-        X_feat = m[feat_cols]
-        X_both = pd.concat([regime_dummies, m[feat_cols]], axis=1)
+        X_feat = m[feat_cols_base]
+        X_feat_ext = m[feat_cols_extended]
+        X_both = pd.concat([regime_dummies, m[feat_cols_base]], axis=1)
+        X_both_ext = pd.concat([regime_dummies, m[feat_cols_extended]], axis=1)
         y = m["target"]
 
+        variants = [
+            ("regime_only", X_regime),
+            ("features_only", X_feat),
+            ("regime_plus_features", X_both),
+        ]
+        if feat_cols_extended != feat_cols_base:
+            variants += [
+                ("features_only_extended", X_feat_ext),
+                ("regime_plus_features_extended", X_both_ext),
+            ]
+
         results = {}
-        for name, X in [("regime_only", X_regime), ("features_only", X_feat), ("regime_plus_features", X_both)]:
+        for name, X in variants:
             Xtr, Xte = X[train_mask], X[test_mask]
             ytr, yte = y[train_mask], y[test_mask]
             asset_res = {}
@@ -262,17 +332,14 @@ def section_predictive_signal(regime_stream: pd.DataFrame, aligned: dict[str, pd
                 }
             results[name] = asset_res
         out[asset] = results
-        logger.info(
-            f"[predictive] {asset} AUC (logistic): regime_only="
-            f"{results['regime_only']['logistic']['auc']:.3f}  "
-            f"features_only={results['features_only']['logistic']['auc']:.3f}  "
-            f"regime+features={results['regime_plus_features']['logistic']['auc']:.3f}"
-        )
+        summary = "  ".join(f"{name}={results[name]['logistic']['auc']:.3f}" for name, _ in variants)
+        logger.info(f"[predictive] {asset} AUC (logistic): {summary}")
     return out
 
 
 # ----------------------------------------------------------- 5. embedding usage
 def section_embedding_usage(checkpoint: str = "rl/checkpoints/ppo_best.zip", n_obs: int = 500) -> dict:
+    import torch
     from stable_baselines3 import PPO
 
     from rl.policy import MARTAActorCriticPolicy
@@ -349,19 +416,70 @@ def section_embedding_usage(checkpoint: str = "rl/checkpoints/ppo_best.zip", n_o
 
 
 def main() -> None:
+    global _PROCESSED, _REGIME_STREAM_PATH, _RESULTS_PATH, _ASSETS
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--regime-stream", type=str, default=None,
+        help="Path to regime_stream.parquet (default: data/processed/regime_stream.parquet, production)",
+    )
+    parser.add_argument(
+        "--processed-dir", type=str, default=None,
+        help="Dir containing {asset}_aligned.parquet (default: data/processed, production)",
+    )
+    parser.add_argument(
+        "--assets", type=str, default=None,
+        help="Comma-separated logical asset ids (default: BTC_USDT,ETH_USDT,EURUSD,GOLD, production)",
+    )
+    parser.add_argument(
+        "--tag", type=str, default=None,
+        help="Suffix for the output filename (data/results/regime_quality_audit_{tag}.json). "
+             "Default: none (writes regime_quality_audit.json, the production filename).",
+    )
+    parser.add_argument(
+        "--sections", type=str, default="1,2,3,4,5",
+        help="Comma-separated section numbers to run (5 is PPO/RL-specific, requires a "
+             "checkpoint trained on this exact regime encoding — most candidate models "
+             "being audited won't have one).",
+    )
+    parser.add_argument(
+        "--hmm-checkpoint", type=str, default="regime/checkpoints/hmm_model.pkl",
+        help="HMM checkpoint for section 3 (balance/near-duplicate-state check).",
+    )
+    args = parser.parse_args()
+
+    if args.processed_dir:
+        _PROCESSED = Path(args.processed_dir)
+    if args.regime_stream:
+        _REGIME_STREAM_PATH = Path(args.regime_stream)
+    elif args.processed_dir:
+        _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
+    if args.assets:
+        _ASSETS = args.assets.split(",")
+    if args.tag:
+        _RESULTS_PATH = Path(f"data/results/regime_quality_audit_{args.tag}.json")
+
+    sections = {int(s) for s in args.sections.split(",")}
+    logger.info(f"regime_stream={_REGIME_STREAM_PATH}  processed_dir={_PROCESSED}  "
+                f"assets={_ASSETS}  sections={sorted(sections)}")
+
     regime_stream, aligned = load_data()
 
-    results = {
-        "1_distinctness": section_distinctness(regime_stream, aligned),
-        "2_stability": section_stability(regime_stream),
-        "3_balance_production": section_balance(regime_stream),
-        "4_predictive_signal": section_predictive_signal(regime_stream, aligned),
-    }
-    try:
-        results["5_embedding_usage"] = section_embedding_usage()
-    except Exception as exc:
-        logger.warning(f"Embedding usage section failed: {exc}")
-        results["5_embedding_usage"] = {"error": str(exc)}
+    results: dict[str, Any] = {}
+    if 1 in sections:
+        results["1_distinctness"] = section_distinctness(regime_stream, aligned)
+    if 2 in sections:
+        results["2_stability"] = section_stability(regime_stream)
+    if 3 in sections:
+        results["3_balance_production"] = section_balance(regime_stream, args.hmm_checkpoint)
+    if 4 in sections:
+        results["4_predictive_signal"] = section_predictive_signal(regime_stream, aligned)
+    if 5 in sections:
+        try:
+            results["5_embedding_usage"] = section_embedding_usage()
+        except Exception as exc:
+            logger.warning(f"Embedding usage section failed: {exc}")
+            results["5_embedding_usage"] = {"error": str(exc)}
 
     _RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _RESULTS_PATH.write_text(json.dumps(results, indent=2, default=float))
