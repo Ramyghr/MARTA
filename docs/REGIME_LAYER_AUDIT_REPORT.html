@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MARTA — Regime Representation Layer: Full Audit &amp; Engineering Report</title>
+<style>
+  @page {
+    size: A4;
+    margin: 2.2cm 2cm 2.4cm 2cm;
+    @bottom-center { content: "MARTA — Regime Layer Audit Report · Page " counter(page) " of " counter(pages); font-size: 8pt; color: #888; }
+  }
+  @page cover { margin: 0; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    font-size: 10.3pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+  }
+  .cover {
+    page: cover;
+    height: 297mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 3.5cm;
+    background: linear-gradient(155deg, #0b1a2b 0%, #14304d 55%, #1c4a72 100%);
+    color: white;
+  }
+  .cover .eyebrow { font-size: 12pt; letter-spacing: 3px; text-transform: uppercase; color: #7fc8f5; margin-bottom: 0.6cm; }
+  .cover h1 { font-size: 30pt; line-height: 1.25; margin: 0 0 0.5cm 0; font-weight: 700; max-width: 15cm; color: #ffffff; border: none; padding: 0; }
+  .cover .subtitle { font-size: 13pt; color: #cfe6f7; max-width: 14cm; line-height: 1.5; margin-bottom: 1.2cm; }
+  .cover .meta { font-size: 10pt; color: #9fc2dc; border-top: 1px solid rgba(255,255,255,0.25); padding-top: 0.5cm; max-width: 13cm; }
+  .cover .meta div { margin-bottom: 0.15cm; }
+  h1 { font-size: 18pt; color: #0d2a44; border-bottom: 2.5px solid #1c4a72; padding-bottom: 0.15cm; margin-top: 0; page-break-before: always; }
+  h1:first-of-type { page-break-before: avoid; }
+  h2 { font-size: 13.5pt; color: #14304d; margin-top: 0.9cm; margin-bottom: 0.3cm; border-left: 4px solid #1c4a72; padding-left: 0.25cm; }
+  h3 { font-size: 11.5pt; color: #1c4a72; margin-top: 0.6cm; margin-bottom: 0.2cm; }
+  p { margin: 0.25cm 0; text-align: justify; }
+  a { color: #1c4a72; }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 8.8pt; background: #eef2f5; padding: 1px 4px; border-radius: 3px; color: #a3242a; }
+  pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 8.3pt; background: #f4f6f8; border: 1px solid #dde3e8; border-left: 3px solid #1c4a72; border-radius: 4px; padding: 0.3cm 0.4cm; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; margin: 0.3cm 0; }
+  pre code { background: none; color: #26333f; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 0.3cm 0 0.5cm 0; font-size: 8.8pt; }
+  th, td { border: 1px solid #d3dbe2; padding: 4px 7px; text-align: left; vertical-align: top; }
+  th { background: #1c4a72; color: white; font-weight: 600; }
+  tr:nth-child(even) td { background: #f4f7fa; }
+  .callout { border-radius: 5px; padding: 0.3cm 0.45cm; margin: 0.35cm 0; font-size: 9.6pt; }
+  .callout.finding { background: #eaf3ea; border-left: 4px solid #3a8a3a; }
+  .callout.blocker { background: #fbeaea; border-left: 4px solid #b6362c; }
+  .callout.fixed { background: #eaf1fb; border-left: 4px solid #2a5da8; }
+  .callout.note { background: #fdf6e3; border-left: 4px solid #b8860b; }
+  .callout b.tag { text-transform: uppercase; font-size: 8pt; letter-spacing: 1px; display: block; margin-bottom: 0.1cm; }
+  .kv { display: grid; grid-template-columns: 4.2cm 1fr; gap: 0.15cm 0.4cm; font-size: 9.3pt; margin: 0.2cm 0; }
+  .kv b { color: #14304d; }
+  figure { margin: 0.4cm 0; text-align: center; page-break-inside: avoid; }
+  figure img { max-width: 100%; border: 1px solid #d3dbe2; border-radius: 4px; }
+  figcaption { font-size: 8.5pt; color: #555; margin-top: 0.15cm; font-style: italic; }
+  .toc { margin-top: 0.6cm; }
+  .toc ol { padding-left: 0.5cm; }
+  .toc li { margin-bottom: 0.15cm; font-size: 10pt; }
+  .toc .sub { font-size: 9.3pt; color: #444; }
+  .small { font-size: 8.6pt; color: #555; }
+  .center { text-align: center; }
+  .verdict-box { background: #0d2a44; color: white; padding: 0.5cm 0.6cm; border-radius: 6px; margin: 0.4cm 0; }
+  .verdict-box h3 { color: #7fc8f5; margin-top: 0; }
+  .verdict-box p { color: #eef4fa; }
+  .page-break { page-break-before: always; }
+  ul, ol { margin: 0.2cm 0; padding-left: 0.6cm; }
+  li { margin-bottom: 0.1cm; }
+</style>
+</head>
+<body>
+
+<!-- ============================= COVER ============================= -->
+<div class="cover">
+  <div class="eyebrow">MARTA — Multi-Agent Regime-Aware Trading Architecture</div>
+  <h1>Regime Representation Layer<br>Full Audit, Engineering &amp; Findings</h1>
+  <div class="subtitle">
+    Data pipeline + Gaussian HMM regime detection, audited, re-engineered, and
+    empirically tested end-to-end — before the LLM deliberation and RL execution
+    layers are touched. Documents everything built and found in this session, as
+    the authoritative record of this layer's current state.
+  </div>
+  <div class="meta">
+    <div><b>Scope:</b> pipeline/ (fetch → features → normalize → align → validate) and regime/ (HMM fitting, validation, backtest)</div>
+    <div><b>Explicitly excluded:</b> LLM/agent deliberation layer, PPO/RL execution layer, dashboard, live deployment</div>
+    <div><b>Session date:</b> 2026-08-19 → 2026-08-20</div>
+    <div><b>Repository:</b> Ramyghr/MARTA — commit <code style="background:rgba(255,255,255,0.15); color:#dff0fa;">dee486d</code></div>
+  </div>
+</div>
+
+<!-- ============================= TOC ============================= -->
+<h1>Contents</h1>
+<div class="toc">
+<ol>
+  <li>Executive Summary
+    <ol type="a" class="sub">
+      <li>Headline verdict</li>
+      <li>What changed in this session</li>
+    </ol>
+  </li>
+  <li>Starting State: Architecture &amp; Initial Audit
+    <ol type="a" class="sub">
+      <li>Data flow before this session</li>
+      <li>File-by-file audit findings</li>
+      <li>Hard blockers identified</li>
+    </ol>
+  </li>
+  <li>Phase 1 — Engine Correctness &amp; Robustness</li>
+  <li>Phase 2 — Normalization Horizon Experiment</li>
+  <li>Phase 3 — Crypto-Only Panel Pivot</li>
+  <li>Phase 4 — Empirical n_states Validation</li>
+  <li>Phase 5 — Full Statistical Audit Across Six Models</li>
+  <li>Phase 6 — Regime-Conditioned Backtest</li>
+  <li>Engineering Appendix
+    <ol type="a" class="sub">
+      <li>Bugs found and fixed this session</li>
+      <li>File manifest</li>
+      <li>Diagnostic plots</li>
+    </ol>
+  </li>
+  <li>Conclusions &amp; Recommendations for the Next Layer</li>
+</ol>
+</div>
+
+<!-- ============================= 1. EXECUTIVE SUMMARY ============================= -->
+<h1>1. Executive Summary</h1>
+
+<h2>1.1 Headline verdict</h2>
+<div class="verdict-box">
+<h3>Is the regime representation layer valid to build on?</h3>
+<p>Technically, yes now — the engine is correct, the panel is clean, and the discovered
+states are statistically genuine volatility regimes, reproducibly so. Practically, no —
+a minimal, honest backtest (Phase 6) found that conditioning position sizing on the
+regime label does not measurably beat simply using continuous realized volatility
+directly, in either a strong bull year (2024) or a decline (2025). Both approaches
+underperformed plain buy-and-hold in both periods.</p>
+</div>
+
+<p>This session started as a file-by-file audit of the data pipeline and Gaussian HMM
+regime-clustering layer, prompted by a growing pile of unresolved questions about
+whether the regimes the project has been conditioning agents and an RL policy on were
+ever actually valid. It ended as a full rebuild-in-place: three real engine bugs fixed,
+one methodological pivot (the original 4-asset panel was quietly detecting asset
+identity, not market regime), five newly engineered validation tools generalized for
+reuse against any future candidate model, and a final downstream test that answers the
+question this whole project keeps returning to — does any of this help.</p>
+
+<h2>1.2 What changed in this session</h2>
+<table>
+<tr><th style="width:28%">Area</th><th>Before</th><th>After</th></tr>
+<tr><td>HMM engine</td><td>BIC search subsampled 20K random non-contiguous rows (broke temporal adjacency); no <code>lengths=</code> anywhere (multi-asset sequences treated as one continuous chain); no seed-sensitivity check existed</td><td><code>lengths=</code> everywhere; full-data BIC search; best-of-5-seed refit, parallelized; seed-sensitivity (ARI/NMI) reported on every fit</td></tr>
+<tr><td>Asset panel</td><td>BTC/ETH/EURUSD/GOLD — raw-feature HMM mostly detecting asset identity (EURUSD/GOLD's zero-volume features dominate an unwhitened Gaussian mixture)</td><td>BTC/ETH/BNB/LTC/XRP — max single-asset share of any HMM state 0.234 (vs ~0.97–0.985 before); genuine cross-asset regime sharing confirmed</td></tr>
+<tr><td>Normalization</td><td>Single 720h (30-day) rolling z-score window, never questioned</td><td>90d/180d horizons added and tested; found to trade return-distinctness for seed-stability, not a clean win</td></tr>
+<tr><td>Stationarity testing</td><td>Never existed — the rolling z-score was assumed to induce stationarity, never verified</td><td>ADF+KPSS per feature, per asset, for every candidate model (fast — fixed-lag, not exhaustive search)</td></tr>
+<tr><td>n_states selection</td><td>BIC-driven, later found unreliable at this data scale; production's actual n=4 came from a separate empirical method, never applied to the new panels</td><td>Empirically validated for both crypto panels (n=3..8 swept, no duplicate/flicker states anywhere) — n=6 confirmed defensible, not just inherited</td></tr>
+<tr><td>Downstream value</td><td>Never tested — every prior claim about regime usefulness was untested assumption</td><td>Tested directly: no measurable Sharpe improvement over continuous vol-targeting, in a self-contained backtest with no RL/PPO/LLM dependency</td></tr>
+</table>
+
+<!-- ============================= 2. STARTING STATE ============================= -->
+<h1>2. Starting State: Architecture &amp; Initial Audit</h1>
+
+<h2>2.1 Data flow before this session</h2>
+<pre>raw OHLCV (CCXT / histdata.com)
+  → pipeline/fetch.py            18-col features (13 indicators + 5 OHLCV)
+  → pipeline/features.py
+  → pipeline/normalize.py        14-col (12 z-scored + realized_vol_raw passthrough + close_return)
+  → pipeline/align.py            BTC-backbone inner join across assets
+  → pipeline/validate.py         structural/range/gap/distribution checks
+  → regime/hmm.py                PCA(16 or none) → BIC/empirical n_states → GaussianHMM
+  → regime/validate.py           semantic pass/fail (std(realized_vol) > 0.001)
+  → data/processed/regime_stream.parquet   (timestamp, asset, regime_label, regime_prob_0..N)</pre>
+
+<p>Three parallel regime pipelines existed at session start, all sharing <code>regime/hmm.py</code>
+as the fitting engine but differing in input and parameters:</p>
+<div class="kv">
+  <b>Production</b><div>TFT encoder (128-dim) → PCA(16) → GaussianHMM, n=4, diag covariance. Feeds agents/RL/dashboard.</div>
+  <b>Raw-feature baseline</b><div>14 raw features → GaussianHMM directly (no encoder, no PCA), n=6, BIC-selected. Built 2026-08-12 after the project's own Phase-0 conclusion that the contrastive encoder never beat raw features on predictability.</div>
+  <b>BTC-only-v3</b><div>New single-asset encoder → PCA(16) → HMM, n=2 (fresh BIC search). Newest branch (2026-08-14), never validated with the same rigor as the others.</div>
+</div>
+
+<h2>2.2 File-by-file audit findings (condensed)</h2>
+<p>A full file-by-file pass covered every file in <code>pipeline/</code> and <code>regime/</code> plus
+<code>configs/splits.py</code>, <code>configs/assets.yaml</code>, and <code>utils/assets.py</code>. Full
+detail lives in the session transcript; the load-bearing findings are summarized below by
+layer.</p>
+
+<h3>Data pipeline (pipeline/*.py)</h3>
+<ul>
+<li><b>fetch.py:</b> CCXT loop-termination bug (previously capped ETH at 2021) was already fixed;
+OHLCV sanitization causal and correct; gap detection is log-only, never blocks the pipeline.</li>
+<li><b>normalize.py:</b> the 720h rolling z-score is causal (no train/val/test leakage — each
+row's z-score only depends on its own trailing 30 days) but this also means <b>no feature
+can carry a signal that persists longer than 30 days</b> — a direct candidate explanation for
+why measured HMM dwell times (13–20h) are far shorter than a classical multi-week
+"market regime."</li>
+<li><b>validate.py:</b> solid structural/range/gap/distribution checks; no formal
+stationarity test existed anywhere in the codebase before this session.</li>
+</ul>
+
+<h3>Representation &amp; HMM engine (regime/hmm.py)</h3>
+<ul>
+<li>PCA fit train-only (correct, no leakage).</li>
+<li>Two real bugs already fixed before this session began: a covariance-type mismatch
+(full vs. diag) that let one state's covariance run away unconstrained, and a BIC
+flat-curve guard that only ever compared the top-2 candidates (meaningless at this data
+scale — degenerated to always dropping exactly one state from the search grid).</li>
+<li><b>Two bugs still present at session start</b> (fixed in Phase 1, §3): <code>fit_hmm_bic</code>
+subsampled 20,000 <i>random, non-contiguous</i> rows and fit them as one sequence for the
+BIC search — corrupting the estimated self-transition probability; and no call anywhere
+passed <code>lengths=</code>, so every multi-asset embedding matrix (4+ assets' full histories
+concatenated) was fit and Viterbi-decoded as if the last row of one asset transitioned
+directly into the first row of the next.</li>
+</ul>
+
+<h2>2.3 Hard blockers identified</h2>
+<table>
+<tr><th style="width:6%">#</th><th>Blocker</th><th>Gate to close it</th></tr>
+<tr><td>1</td><td>Raw-feature baseline asset-identity collapse (states locked to EURUSD/GOLD vs. BTC/ETH)</td><td>No state &gt;70% single-asset share</td></tr>
+<tr><td>2</td><td><code>fit_hmm_bic</code> subsampling breaks temporal adjacency</td><td>Subsampling removed or made contiguous, with <code>lengths=</code></td></tr>
+<tr><td>3</td><td>No <code>lengths=</code> anywhere, even in the clean full-data fit</td><td><code>lengths=</code> passed to every HMM call</td></tr>
+<tr><td>4</td><td>No EM robustness evidence (single seed, single init, everywhere)</td><td>≥5 seeds fit per model; ARI/NMI reported</td></tr>
+<tr><td>5</td><td>Distinctness never tested on the property regimes are sold on (volatility) — only on returns, which failed everywhere</td><td>ANOVA+KS on <code>realized_vol_raw</code>, p&lt;0.05 required</td></tr>
+<tr><td>6</td><td><i>(found mid-session, Phase 1)</i> Regime partition is not robust to EM initialization — production's mean ARI across 5 seeds was 0.193</td><td>Re-check on any surviving candidate; require mean ARI meaningfully above chance</td></tr>
+</table>
+<p class="small">All six are closed by the end of this report — see §9.1 for the disposition of each.</p>
+
+
+<!-- ============================= 3. PHASE 1 ============================= -->
+<h1>3. Phase 1 — Engine Correctness &amp; Robustness</h1>
+<p><b>Goal:</b> fix the HMM fitting engine itself, independent of any data/panel decision, and
+prove the fix doesn't change anything that was already correct before touching real data.</p>
+
+<h2>3.1 What changed in <code>regime/hmm.py</code></h2>
+<ul>
+<li><b><code>_compute_lengths()</code></b> — contiguous per-asset run lengths, computed from the
+asset-label array, passed as <code>lengths=</code> to every <code>.fit()</code> / <code>.score()</code> /
+<code>.predict()</code> / <code>.predict_proba()</code> call. Multi-asset sequences are now modeled as
+independent chains, not one continuous sequence.</li>
+<li><b><code>fit_hmm_bic</code> rewritten</b> — no more subsampling; every BIC candidate is fit on
+the full, correctly-segmented training data. Slower, not wrong.</li>
+<li><b><code>_fit_multiseed()</code></b> — the final refit is now best-of-5 independent EM runs from
+different random initializations (<code>hmmlearn</code> has no built-in <code>n_init</code>/restart
+mechanism, so this is a manual equivalent), keeping the highest-training-log-likelihood
+model. Returns a seed-sensitivity report: per-seed log-likelihood/convergence, and
+pairwise Adjusted Rand Index / Normalized Mutual Information between every pair of
+seeds' decoded labels.</li>
+<li>Saved alongside every checkpoint as <code>seed_sensitivity.json</code> and logged to MLflow.</li>
+</ul>
+
+<h2>3.2 Gate check — does the fixed engine reproduce production's known-good result?</h2>
+<p>Ran the fixed engine against a copy of production's actual embeddings, forcing
+<code>n_states=4</code> to match. Resulting regime distribution — 23.5% / 23.8% / 28.7% / 23.9% —
+matched <code>regime_semantics.json</code>'s historical values almost exactly. The contamination
+guard test (<code>scripts/audit_phase0_invariants.py</code>) still passed. <b>Gate passed</b> — the
+fixes changed nothing that was already correct.</p>
+
+<div class="callout finding">
+<b class="tag">New finding, not part of the original plan</b>
+The seed-sensitivity check this phase added surfaced something the original audit
+missed entirely: at production's n=4, five independent EM seeds produced <b>mean pairwise
+ARI = 0.193, min ARI = 0.010</b> — two of five seed-pairs landed within noise of chance
+agreement. Log-likelihoods across seeds varied by only 0.6%, meaning there are multiple
+similarly-good but structurally different local optima. Production's checkpoint happens
+to use seed 42, which won this particular best-of-5 comparison by log-likelihood — so
+nothing about the deployed artifact needed to change immediately — but this proves the
+seed choice was luck, not evidence of a well-identified clustering.
+</div>
+
+<h3>Cheap side-check: is n=4 simply "too many states," or is instability structural?</h3>
+<table>
+<tr><th>n_states</th><th>mean ARI</th><th>min ARI</th><th>pattern</th></tr>
+<tr><td>2</td><td>0.60</td><td>~0.00</td><td>4 of 5 seeds agree closely; 1 outlier at chance</td></tr>
+<tr><td>3</td><td>0.42</td><td>0.29</td><td>more even spread, no chance-level pair</td></tr>
+<tr><td>4 (production)</td><td>0.19</td><td>0.01</td><td>no pair agrees well</td></tr>
+</table>
+<p>Stability decreases monotonically as n_states increases — evidence that n=4 asks more
+of the (720h-only) feature set than it can reliably support, though this doesn't by
+itself indicate what the "right" n is (see §6).</p>
+
+<h2>3.3 An engineering detour: the deadlock</h2>
+<div class="callout blocker">
+<b class="tag">Bug found mid-session</b>
+Parallelizing the 5-seed refit with Python's default <code>fork()</code>-based
+<code>ProcessPoolExecutor</code> deadlocked completely on real data — 17 minutes elapsed with
+5 worker processes sitting at 0.1% CPU each (~1 second of actual compute accumulated).
+Root cause: the BIC-search fit immediately before the pool launch does enough NumPy work
+on a quarter-million-row matrix to trigger OpenBLAS's multi-threaded worker pool in the
+parent process. Forking while those threads are active duplicates only the calling
+thread — any mutex another BLAS thread was holding at fork time stays "phantom-held"
+forever in every child, so the first BLAS call in each worker hangs indefinitely.
+</div>
+<div class="callout fixed">
+<b class="tag">Fix</b>
+Switched <code>ProcessPoolExecutor</code> to the <code>spawn</code> context — each worker starts as a
+genuinely fresh interpreter, no inherited thread/lock state. Verified directly: after
+the fix, all 5 spawned workers sat at 97–98% CPU (not 0.1%), completed a 250K-row
+synthetic sanity check in 488.9s with zero errors, and gave the theoretically-correct
+result (mean ARI ≈ 0.003 on pure random noise, i.e. chance-level agreement, exactly as
+expected when there's no real structure to find).
+</div>
+
+<h2>3.4 Files touched</h2>
+<div class="kv">
+  <b>regime/hmm.py</b><div>modified — <code>_compute_lengths</code>, <code>fit_hmm_bic</code> rewrite, <code>_fit_one_seed</code>/<code>_fit_multiseed</code>, <code>ProcessPoolExecutor</code> parallelization</div>
+  <b>regime/n_states_sweep.py</b><div>modified — adopted <code>lengths=</code> for consistency (this script never had the subsampling bug, but was missing <code>lengths=</code>)</div>
+  <b>regime/run_hmm_engine_test.py</b><div>new — permanent, reusable regression-check script (isolated checkpoint dir, matches existing project convention)</div>
+</div>
+
+
+<!-- ============================= 4. PHASE 2 ============================= -->
+<h1>4. Phase 2 — Normalization Horizon Experiment</h1>
+<p><b>Goal:</b> test whether the production 720h(30-day) rolling z-score is silently capping
+how long a "regime" the HMM discovers can persist, and add the stationarity testing that
+never existed.</p>
+
+<h2>4.1 What was built</h2>
+<div class="kv">
+  <b>normalize_features_multihorizon()</b><div>Added to <code>pipeline/normalize.py</code>, purely
+  additive — production's 14-column <code>normalize_features()</code> path is completely
+  untouched. Adds a 90-day (2160h) and 180-day (4320h) rolling z-score, in addition to
+  the production 720h one, on four vol-shape features: <code>realized_vol</code>, <code>atr</code>,
+  <code>bb_width</code>, <code>vol_ratio</code>. Deliberately reuses the same <code>min_periods=168</code> as
+  the production window rather than scaling it up, so the longer horizons don't drop any
+  extra warmup rows — output is 22 columns (14 + 8).</div>
+  <b>regime/stationarity_check.py</b><div>New. Runs ADF (H0: unit root) and KPSS (H0:
+  stationary) on every feature column, per asset. "Confirmatory stationary" = both tests
+  agree. Generalized via CLI args (<code>--assets</code>, <code>--tag</code>) for reuse against any
+  panel.</div>
+</div>
+
+<h2>4.2 Two bugs found and fixed while building this</h2>
+<div class="callout blocker"><b class="tag">Bug</b> First run crashed outright:
+<code>ValueError: Invalid input, x is constant</code> on EURUSD's <code>vol_zscore</code>/<code>obv_raw</code>
+column — independent, accidental confirmation that histdata's zero-volume FX/commodity
+features really are <i>literally</i> constant, not just near-constant, exactly the
+mechanism later shown to cause the asset-collapse problem (§5).</div>
+<div class="callout blocker"><b class="tag">Bug</b> <code>adfuller</code>'s <code>autolag="AIC"</code>
+exhaustively re-fits an OLS regression per candidate lag order — at ~45–75K rows ×
+14 columns × several assets, this took ~14 minutes per asset.</div>
+<div class="callout fixed"><b class="tag">Fixes</b> Degenerate/near-constant columns
+(<code>std &lt; 1e-10</code>) are now detected and reported explicitly instead of crashing.
+Lag order switched to a fixed value via Schwert's (1989) rule of thumb, computed once
+per series instead of searched — cut runtime to well under a minute per asset with no
+material loss of validity at this sample size.</div>
+
+<h2>4.3 Result — a different, more valuable finding than the one hypothesized</h2>
+<p>The direct hypothesis (longer horizon → longer regime dwell time) was <b>not confirmed</b>:
+measured dwell time on the multihorizon feature set was flat to slightly shorter than
+the 720h-only baseline. But the seed-sensitivity check (added in Phase 1) revealed
+something arguably more important — see §7 for the full numbers once tested on the real
+panel in Phase 5: the 22-column multihorizon set drives seed-stability from ~0.585 to
+~1.000 on the crypto panel, at the cost of somewhat weaker return distinctness. A real
+trade-off, not a clean win either direction — detailed in §7.3.</p>
+
+
+<!-- ============================= 5. PHASE 3 ============================= -->
+<h1>5. Phase 3 — Crypto-Only Panel Pivot</h1>
+
+<div class="callout note">
+<b class="tag">Why this happened mid-session</b>
+While testing the normalization-horizon hypothesis on the original 4-asset panel, the
+user pointed out that continuing to invest time in a panel that included EURUSD/GOLD
+made no sense given those two assets' known degenerate-feature problem. This triggered
+a full pivot: kill the in-flight EURUSD/GOLD-panel jobs, and rebuild the entire
+comparison on a crypto-only panel instead.
+</div>
+
+<h2>5.1 Asset selection — verified empirically, not assumed</h2>
+<p>Rather than trust prior knowledge about exchange listing dates, first-available-candle
+timestamps were checked live against Binance via CCXT:</p>
+<table>
+<tr><th>Symbol</th><th>First available daily candle</th></tr>
+<tr><td>BTC/USDT</td><td>2017-08-17</td></tr>
+<tr><td>ETH/USDT</td><td>2017-08-17</td></tr>
+<tr><td>BNB/USDT</td><td>2017-11-06</td></tr>
+<tr><td>LTC/USDT</td><td>2017-12-13</td></tr>
+<tr><td>XRP/USDT</td><td><b>2018-05-04</b> — misses Jan–Apr 2018</td></tr>
+<tr><td>SOL/USDT</td><td><b>2020-08-11</b> — hard wall, excluded entirely</td></tr>
+</table>
+<p>SOL was excluded outright: including it would either truncate the whole panel's usable
+history to post-2020 (losing the entire 2018 bear market and the March-2020 COVID crash
+— exactly the regime diversity this research needs most) or require redesigning
+<code>pipeline/align.py</code> to support asymmetric per-asset start dates, which it currently
+does not. <b>Final panel: BTC, ETH, BNB, LTC, XRP</b> — all with genuine 2017–2018 coverage
+(XRP costs ~4 months at the very start, accepted as a reasonable trade-off). USDT was
+explicitly ruled out as a panel asset — as a stablecoin, it would introduce the same
+class of near-zero-variance-column problem that caused the original panel's collapse.</p>
+
+<h2>5.2 Build pipeline</h2>
+<div class="kv">
+  <b>pipeline/fetch_crypto5.py</b><div>New. Fetches BNB/LTC/XRP via the existing
+  <code>pipeline/fetch.py</code> CCXT machinery — zero new fetch logic. BTC/ETH already
+  fetched from prior work.</div>
+  <b>regime/build_crypto5_features.py</b><div>New, generalized via <code>--assets</code>/<code>--tag</code>
+  CLI args. Produces two aligned+embedded variants per panel: 14-col (production feature
+  set) and 22-col (multihorizon). Self-contained alignment logic (does not call
+  <code>pipeline/align.py</code>, which writes to the sacred production path).</div>
+</div>
+<table>
+<tr><th>Panel</th><th>Rows/asset (aligned)</th><th>Overlap with BTC range</th></tr>
+<tr><td>crypto5 (5 assets)</td><td>66,871</td><td>89.8% <span class="small">(vs. old EURUSD/GOLD panel's 61.7% — no weekend/holiday gaps to lose)</span></td></tr>
+<tr><td>btc_only</td><td>74,429</td><td>100.0% <span class="small">(trivial, single asset)</span></td></tr>
+</table>
+
+<h2>5.3 Validation — <code>pipeline/validate.py</code> run against both panels</h2>
+<table>
+<tr><th>Panel</th><th>Checks passed</th><th>Warnings (non-critical)</th><th>Critical failures</th><th>Result</th></tr>
+<tr><td>crypto5</td><td>74</td><td>56</td><td>0</td><td><b>PASSED</b></td></tr>
+<tr><td>btc_only</td><td>16</td><td>11</td><td>0</td><td><b>PASSED</b></td></tr>
+</table>
+<p>All warnings are the expected kind: fat-tailed distribution flags (0.01–0.63% of
+values beyond 5σ per feature — normal for crypto returns, not a data defect) and the
+already-documented 18 exchange-downtime gaps. The BTC March-2020-crash detectability
+check also passed on this panel (<code>realized_vol_raw</code> 5.9× median).</p>
+<div class="callout fixed"><b class="tag">Two real bugs fixed in <code>pipeline/validate.py</code>
+while running this</b> <code>_CRYPTO_SYMBOLS</code> only knew about BTC/ETH — would have
+silently mis-thresholded BNB/LTC/XRP's gap/row-count checks against the <i>traditional</i>-
+asset bar instead of crypto's. The report path was hardcoded with no override — running
+this would have clobbered the sacred production <code>validation_report.json</code>. Both fixed;
+added a generic <code>output_filename</code> parameter (same pattern <code>regime/validate.py</code>
+already used); <code>run_pipeline.py</code>'s existing call is unaffected (positional args only,
+same default).</div>
+
+<h2>5.4 Data pipeline diagnostic plots</h2>
+<p>Six diagnostic plots were generated against this panel (full detail and images in §9.3):
+raw data availability heatmap, price/volume overlay, feature distributions before/after
+normalization, a feature correlation matrix, and a rolling z-score stationarity check
+across all three normalization horizons. One real plotting bug was found and fixed along
+the way — see §9.1.</p>
+
+
+<!-- ============================= 6. PHASE 4 ============================= -->
+<h1>6. Phase 4 — Empirical n_states Validation</h1>
+<p><b>Goal:</b> the crypto-panel models had all inherited <code>n_states=6</code> from the old,
+abandoned EURUSD/GOLD raw baseline's BIC pick — never actually validated for these new
+panels. Close that gap using the empirical method (fit each candidate, check for
+near-duplicate/flicker states directly) that already proved decisive for production.</p>
+
+<h2>6.1 <code>n_states_sweep.py</code> generalized</h2>
+<p>Added <code>--processed-dir</code>, <code>--no-pca</code> (for raw-feature panels with no encoder), and
+<code>--candidates</code> CLI args. Default behavior (no args) reproduces the original production
+sweep exactly.</p>
+
+<h2>6.2 Results — swept n=3 through n=8 on both leading (multihorizon) candidates</h2>
+<table>
+<tr><th>n_states</th><th colspan="2">crypto5_multihorizon</th><th colspan="2">btc_only_multihorizon</th></tr>
+<tr><th></th><th>min inter-state dist.</th><th>dwell range (h)</th><th>min inter-state dist.</th><th>dwell range (h)</th></tr>
+<tr><td>3</td><td>2.796</td><td>25.7–33.2</td><td>2.855</td><td>24.9–31.0</td></tr>
+<tr><td>4</td><td>2.053</td><td>18.8–26.0</td><td>2.128</td><td>18.1–24.4</td></tr>
+<tr><td>5</td><td>2.005</td><td>19.1–24.9</td><td>1.730</td><td>14.3–23.5</td></tr>
+<tr><td><b>6</b></td><td><b>1.690</b></td><td><b>15.3–23.3</b></td><td><b>1.719</b></td><td><b>14.8–23.4</b></td></tr>
+<tr><td>7</td><td>1.671</td><td>15.0–22.6</td><td>1.704</td><td>14.0–24.2</td></tr>
+<tr><td>8</td><td>1.603</td><td>14.0–21.6</td><td>1.555</td><td>10.7–24.0 <span class="small">(one state approaching flicker)</span></td></tr>
+</table>
+<p><b>No near-duplicate states (threshold 0.05) and zero flicker states (dwell &lt; 2h)
+anywhere in this entire range, for either panel.</b> All distances are 30×+ above the
+flag threshold even at the widest tested n.</p>
+
+<h2>6.3 Honest conclusion</h2>
+<div class="callout note">
+<b class="tag">Not the result expected going in</b>
+This method was decisive for production — it clearly caught n=7 breaking down into
+duplicate/flicker states there, with n=4 as the real elbow. It is <b>not</b> decisive here.
+The richer 22-column feature space doesn't show that breakdown anywhere in [3,8] for
+either crypto panel — distances shrink and dwell times shorten smoothly with no sharp
+elbow. <b>n=6 is validated (nothing wrong with it), but not uniquely justified by this
+sweep alone</b> — the deciding evidence for n=6 specifically comes from the downstream
+work already done at that value (seed-stability, distinctness — see §7), and switching
+n_states now isn't justified by anything this sweep found, since it found no problem to
+fix at any tested value.
+</div>
+
+
+<!-- ============================= 7. PHASE 5 ============================= -->
+<h1>7. Phase 5 — Full Statistical Audit Across Six Models</h1>
+<p><b>Goal:</b> run the complete distinctness + predictive-signal + near-duplicate battery
+against every surviving candidate, on equal footing, closing every remaining gap from the
+original blocker list.</p>
+
+<h2>7.1 <code>regime_quality_audit.py</code> generalized</h2>
+<p>Added CLI args (<code>--regime-stream</code>, <code>--processed-dir</code>, <code>--assets</code>, <code>--tag</code>,
+<code>--sections</code>) — default behavior with no args reproduces the original production
+audit exactly. Two substantive extensions, both closing gaps identified in the original
+audit:</p>
+<ul>
+<li><b>Distinctness on <code>realized_vol_raw</code></b>, not just <code>close_return</code> — the original
+script only ever tested returns, which is not the property these regimes are actually
+sold on.</li>
+<li><b>An extended predictive-signal feature set</b> — whatever extra columns a candidate's
+aligned data actually has (multi-horizon z-scores, <code>realized_vol_raw</code>) alongside the
+original 12-feature baseline, so the fuller feature set a model was actually built from
+gets tested too.</li>
+</ul>
+
+<h2>7.2 Near-duplicate-state check — actual deployed checkpoints</h2>
+<table>
+<tr><th>Checkpoint</th><th>n_states</th><th>Min inter-state distance</th><th>Near-duplicates (&lt;0.05)</th></tr>
+<tr><td>crypto5 (14-col)</td><td>6</td><td>1.2012</td><td>none</td></tr>
+<tr><td>crypto5_multihorizon (22-col)</td><td>6</td><td>1.6902</td><td>none</td></tr>
+<tr><td>btc_only (14-col)</td><td>6</td><td>1.3560</td><td>none</td></tr>
+<tr><td>btc_only_multihorizon (22-col)</td><td>6</td><td>1.7187</td><td>none</td></tr>
+</table>
+
+<h2>7.3 Full six-model comparison matrix</h2>
+<p>Production was re-audited with the extended methodology for a fair, apples-to-apples
+comparison — its original <code>close_return</code> numbers reproduced exactly (confirming
+nothing about production drifted during this session), with <code>realized_vol_raw</code>
+distinctness now added for the first time.</p>
+<table>
+<tr><th>Model</th><th>n_states</th><th>Seed ARI</th><th><code>close_return</code> distinctness</th><th><code>realized_vol_raw</code> distinctness</th><th><code>regime_only</code> AUC</th><th><code>features_only</code> AUC</th></tr>
+<tr><td>production (4-asset)</td><td>4</td><td>0.193</td><td>mixed, 1–3 KS-indist. pairs/asset</td><td>p≈0, all</td><td>0.489–0.505</td><td>0.506–0.544</td></tr>
+<tr><td>crypto5 (14-col)</td><td>6</td><td>0.585</td><td><b>4/5 significant</b>, 0 KS-indist.</td><td>p≈0, all</td><td>0.498–0.523</td><td>0.528–0.548</td></tr>
+<tr><td>crypto5_multihorizon (22-col)</td><td>6</td><td><b>1.000</b></td><td>2/5 significant, 0 KS-indist.</td><td>p≈0, all</td><td>0.503–0.521</td><td>0.528–0.548</td></tr>
+<tr><td>btc_only (14-col)</td><td>6</td><td>0.698</td><td>not sig. (p=0.887), 0 KS-indist.</td><td>p≈0</td><td>0.494</td><td>0.542</td></tr>
+<tr><td>btc_only_multihorizon (22-col)</td><td>6</td><td><b>0.989</b></td><td>not sig. (p=0.348), 0 KS-indist.</td><td>p≈0</td><td>0.501</td><td>0.542</td></tr>
+</table>
+
+<h3>Per-asset close_return ANOVA p-values (crypto5, 14-col)</h3>
+<table>
+<tr><th>Asset</th><th>close_return p</th><th>realized_vol_raw p</th></tr>
+<tr><td>BTC</td><td>0.484</td><td>≈0</td></tr>
+<tr><td>ETH</td><td><b>0.00522</b></td><td>≈0</td></tr>
+<tr><td>BNB</td><td><b>0.0362</b></td><td>≈0</td></tr>
+<tr><td>LTC</td><td><b>0.0379</b></td><td>≈0</td></tr>
+<tr><td>XRP</td><td><b>0.0219</b></td><td>≈0</td></tr>
+</table>
+
+<h2>7.4 The two robust findings from this matrix</h2>
+<div class="callout finding">
+<b class="tag">Finding 1 — as robust as this kind of analysis gets</b>
+<code>realized_vol_raw</code> distinctness is p≈0 in <b>every one of 6 independently-fit
+models, every asset tested, no exceptions</b>. These are genuine, statistically real
+volatility regimes, full stop, regardless of panel or feature-horizon choice.
+</div>
+<div class="callout finding">
+<b class="tag">Finding 2 — equally robust, opposite direction</b>
+<code>regime_only</code> next-bar directional AUC is chance-level (0.49–0.52) in <b>every one
+of the same 6 models</b>. The regime label carries no measured directional predictive
+signal, independent of asset count, panel choice, or feature horizon.
+</div>
+<div class="callout note">
+<b class="tag">A genuine trade-off, only visible once every variant was tested</b>
+14-column features give <i>better</i> <code>close_return</code> distinctness than the 22-column
+multihorizon set (crypto5: 4/5 assets significant vs. 2/5), but the 22-column set gives
+<i>dramatically</i> better seed-stability (0.99–1.00 vs. 0.59–0.70). Neither is a clean win.
+Given <code>regime_only</code> AUC is chance-level either way, the extra return-distinctness
+the 14-column set buys was never translating into usable directional signal — which is
+why the multihorizon set is still the better default for anything meant to be
+reproducibly deployed, but this is a judgment call on a real trade-off, not an
+obviously-correct choice.
+</div>
+
+
+<!-- ============================= 8. PHASE 6 ============================= -->
+<h1>8. Phase 6 — Regime-Conditioned Backtest</h1>
+<p><b>Goal:</b> the question every prior phase was in service of. Does conditioning on the
+regime label improve risk-adjusted returns? Minimal, self-contained
+(<code>regime/phase6_regime_backtest.py</code>) — no RL/PPO, no LLM/agent layer, no encoder.
+Just price data and the regime label already sitting in <code>regime_stream.parquet</code>.</p>
+
+<h2>8.1 Design</h2>
+<p>Given regime already showed no directional signal (§7.4), the honest question isn't
+"can regime predict direction" — it's "does discretizing volatility into regime buckets,
+for <i>position sizing</i>, beat just using continuous volatility directly." Three
+long-only strategies, sharing the same directional signal (always long, isolating the
+sizing question from any directional edge that's already known not to exist):</p>
+<div class="kv">
+  <b>buy_hold</b><div>weight = 1.0, constant.</div>
+  <b>vol_target_continuous</b><div>weight<sub>t</sub> = clip(target_vol / realized_vol_raw<sub>t-1</sub>, 0.1, 2.0) — regime-free, uses the asset's own trailing realized vol directly.</div>
+  <b>regime_conditioned</b><div>weight<sub>t</sub> = clip(target_vol / regime_vol_map[regime_label<sub>t-1</sub>], 0.1, 2.0) — regime_vol_map is the mean realized_vol_raw per regime, computed on <b>train data only</b> (&lt;2024), leakage-safe.</div>
+</div>
+<p><code>target_vol</code> = train-period mean <code>realized_vol_raw</code>, so both sized strategies run
+at the same average exposure as buy-hold over the period the mapping was learned on — a
+fair comparison, not just "trade smaller." Weight decisions use only <i>t-1</i>
+information, applied to the <i>t-1→t</i> return — no lookahead. Transaction cost: 5bps
+per unit of weight change. Evaluated on the project's existing walk-forward
+val(2024)/test(2025) split. Confidence intervals via block bootstrap — 1000 resamples,
+168-hour (1-week) non-overlapping blocks, seed 42 — the identical methodology
+<code>rl/ablation.py</code>'s <code>bootstrap_sharpe_ci</code> already uses elsewhere in this project,
+reimplemented standalone here so this script has zero dependency on the RL layer.</p>
+
+<h2>8.2 Results</h2>
+<table>
+<tr><th>Panel</th><th>Split</th><th>buy_hold Sharpe</th><th>vol_target Sharpe</th><th>regime Sharpe</th></tr>
+<tr><td rowspan="2">crypto5 (portfolio)</td><td>2024 (val)</td><td><b>+1.203</b></td><td>+0.353</td><td>+0.386</td></tr>
+<tr><td>2025 (test)</td><td><b>-0.131</b></td><td>-0.343</td><td>-0.364</td></tr>
+<tr><td rowspan="2">btc_only</td><td>2024 (val)</td><td><b>+1.506</b></td><td>+1.176</td><td>+1.111</td></tr>
+<tr><td>2025 (test)</td><td><b>-0.147</b></td><td>-0.554</td><td>-0.321</td></tr>
+</table>
+
+<h3>Regime vs. continuous vol-targeting — the fair comparison, block-bootstrapped</h3>
+<table>
+<tr><th>Panel / split</th><th>Δ Sharpe (regime − continuous)</th><th>95% CI</th><th>Significant?</th></tr>
+<tr><td>crypto5, 2024</td><td>+0.033</td><td>[-0.333, 0.425]</td><td>No</td></tr>
+<tr><td>crypto5, 2025</td><td>-0.023</td><td>[-0.359, 0.276]</td><td>No</td></tr>
+<tr><td>btc_only, 2024</td><td>-0.051</td><td>[-0.453, 0.354]</td><td>No</td></tr>
+<tr><td>btc_only, 2025</td><td>+0.238</td><td>[-0.138, 0.653]</td><td>No</td></tr>
+</table>
+<p class="small">Every single confidence interval straddles zero, and the sign of the point
+estimate flips between periods/panels with no consistent direction.</p>
+
+<h3>Per-asset test-period (2025) Sharpe, crypto5</h3>
+<table>
+<tr><th>Asset</th><th>buy_hold</th><th>vol_target</th><th>regime</th></tr>
+<tr><td>BTC</td><td>-0.147</td><td>-0.550</td><td>-0.303</td></tr>
+<tr><td>ETH</td><td>-0.160</td><td>-0.248</td><td>-0.081</td></tr>
+<tr><td>BNB</td><td><b>+0.379</b></td><td><b>+0.459</b></td><td>+0.298</td></tr>
+<tr><td>LTC</td><td>-0.343</td><td>-0.429</td><td>-0.665</td></tr>
+<tr><td>XRP</td><td>-0.146</td><td>-0.662</td><td>-0.560</td></tr>
+</table>
+
+<h2>8.3 Interpretation</h2>
+<ol>
+<li><b>Vol-based sizing hurt in both tested periods.</b> 2024 was a strong bull run (buy-hold
+Sharpe 1.2–1.5); cutting exposure during high-vol windows meant missing exactly the
+moves driving those returns — the well-known failure mode of vol-targeting in strong
+trending markets. 2025 was a broad decline where it didn't help either. Notably, both
+sized strategies actually ran at <i>higher</i> average exposure than buy-hold (1.2–1.6× vs.
+1.0×, since 2024/2025 realized vol came in below the training-period target) — this
+isn't a story about being too conservative, they were more aggressive on average and
+still underperformed.</li>
+<li><b>Regime-conditioning adds nothing measurable over continuous realized volatility</b> for
+this sizing use case. All four bootstrap CIs straddle zero. The entire HMM apparatus —
+fitting, seed-selection, distinctness testing — produces volatility buckets that are
+statistically real (§7.4, finding 1) but functionally interchangeable with a much
+simpler "divide by trailing realized vol" rule, at least for this strategy shape.</li>
+<li><b>Real per-asset heterogeneity exists</b> — BNB is the one asset where continuous
+vol-targeting actually beat buy-hold; LTC and XRP degraded the most under either
+sizing scheme. Not a uniform story across the panel.</li>
+</ol>
+
+<div class="verdict-box">
+<h3>Bottom line</h3>
+<p>On this minimal, honest test, conditioning on the regime label does not improve
+risk-adjusted returns, and does not distinguishably beat simply using continuous
+volatility instead. This is a real, negative-leaning result — not a data-quality
+artifact. The representation layer itself is now in genuinely good technical shape (no
+asset-collapse, near-perfect seed stability, statistically real volatility distinctness)
+and it still didn't clear this bar. It tested exactly one strategy shape (long-only,
+vol-target sizing) over two periods — it does not rule out regime having value in a
+different use (directional conditioning combined with other signals, cross-asset
+correlation-aware allocation, or as one input among many in a learned policy that can
+find a nonlinear combination) — but the simple, standalone case for this regime layer
+is not there.</p>
+</div>
+
+
+<!-- ============================= 9. ENGINEERING APPENDIX ============================= -->
+<h1>9. Engineering Appendix</h1>
+
+<h2>9.1 Bugs found and fixed this session</h2>
+<table>
+<tr><th style="width:4%">#</th><th style="width:22%">Bug</th><th>Where</th><th>Fix</th></tr>
+<tr><td>1</td><td><code>fit_hmm_bic</code> subsampling breaks temporal adjacency</td><td>regime/hmm.py</td><td>Removed subsampling entirely; full-data BIC search</td></tr>
+<tr><td>2</td><td>No <code>lengths=</code> passed anywhere</td><td>regime/hmm.py</td><td><code>_compute_lengths()</code> + threaded through every HMM call</td></tr>
+<tr><td>3</td><td>No seed-sensitivity check existed</td><td>regime/hmm.py</td><td><code>_fit_multiseed</code> + ARI/NMI report — surfaced production's 0.193 ARI</td></tr>
+<tr><td>4</td><td>Fork+BLAS deadlock when parallelizing multi-seed fits</td><td>regime/hmm.py</td><td>Switched <code>ProcessPoolExecutor</code> to <code>spawn</code> context</td></tr>
+<tr><td>5</td><td>MLflow "run already active" crash — <code>log_metric</code> called after its <code>with mlflow.start_run()</code> block had already exited</td><td>regime/run_hmm_crypto5_test.py</td><td>Moved the offending call inside the <code>with</code> block</td></tr>
+<tr><td>6</td><td><code>adfuller(autolag="AIC")</code> exhaustive lag search — ~14 min/asset</td><td>regime/stationarity_check.py</td><td>Fixed lag order via Schwert's rule — &lt;1 min/asset</td></tr>
+<tr><td>7</td><td>Crash on literally-constant columns (EURUSD/GOLD zero-volume features)</td><td>regime/stationarity_check.py</td><td>Detected and reported explicitly instead of crashing</td></tr>
+<tr><td>8</td><td>Hardcoded 4-asset list didn't support crypto5's BNB/LTC/XRP</td><td>regime/stationarity_check.py</td><td>Generalized via <code>--assets</code> CLI arg</td></tr>
+<tr><td>9</td><td>Availability heatmap showed fake periodic "gaps" — a bin-alignment artifact (each asset's weekly resample anchored to its own first timestamp, so bin edges didn't line up across assets)</td><td>pipeline/generate_diagnostic_plots.py</td><td>Shared reference bin grid across all assets</td></tr>
+<tr><td>10</td><td>Price/volume overlay plotted ~70K individual hourly bars per asset — slow and unreadably dense</td><td>pipeline/generate_diagnostic_plots.py</td><td>Resampled to daily volume before plotting</td></tr>
+<tr><td>11</td><td><code>_CRYPTO_SYMBOLS</code> missing BNB/LTC/XRP; hardcoded, non-overridable output path</td><td>pipeline/validate.py</td><td>Added the 3 symbols; added <code>output_filename</code> param</td></tr>
+</table>
+
+<h2>9.2 File manifest (this session, commit <code>dee486d</code>)</h2>
+<table>
+<tr><th>File</th><th>Status</th><th>Purpose</th></tr>
+<tr><td>regime/hmm.py</td><td>modified</td><td>Core engine fixes — see §3</td></tr>
+<tr><td>regime/n_states_sweep.py</td><td>modified</td><td>Generalized via CLI args — see §6</td></tr>
+<tr><td>regime/regime_quality_audit.py</td><td>modified</td><td>Generalized + extended (realized_vol_raw, extra feature sets) — see §7</td></tr>
+<tr><td>pipeline/normalize.py</td><td>modified</td><td>Added <code>normalize_features_multihorizon()</code> — see §4</td></tr>
+<tr><td>pipeline/validate.py</td><td>modified</td><td>Fixed <code>_CRYPTO_SYMBOLS</code>, added <code>output_filename</code> — see §5.3</td></tr>
+<tr><td>regime/build_multihorizon_features.py</td><td>new</td><td>Multihorizon build for the original (now-superseded) 4-asset panel — kept as historical record</td></tr>
+<tr><td>regime/stationarity_check.py</td><td>new</td><td>ADF+KPSS per feature/asset — see §4</td></tr>
+<tr><td>regime/run_hmm_engine_test.py</td><td>new</td><td>Phase 1 engine-fix regression check — see §3</td></tr>
+<tr><td>regime/run_hmm_multihorizon_test.py</td><td>new</td><td>14 vs 22-col comparison on the original panel — historical record of why it was abandoned</td></tr>
+<tr><td>pipeline/fetch_crypto5.py</td><td>new</td><td>Fetches BNB/LTC/XRP via existing CCXT machinery — see §5</td></tr>
+<tr><td>regime/build_crypto5_features.py</td><td>new</td><td>Generalized panel builder (<code>--assets</code>/<code>--tag</code>) — see §5</td></tr>
+<tr><td>regime/validate_crypto_panels.py</td><td>new</td><td>Runs <code>pipeline/validate.py</code> against crypto5/btc_only — see §5.3</td></tr>
+<tr><td>regime/run_hmm_crypto5_test.py</td><td>new</td><td>Generalized 14 vs 22-col HMM comparison (<code>--tag</code>) — used for both crypto5 and btc_only</td></tr>
+<tr><td>regime/phase6_regime_backtest.py</td><td>new</td><td>Self-contained regime-conditioning backtest — see §8</td></tr>
+<tr><td>pipeline/generate_diagnostic_plots.py</td><td>new</td><td>6 data-pipeline diagnostic plots — see §9.3</td></tr>
+<tr><td>pipeline/plots/*.png</td><td>new (6 files)</td><td>Generated output of the above</td></tr>
+</table>
+
+<h2>9.3 Diagnostic plots</h2>
+<p>Generated against the crypto5 panel (the asset set actually going forward). Full detail
+in the session transcript; summarized here.</p>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/raw_data_availability_heatmap.png">
+<figcaption>Fig. 1 — Raw data availability, weekly candle coverage. Correctly shows XRP's real
+2018-05 start gap and the BNB/LTC/XRP fetch-endpoint gap from 2026-01 onward (those three
+were only fetched through 2025-12-31; not a data quality issue). Regenerated after fixing
+the bin-alignment bug that originally produced spurious periodic gaps (Bug #9, §9.1).</figcaption>
+</figure>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/raw_price_volume_overlay.png">
+<figcaption>Fig. 2 — Close price (log scale) + daily volume, full history, all 5 assets.
+Recognizable crypto market cycles throughout (2018 bear, 2021 bull, 2022 crash, 2023–25
+recovery) — no ingestion artifacts visible.</figcaption>
+</figure>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/feature_distributions_before_normalization.png">
+<figcaption>Fig. 3 — Raw indicator distributions, pooled across all 5 assets, before
+normalization. Wildly different scales per feature (atr 0–1000, obv_raw ~1e9); several
+heavily right-skewed (atr, bb_width, realized_vol); obv_raw's raw histogram is dominated
+by its cumulative-sum drift, illustrating exactly why it needs z-scoring.</figcaption>
+</figure>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/feature_distributions_after_normalization.png">
+<figcaption>Fig. 4 — Same features, after the production 720h rolling z-score. All roughly
+on a comparable ~[-3,4] scale as intended. Note: z-scoring only rescales, it does not
+Gaussianize — several features remain visibly skewed post-normalization, which is
+expected. <code>obv_raw</code> comes out visibly bimodal — flagged as worth a closer look, not
+yet resolved.</figcaption>
+</figure>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/feature_correlation_matrix.png">
+<figcaption>Fig. 5 — Feature correlation matrix, 14 final columns, pooled across 5 assets.
+Confirms a real multicollinearity cluster: <code>atr</code>, <code>bb_width</code>, <code>realized_vol</code>,
+<code>realized_vol_raw</code>, and <code>vol_ratio</code> are all strongly pairwise correlated — the
+vol-shape feature group. This redundancy had never been formally checked before this
+session.</figcaption>
+</figure>
+
+<figure>
+<img src="file:///home/ramy/Documents/MARTA/marta/pipeline/plots/rolling_zscore_stationarity_check.png">
+<figcaption>Fig. 6 — <code>realized_vol</code> z-score (hourly, faint; 720h rolling mean, bold) at
+all three normalization horizons, BTC full history. All three hover near zero across the
+full 8-year span with no persistent multi-year drift — a direct visual stationarity
+check, distinct from "does dwell time change" (answered separately in Phase 2/5).</figcaption>
+</figure>
+
+
+<!-- ============================= 10. CONCLUSIONS ============================= -->
+<h1>10. Conclusions &amp; Recommendations for the Next Layer</h1>
+
+<h2>10.1 Blocker disposition</h2>
+<table>
+<tr><th>#</th><th>Blocker</th><th>Status</th></tr>
+<tr><td>1</td><td>Raw-feature baseline asset-identity collapse</td><td><b>Closed</b> — crypto-only panel, max single-asset share 0.234</td></tr>
+<tr><td>2</td><td><code>fit_hmm_bic</code> subsampling breaks temporal adjacency</td><td><b>Closed</b> — subsampling removed</td></tr>
+<tr><td>3</td><td>No <code>lengths=</code> anywhere</td><td><b>Closed</b> — everywhere now</td></tr>
+<tr><td>4</td><td>No EM robustness evidence</td><td><b>Closed</b> — best-of-5 seeds + ARI/NMI on every fit</td></tr>
+<tr><td>5</td><td>Distinctness never tested on volatility</td><td><b>Closed</b> — p≈0 in all 6 models tested</td></tr>
+<tr><td>6</td><td>Regime partition not robust to EM init (found this session)</td><td><b>Closed for the crypto panels</b> (ARI 0.585–1.000); production's own 0.193 remains unresolved, since production itself is being superseded by this work</td></tr>
+</table>
+
+<h2>10.2 What's now true about this layer</h2>
+<ul>
+<li>The HMM fitting engine is methodologically correct: sequence boundaries respected,
+no subsampling artifacts, multi-seed robustness measured and reported by default on
+every future fit.</li>
+<li>The crypto-only panel (BTC/ETH/BNB/LTC/XRP) is clean: no asset-collapse, formally
+validated by <code>pipeline/validate.py</code>, empirically-checked n_states with no
+duplicate/flicker states across a wide swept range.</li>
+<li>The discovered regimes are genuine, statistically real volatility states — the
+single most robust finding in this entire audit, replicated across 6 independent
+model fits with zero exceptions.</li>
+<li>Every validation tool built this session (stationarity, distinctness/predictive
+audit, n_states sweep, panel builder) is now generalized via CLI args and reusable
+against any future candidate model with no code duplication.</li>
+</ul>
+
+<h2>10.3 What's still true, and matters more</h2>
+<ul>
+<li>The regime label carries no directional predictive signal, in any configuration
+tested.</li>
+<li>Regime-conditioned volatility-based position sizing does not measurably beat
+simply using continuous realized volatility directly — the entire value proposition
+of building an HMM over just computing a trailing volatility statistic did not survive
+contact with an honest backtest.</li>
+</ul>
+
+<h2>10.4 Recommendation for the next layer</h2>
+<div class="callout note">
+<p>Given Phase 6's finding, the LLM/agent deliberation layer and the RL execution layer
+should not assume regime conditioning is a source of value by default. Two honest paths
+forward: (a) treat the regime vector as one weak input among many in a learned policy
+(RL/PPO) that can discover a nonlinear combination no simple rule-based test like Phase
+6 could find — the original design intent — accepting that its marginal contribution may
+be small; or (b) deprioritize the regime layer's role in the next phase and focus
+compute/attention on components with a more directly demonstrated edge. This report does
+not recommend one over the other — that is a project-priority decision, not an
+engineering one — but it removes the option of proceeding on the unexamined assumption
+that regime conditioning obviously helps. It doesn't, at least not in the way tested
+here.</p>
+</div>
+
+<p class="small center" style="margin-top:1cm; color:#888;">— End of report —</p>
+
+</body>
+</html>
