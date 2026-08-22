@@ -76,9 +76,9 @@ def _compute_lengths(asset_labels: np.ndarray) -> np.ndarray:
     hmmlearn needs to fit/score/decode a multi-asset embedding matrix as independent
     chains instead of one continuous sequence. `asset_labels` must already be ordered
     so each asset's rows form one contiguous block (true of every embeddings.npy this
-    module reads — encoder/embed.py and regime/build_raw_feature_embeddings.py both
-    write one contiguous block per asset). Works unchanged for a single-asset input
-    (returns one length covering everything).
+    module reads — encoder/embed.py and regime/build_crypto5_features.py both write
+    one contiguous block per asset). Works unchanged for a single-asset input (returns
+    one length covering everything).
     """
     asset_labels = np.asarray(asset_labels)
     if len(asset_labels) == 0:

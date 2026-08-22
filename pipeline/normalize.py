@@ -121,7 +121,7 @@ def normalize_and_save(
 #
 # Tests whether the 720h(30d) rolling z-score is silently capping how long a "regime"
 # the HMM discovers can persist (measured production dwell times were 13-20h — far
-# shorter than a classical multi-week market regime). See regime/build_multihorizon_features.py.
+# shorter than a classical multi-week market regime). See regime/build_crypto5_features.py.
 # ---------------------------------------------------------------------------
 
 # Vol-shape features that get extra, longer normalization horizons — not applied to

@@ -1,9 +1,9 @@
 """Regime-layer audit (2026-08-19) — crypto-only 5-asset panel (BTC/ETH/BNB/LTC/XRP),
-replacing the earlier BTC/ETH/EURUSD/GOLD-panel comparison
-(regime/run_hmm_multihorizon_test.py — kept as a historical record of why that panel
-was abandoned: EURUSD/GOLD's degenerate zero-volume features made the raw-feature HMM
-key on asset identity, confirmed both via crosstab and a literal `ValueError: Invalid
-input, x is constant` from the stationarity check).
+replacing the earlier BTC/ETH/EURUSD/GOLD-panel comparison (script since removed as
+dead code, 2026-08-20 cleanup) — that panel was abandoned because EURUSD/GOLD's
+degenerate zero-volume features made the raw-feature HMM key on asset identity,
+confirmed both via crosstab and a literal `ValueError: Invalid input, x is constant`
+from the stationarity check.
 
 Same controlled, single-variable design: BOTH fits use the Phase-1-fixed engine
 (lengths=, no BIC subsampling, best-of-5-seed refit), pca_n_components=None (raw

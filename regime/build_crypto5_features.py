@@ -14,8 +14,8 @@ excluded entirely — no data before 2020-08-11).
 (--assets BTC_USDT --tag btc_only) requested to run alongside the 5-asset panel.
 
 No encoder, no PCA — raw features straight to the HMM, matching the project's
-raw-feature pivot (2026-08-12) and Phase 2's multihorizon design
-(regime/build_multihorizon_features.py — same extra-horizon columns, same rationale).
+raw-feature pivot (2026-08-12) and Phase 2's multihorizon design (extra-horizon columns
+from pipeline/normalize.py:normalize_features_multihorizon).
 
 Run:
   conda run -n marta python regime/build_crypto5_features.py

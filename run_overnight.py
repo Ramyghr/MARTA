@@ -63,24 +63,21 @@ steps: list[tuple[str, list[str], int]] = [
     # This step uses whatever checkpoint is on disk (its mtime is printed below).
     ("HMM regime clustering", [PYTHON, "run_regime.py"], 1800),
 
-    # Step 4: Per-asset HMM
-    ("Per-asset HMM", [PYTHON, "run_per_asset_regime.py"], 1800),
-
-    # Step 5: Regenerate weekly debates on the new regime stream (2023 val window)
+    # Step 4: Regenerate weekly debates on the new regime stream (2023 val window)
     ("Weekly debates", [PYTHON, "run_weekly_debates.py"], 7200),
 
-    # Step 6: Regenerate clean no-regime debates (re-runs pairs from the main cache)
+    # Step 5: Regenerate clean no-regime debates (re-runs pairs from the main cache)
     ("Clean no-regime debates", [PYTHON, "run_clean_ablation_debates.py"], 7200),
 
-    # Step 7: RL training on new data (train ≤2022, val 2023 — rl/env.py).
+    # Step 6: RL training on new data (train ≤2022, val 2023 — rl/env.py).
     # 6h cap: 900k curriculum steps + GARCH cache rebuild for the extended data;
     # a mid-training kill wastes the night, so this is deliberately generous.
     ("RL training", [PYTHON, "run_rl.py"], 21600),
 
-    # Step 8: Test set evaluation on 2024
+    # Step 7: Test set evaluation on 2024
     ("Test set evaluation", [PYTHON, "run_test_set.py"], 600),
 
-    # Step 9: Final ablation (7 variants incl. RSI / MA crossover)
+    # Step 8: Final ablation (7 variants incl. RSI / MA crossover)
     ("Final ablation", [PYTHON, "run_rl.py", "--eval-only"], 1800),
 ]
 
