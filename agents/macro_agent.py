@@ -13,6 +13,11 @@ from agents.schemas import AgentThesis
 from utils.assets import aligned_path
 from utils.logger import logger
 
+# Kept at the original 4-asset production panel — dashboard/backend/debate_stream.py
+# constructs MacroAgent() with no arguments and relies on this default matching the old
+# production data/processed/regime_stream.parquet it hardcodes elsewhere; changing this
+# default would silently break the live dashboard. Crypto-only callers (run_debate.py)
+# pass assets=/data_dir= explicitly instead — see utils.freshness.DEBATE_ASSETS.
 _ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 _DATA_DIR = Path("data/processed")
 _CORR_WINDOW = 168  # 1 week of hourly data
@@ -21,13 +26,21 @@ _CORR_WINDOW = 168  # 1 week of hourly data
 class MacroAgent(BaseAgent):
     name = "MacroAgent"
 
-    def __init__(self, model: str = "mistral:7b-instruct", temperature: float = 0.4) -> None:
+    def __init__(
+        self,
+        model: str = "mistral:7b-instruct",
+        temperature: float = 0.4,
+        assets: list[str] | None = None,
+        data_dir: Path | None = None,
+    ) -> None:
         super().__init__(model=model, temperature=temperature)
+        self._assets = assets if assets is not None else _ASSETS
+        self._data_dir = Path(data_dir) if data_dir is not None else _DATA_DIR
         self._aligned_cache: dict[str, pd.DataFrame] = {}
 
     def _load_aligned(self, asset: str) -> pd.DataFrame:
         if asset not in self._aligned_cache:
-            path = aligned_path(asset, _DATA_DIR)
+            path = aligned_path(asset, self._data_dir)
             if path.exists():
                 self._aligned_cache[asset] = pd.read_parquet(path, engine="pyarrow")
             else:
@@ -41,7 +54,7 @@ class MacroAgent(BaseAgent):
         returns: dict[str, pd.Series] = {}
         vol_ratios: dict[str, float] = {}
 
-        for asset in _ASSETS:
+        for asset in self._assets:
             df = self._load_aligned(asset)
             if df.empty or "close_return" not in df.columns:
                 continue

@@ -265,13 +265,27 @@ the committee has to ask for it:**
 
 ### What failed — document these as findings, not bugs to chase before the defense
 
-1. **TechnicalAgent ignores obvious bearish price action.** RSI 12, MACD strongly negative,
-   return −6% still produced "bullish, confidence 0.65." Raw response: *"RSI at a low level...
-   suggests potential for price to rebound... combined with the current regime being a
-   high-volatility bull regime, supports this view."* It read oversold RSI as mean-reversion
-   and let the (unchanged) regime block override the price extremity. **Decision: document,
-   do not spend remaining time tuning the prompt** — a two-week budget doesn't cover
-   reliably fixing LLM directional judgment.
+1. **TechnicalAgent ignores obvious bearish price action — FIXED 2026-08-23.** RSI 12, MACD
+   strongly negative, return −6% still produced "bullish, confidence 0.65." Raw response: *"RSI
+   at a low level... suggests potential for price to rebound... combined with the current regime
+   being a high-volatility bull regime, supports this view."* Root cause, isolated by ablation
+   rather than assumed: not weak reasoning in general, but the regime's *qualitative description
+   text* ("High-volatility bull regime") acting as a dominant lexical anchor for a 7B model —
+   with that text present, 0/3 repeated runs on the adversarial bearish case got the direction
+   right; neutralizing the regime entirely got to 1/3; stripping only the loaded "bull"/"bear"
+   wording while keeping the real `regime_label`/`regime_probs` (confirmed informative by the
+   null-regime test below) got to 4/5. `agents/technical_agent.py`'s `_build_system_prompt` now
+   builds its prompt from a context copy with `regime_description` replaced by a neutral
+   placeholder, adds explicit ADX-conditioned RSI/MACD interpretation rules (extreme RSI in a
+   trending market, ADX>25, confirms momentum rather than signaling reversal — only read it as
+   mean-reversion when ADX<20), and exposes `close_return` explicitly (previously silently
+   truncated out of the shared 8-item price-features block that every agent's generic context
+   uses). Verified 5/5 correct on both bearish and bullish extremes post-fix (was 0/2 bearish
+   correct at baseline — the bullish case happened to already be correct), with the real,
+   unmodified 2024-03-01 BTC context re-checked to confirm normal-case output is unchanged.
+   Scoped to TechnicalAgent only — Macro/SentimentAgent's null-regime test found "not cleanly
+   directional," not a wrong-direction bug, and their role legitimately calls for reading the
+   qualitative regime description as market character.
 2. **Regime sensitivity is real but not directional.** Forcing MacroAgent's regime block to
    the single best-Sharpe regime in the dataset ("bull") did not make it more bullish — output
    went from bullish/0.85 (real) to neutral/0.50, the *same* neutral/0.50 every synthetic
@@ -310,7 +324,7 @@ state this plainly rather than implying the debate layer influenced the traded p
 | Likely question | Answer, with evidence |
 |---|---|
 | "Why call it a debate if the Fund Manager is deterministic?" | It isn't a decision-making debate — it's LLM-sourced directional *opinions* feeding a deterministic weighted vote. Cite the aggregator-usage test. |
-| "Why does TechnicalAgent fail on obvious bearish input?" | Reproducible example in `llm_layer_audit.json` — cite the exact RSI/MACD/return values and raw response quoted above. |
+| "Why did TechnicalAgent fail on obvious bearish input, and is it still broken?" | Fixed 2026-08-23 — root cause was the regime description's "bull"/"bear" wording acting as a lexical anchor, isolated by ablation (0/3 → 1/3 → 4/5 correct as the description text was progressively removed). Reproducible before/after example and the ablation evidence are in finding 1 above. |
 | "Why is ContrarianAgent's direction hardcoded?" | By design (`contrarian_agent.py:213`) — its role was always to guarantee opposition for the aggregator to weigh, not to be a free LLM vote. State this as intentional, not discovered-as-a-bug. |
 | "Is the LLM layer connected to the PPO policy you're reporting?" | No — architecturally disconnected, confirmed by `grep -rn llm rl/` and the checkpoint's own `obs_mode`. |
 | "How do you know regime context isn't just ignored?" | Null-regime test: output changes with regime for all 3 directional agents — but the sensitivity isn't cleanly directional (see finding 2). |
@@ -322,3 +336,151 @@ state this plainly rather than implying the debate layer influenced the traded p
 > the final decision, and we document its failure modes (extreme-signal miscalibration, a
 > corroboration-only relationship with regime context, a hardcoded dissenting agent, and a
 > since-fixed staleness gap) rather than presenting an inflated 'LLM debate' claim."
+
+---
+
+## 7. Crypto-only panel migration for the agent layer (2026-08-23)
+
+The regime-layer rebuild (Section 3.4 of the report, `subsec:regime-asset-panel-revision`)
+pivoted regime detection to a 5-asset crypto-only panel (`BTC_USDT, ETH_USDT, BNB_USDT,
+LTC_USDT, XRP_USDT`, `data/processed/crypto5_multihorizon`), but — as stated explicitly in
+that work's own conclusion — nothing downstream was migrated to consume it; it was research-
+track work in an isolated data path. This pass migrated `agents/` itself.
+
+**What was actually broken, not just stale.** `agents/contrarian_agent.py` hardcoded
+`data/processed/regime_stream.parquet` (the old 4-asset production stream) at construction
+time, completely independent of whatever regime stream the rest of a debate was using. For
+any crypto5-only asset (BNB/LTC/XRP — never present in the old stream), this silently returned
+`{"total_cases": 0, ...}` from every historical-analogue lookup, with no error, no warning —
+the Contrarian's core evidence-gathering mechanism was quietly inert for 3 of the panel's 5
+assets. `agents/macro_agent.py` and `agents/risk_agent.py` both hardcoded `data/processed/`
+(top level) as their data directory; BNB/LTC/XRP's aligned parquets only exist under
+`data/processed/crypto5_multihorizon/`, so both agents would have silently degraded to an
+empty-DataFrame fallback for those three assets (no crash — worse, no signal anything was
+wrong). `MacroAgent`'s asset list was also hardcoded to the old panel (`BTC_USDT, ETH_USDT,
+EURUSD, GOLD`), so its correlation matrix could never have included the new assets at all,
+regardless of the data-directory fix.
+
+**The fix, and a mid-fix correction worth documenting.** The first pass simply flipped every
+module-level default to the crypto5 panel. Before applying it, a check of every non-agents/
+caller of these classes found `dashboard/backend/debate_stream.py` (the live dashboard debate
+feature) constructs `MacroAgent()`, `RiskAgent()`, `FundManagerAgent()`, `ContrarianAgent()`,
+and `SentimentAgent()` with **zero arguments**, and separately hardcodes the *old* production
+`regime_stream.parquet` + `all_assets_aligned.parquet` itself — i.e. it depends entirely on
+those classes' defaults staying exactly as they were. Flipping the defaults would have silently
+broken live dashboard debates (wrong regime semantics applied to old-panel regime labels,
+Contrarian searching the wrong stream) while fixing the standalone scripts — trading one
+undetected bug for another. Final design: every module-level default was kept at (or restored
+to) the original production panel, and new optional constructor parameters (`assets=`,
+`data_dir=`, `regime_stream_df=`/`regime_stream_path=`, `macro_assets=`, `fear_greed_assets=`,
+`semantics_path=` — the last two already existed on `FundManagerAgent`/`build_regime_context`
+from an earlier fix) let crypto-aware callers opt in explicitly. `run_debate.py` (the
+documented demo/generation entrypoint) is the one caller fully migrated to pass these
+explicitly; `run_weekly_debates.py`, `run_clean_ablation_debates.py`, `run_validation_debates.py`,
+and the dashboard remain on the untouched production defaults, unaffected by this pass.
+
+**Verification.** `tests/test_crypto5_panel.py` (15 tests, all passing) — one class asserting
+every production default is still byte-identical to before this pass (a regression guard
+against re-breaking the dashboard), and a second set constructing each agent with the new
+crypto5 overrides against synthetic data to confirm the injection path actually works (e.g.
+`ContrarianAgent(regime_stream_df=...)` finds real historical analogues for a
+previously-uncovered asset). Beyond the unit tests, ran 5 real end-to-end LLM debates (real
+Ollama/Mistral calls, not mocked) via the fixed `run_debate.py`, one per crypto5 asset,
+2020-08-26: all 5 completed successfully, including BNB/LTC/XRP for the first time —
+`ContrarianAgent` returned 100 real historical-analogue cases per debate (loss rates 31–66%,
+never the silent zero it returned before), `RiskAgent` produced five distinct real GARCH
+volatility forecasts (0.0042–0.0086, confirming genuine per-asset data rather than the
+fallback default), and `MacroAgent`'s correlation matrix covered all `C(5,2)=10` pairs. Full
+suite regression: `pytest tests/` — 80 passed, 4 pre-existing failures unrelated to this change
+(dashboard API/RL-env dimension drift, confirmed present on a clean checkout via `git stash`
+before this work started).
+
+## 8. Closing the remaining gaps + full migration completion (2026-08-23, same day)
+
+Follow-up pass closing every gap Section 7 (and the LLM layer status check that preceded it)
+left open, plus a repo-wide sweep to confirm nothing in the agent layer's actual scope still
+reads the old panel unintentionally.
+
+**ContrarianAgent's JSON parse failures — root cause was wrong, now fixed for real.** The
+prior "~40% truncation, hits the num_predict cap" theory (Section 6) does not match what
+actually happened on a direct, controlled repro: 3/3 real Mistral calls produced **complete,
+well-formed JSON** — the actual failure was `Pydantic` rejecting a `reasoning` field that
+exceeded `AgentThesis`'s `max_length=500` constraint, because ContrarianAgent's prompt is the
+only one of the five agents' prompts that never told the model to keep its answer short (every
+other agent's prompt explicitly says "1-2 sentence reasoning"; ContrarianAgent's asked for
+"strongest counter-argument citing regime risk and historical failure rate" with no length cap
+at all). Fixed two ways: (1) the prompt now says "max 2 sentences, under 400 characters, this
+is a hard limit"; (2) `agents/base.py` gained a new, schema-generic parse stage
+(`_clip_to_schema_constraints`, inserted as stage 1b, right after the direct-parse stage) that
+clips any oversized string/list field to fit its `Field(max_length=...)` constraint via
+Pydantic's own field metadata introspection — covering `AgentRebuttal.rebuttal_point` and
+`FundManagerDecision.rationale` too, not just this one field, so the same failure class can't
+silently recur for a different agent/field later. Verified: both previously-failing real
+responses now parse correctly (clipped, not discarded) via a direct regression test; 3 new
+unit tests added to `tests/test_agent_parse.py` (22/22 passing total in that file).
+
+**All remaining debate-generation entrypoints migrated to the crypto-only panel** —
+`run_weekly_debates.py`, `run_clean_ablation_debates.py`, `run_validation_debates.py`, and
+`scripts/llm_layer_audit.py` (previously only `run_debate.py` was migrated). Same pattern as
+Section 7: explicit `CRYPTO5_*` constants from `utils.freshness`, module-level defaults left
+untouched. `scripts/llm_layer_audit.py`'s fixed T0/T_STALE timestamps were re-verified against
+the crypto5 stream (`2024-03-01` and `2024-06-15 12:00` both still resolve to exact matches);
+note the staleness test's premise — a timestamp deliberately chosen to fall in a data gap — no
+longer holds on real, continuously-traded crypto data the way it did on the old panel's
+forex-weekend gaps, so that specific sub-test now consistently reports "not stale" rather than
+exercising the gap-fallback path. Not a regression — the fallback logic itself was already
+verified working in Section 6 — just a test premise that stopped applying to the new panel.
+
+**Dashboard's live debate feature (`dashboard/backend/debate_stream.py`) migrated too**, per
+explicit approval given the tradeoff (EURUSD/GOLD live debate requests will error until the
+frontend's asset list is separately updated — not done here). The harder part of this one:
+`stream_debate_live()` was reading `data/processed/all_assets_aligned.parquet`, a single
+combined MultiIndex-column file that has no crypto5 equivalent — crypto5_multihorizon stores
+one `{asset}_aligned.parquet` per asset instead. Rewritten to load per-asset via
+`utils.assets.aligned_path()`, the same pattern every other migrated caller uses. No live
+container is currently running (`docker compose ps` returns empty), so there was nothing to
+redeploy — this takes effect the next time the dashboard backend starts.
+
+**Macro/Sentiment "regime sensitivity real but not directional" (Section 6, finding 2) —
+does not reproduce on the current panel/codebase.** Re-ran the same bull/bear/sideways
+synthetic-regime methodology (2 repeats each, real Mistral calls) that originally produced
+"neutral/0.50 regardless of which synthetic regime" for MacroAgent. Current result: MacroAgent
+2/2 bullish on the bull variant, 2/2 bearish on the bear variant, 2/2 neutral on the sideways
+variant (correct — near-zero Sharpe should read as neutral) — clean, consistent directional
+sensitivity, not the original collapse. SentimentAgent: 2/2 bullish on bull, 2/2 neutral on
+sideways, but only 1/2 bearish on bear (the other call defaulted to neutral) — a normal
+single-call LLM inconsistency at temperature=0.4, not the systematic direction-blind pattern
+originally documented. Not confirmed why the original finding doesn't hold now — plausibly the
+crypto5 panel's regime descriptions carry more distinguishing information than the old panel's,
+plausibly it was closer to the edge of reproducibility than the original write-up implied. Not
+re-investigated further given the current evidence; if this resurfaces on a larger sample it's
+worth revisiting.
+
+**New finding, not yet fixed: `run_weekly_debates.py` has no incremental persistence.** It
+accumulates all new debate results in memory across the full weekly loop and writes
+`debate_results.json` exactly once, after every week has run — a single crash, timeout, or
+kill partway through a 38-week (or longer) real-LLM run loses 100% of the completed work, not
+just the in-flight debate. Found while running a real 38-week sweep across the 2024 RL
+validation window for BTC_USDT to build debate-cache coverage on the crypto5 panel (this
+session's `agents_no_regime` RL ablation baseline and the RL consensus-slot feature both read
+this cache). Left running rather than interrupted to fix, since killing it to patch the
+incremental-write gap would throw away the real progress already made. Worth fixing
+(write-through after each debate, matching `run_debate.py --date`'s and
+`run_validation_debates.py`'s existing append-per-run behavior) before the next long unattended
+run of this script.
+
+**Full suite regression after this pass:** `pytest tests/` — 83 passed (80 + 3 new
+`test_stage1b_*` cases), same 4 pre-existing, unrelated failures as Section 7.
+
+**Verdict on "is the LLM/agent layer done and tested":** every concretely identified gap from
+the layer-status review (ContrarianAgent's parse failures, the remaining un-migrated
+debate-generation scripts, the dashboard's live feature, the Macro/Sentiment sensitivity
+question) has now been either fixed-and-verified or re-checked-and-found-not-reproducible. The
+layer is not exhaustively validated to the statistical standard the regime layer received
+(Section 6's caveats about sparse debate-cache coverage and no large-scale behavioral battery
+still stand) — but every specific, named gap is closed. Nothing in the agent layer's own scope
+depends on the old 4-asset production panel by accident; every remaining reference to it is an
+intentional, documented default kept for a specific untouched consumer (this file's own
+Section 7/8 notes exactly which). The RL environment itself (`rl.env.CANONICAL_ASSETS`) is
+still the old 4-asset panel — untouched, and correctly so: migrating it is the RL layer's own
+work, not a precondition the agent layer needed to satisfy first.

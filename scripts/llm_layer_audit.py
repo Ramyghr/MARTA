@@ -30,12 +30,19 @@ from agents.risk_agent import RiskAgent
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
 from agents.schemas import AgentThesis
+from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH
 from utils.logger import logger
 
 ASSET = "BTC_USDT"
 T0 = pd.Timestamp("2024-03-01 00:00:00", tz="UTC")       # exact match in both aligned_df + regime_stream
-T_STALE = pd.Timestamp("2024-06-15 12:00:00", tz="UTC")  # deliberately in a data-gap region
-DATA_DIR = Path("data/processed")
+# Crypto data has no forex-weekend-style gaps, so this no longer deliberately lands in a
+# data gap the way it did on the old 4-asset panel — kept as a fixed regression point
+# (still an exact match on the crypto5 panel), but the staleness test below will now
+# consistently report "not stale" rather than exercising the gap-fallback path.
+T_STALE = pd.Timestamp("2024-06-15 12:00:00", tz="UTC")
+DATA_DIR = CRYPTO5_PROCESSED
+SEMANTICS_PATH = CRYPTO5_SEMANTICS_PATH
+PANEL_ASSETS = CRYPTO5_DEBATE_ASSETS
 
 RESULTS_PATH = Path("data/results/llm_layer_audit.json")
 
@@ -143,17 +150,17 @@ def _run() -> None:
     regime_stream = pd.read_parquet(DATA_DIR / "regime_stream.parquet", engine="pyarrow")
     aligned_dfs = {
         a: pd.read_parquet(DATA_DIR / f"{a}_aligned.parquet", engine="pyarrow")
-        for a in ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
+        for a in PANEL_ASSETS
         if (DATA_DIR / f"{a}_aligned.parquet").exists()
     }
     aligned_df = aligned_dfs[ASSET]
 
-    macro = MacroAgent()
+    macro = MacroAgent(assets=PANEL_ASSETS, data_dir=DATA_DIR)
     tech = TechnicalAgent()
-    sentiment = SentimentAgent()
-    contrarian = ContrarianAgent()
-    risk = RiskAgent()
-    fm = FundManagerAgent()
+    sentiment = SentimentAgent(macro_assets={"macro"}, fear_greed_assets=set(PANEL_ASSETS))
+    contrarian = ContrarianAgent(regime_stream_df=regime_stream)
+    risk = RiskAgent(data_dir=DATA_DIR)
+    fm = FundManagerAgent(semantics_path=SEMANTICS_PATH)
 
     for a, tag in [(macro, "macro"), (tech, "technical"), (sentiment, "sentiment"),
                    (contrarian, "contrarian"), (fm, "fund_manager")]:
@@ -162,9 +169,9 @@ def _run() -> None:
 
     # ── Build real context + regime variants ────────────────────────────────
     print(f"Building context at {ASSET} @ {T0}...")
-    ctx_real = build_regime_context(T0, ASSET, regime_stream, aligned_df)
+    ctx_real = build_regime_context(T0, ASSET, regime_stream, aligned_df, semantics_path=SEMANTICS_PATH)
 
-    stats_by_label = _load_regime_stats()
+    stats_by_label = _load_regime_stats(SEMANTICS_PATH)
     kinds = {label: classify_regime_kind(s) for label, s in stats_by_label.items()}
     sharpes = {label: float(s.get("sharpe", 0.0)) for label, s in stats_by_label.items()}
     bull_label = max(sharpes, key=sharpes.get)
@@ -172,7 +179,7 @@ def _run() -> None:
     sideways_label = min(sharpes, key=lambda k: abs(sharpes[k]))
     descriptions = {}
     from agents.context import _load_regime_descriptions
-    descriptions = _load_regime_descriptions()
+    descriptions = _load_regime_descriptions(SEMANTICS_PATH)
 
     n_labels = len(stats_by_label)
     rng = np.random.default_rng(42)

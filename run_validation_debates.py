@@ -13,6 +13,7 @@ Run: python run_validation_debates.py
 from __future__ import annotations
 
 import json
+from functools import partial
 from pathlib import Path
 
 import mlflow
@@ -22,19 +23,23 @@ from rich.table import Table
 
 from agents.contrarian_agent import ContrarianAgent
 from agents.fund_manager import FundManagerAgent
-from agents.graph import DebateGraph, run_debate
+from agents.graph import DebateGraph, run_debate as _run_debate_raw
 from agents.macro_agent import MacroAgent
 from agents.risk_agent import RiskAgent
 from agents.schemas import DebateResult
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
-from utils.freshness import load_debate_data
+from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH, load_debate_data
 from utils.logger import logger
 
-_DATA_DIR = Path("data/processed")
+_DATA_DIR = CRYPTO5_PROCESSED
+_DEBATE_ASSETS = CRYPTO5_DEBATE_ASSETS
+_SEMANTICS_PATH = CRYPTO5_SEMANTICS_PATH
 _OUTPUT_DIR = Path("data/debates")
 _OUTPUT_PATH = _OUTPUT_DIR / "debate_results.json"
 _MLFLOW_EXPERIMENT = "marta_agent_deliberation"
+
+run_debate = partial(_run_debate_raw, semantics_path=_SEMANTICS_PATH)
 
 VALIDATION_DEBATES: list[tuple[str, str, str]] = [
     ("BTC_USDT", "2021-01-25 06:00:00+00:00", "BTC R1 Jan2021"),
@@ -47,13 +52,10 @@ VALIDATION_DEBATES: list[tuple[str, str, str]] = [
 
 
 def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4) —
-    raises StaleRegimeStreamError if regime_stream.parquet predates the deployed
-    encoder checkpoint. This previously constructed GOLD's path as "GOLD_aligned.parquet"
-    directly instead of going through utils.assets.aligned_path()'s GOLD->XAUUSD file-stem
-    translation, so GOLD's aligned data silently failed the `path.exists()` check and was
-    dropped from every validation debate — the shared loader fixes that too."""
-    return load_debate_data()
+    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4),
+    explicitly requesting the crypto-only 5-asset panel — load_debate_data()'s own
+    default is still the old 4-asset production panel (see run_debate.py)."""
+    return load_debate_data(processed_dir=_DATA_DIR, assets=_DEBATE_ASSETS)
 
 
 def _load_existing_results() -> list[dict]:
@@ -100,13 +102,15 @@ def main() -> None:
     regime_stream, aligned_dfs = _load_data()
     logger.info(f"Loaded regime stream: {len(regime_stream)} rows | {len(aligned_dfs)} aligned assets")
 
-    logger.info("Initializing agents...")
-    macro_agent = MacroAgent()
+    logger.info("Initializing agents (crypto-only panel)...")
+    macro_agent = MacroAgent(assets=_DEBATE_ASSETS, data_dir=_DATA_DIR)
     tech_agent = TechnicalAgent()
-    risk_agent = RiskAgent()
-    fm_agent = FundManagerAgent()
-    sentiment_agent = SentimentAgent()
-    contrarian_agent = ContrarianAgent()
+    risk_agent = RiskAgent(data_dir=_DATA_DIR)
+    fm_agent = FundManagerAgent(semantics_path=_SEMANTICS_PATH)
+    sentiment_agent = SentimentAgent(
+        macro_assets={"macro"}, fear_greed_assets=set(_DEBATE_ASSETS)
+    )
+    contrarian_agent = ContrarianAgent(regime_stream_df=regime_stream)
     debate_graph = DebateGraph(
         macro_agent, tech_agent, risk_agent, fm_agent, sentiment_agent, contrarian_agent
     )

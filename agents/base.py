@@ -153,6 +153,23 @@ class BaseAgent:
         except Exception:
             pass
 
+        # 1b. Well-formed JSON that fails only on a max_length constraint (e.g. a long
+        # "reasoning" string) — clip oversized fields and retry, instead of falling all
+        # the way to the lossy brace-balancing repair stages below. Found 2026-08-23:
+        # ContrarianAgent's prompt never told the model to keep `reasoning` short (every
+        # other agent's does), so it reliably produced complete, valid JSON that Pydantic
+        # rejected purely on length — a 100% miss rate on a 3-call sample, not a parsing
+        # failure at all. The prompt was fixed too, but this stage makes recovery robust
+        # to the same failure class on ANY max_length-constrained field, for any agent.
+        try:
+            data = json.loads(response.strip())
+            if isinstance(data, dict):
+                clipped = _clip_to_schema_constraints(data, schema)
+                if clipped != data:
+                    return schema.model_validate(clipped)
+        except Exception:
+            pass
+
         # 2. Extract JSON from markdown code fence ```json ... ``` or ``` ... ```
         fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL)
         if fence_match:
@@ -304,6 +321,34 @@ class BaseAgent:
             result.agent_name = self.name  # always canonical — LLM may output wrong name
             return result
         return None
+
+
+def _clip_to_schema_constraints(data: dict, schema: type[BaseModel]) -> dict:
+    """Best-effort clip of string/list fields that violate a Field(max_length=...)
+    constraint, so a well-formed-but-verbose LLM response isn't discarded just because
+    one field ran long. Introspects the schema's own field metadata (pydantic v2's
+    annotated_types.MaxLen) rather than hardcoding field names/limits per schema, so it
+    covers every current and future max_length field (AgentThesis.reasoning,
+    AgentRebuttal.rebuttal_point, FundManagerDecision.rationale, etc.) with one
+    implementation. Only touches fields that are actually oversized; matches JSON
+    schema validation, list truncates.
+    """
+    clipped = dict(data)
+    for name, field in schema.model_fields.items():
+        if name not in clipped:
+            continue
+        max_len = next(
+            (m.max_length for m in getattr(field, "metadata", []) if hasattr(m, "max_length")),
+            None,
+        )
+        if max_len is None:
+            continue
+        value = clipped[name]
+        if isinstance(value, str) and len(value) > max_len:
+            clipped[name] = value[: max_len - 1].rstrip() + "…"
+        elif isinstance(value, list) and len(value) > max_len:
+            clipped[name] = value[:max_len]
+    return clipped
 
 
 def _safe_default(schema: type[BaseModel], agent_name: str) -> BaseModel:

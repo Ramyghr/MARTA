@@ -107,6 +107,46 @@ def test_stage3_json_in_text(agent):
 
 
 # ---------------------------------------------------------------------------
+# Stage 1b: well-formed JSON that fails only on a max_length constraint
+# ---------------------------------------------------------------------------
+
+def test_stage1b_clips_oversized_reasoning(agent):
+    # Complete, valid JSON, but `reasoning` exceeds AgentThesis's max_length=500 —
+    # found 2026-08-23: ContrarianAgent's prompt never told the model to keep this
+    # short, so real Mistral responses reliably tripped this on well-formed JSON.
+    long_reasoning = "x" * 600
+    raw = (
+        '{"agent_name":"TestAgent","round":1,"directional_bias":"bearish",'
+        f'"confidence":0.6,"reasoning":"{long_reasoning}","key_factors":["a"],'
+        '"regime_alignment":"neutral"}'
+    )
+    result = agent._try_parse_json(raw, AgentThesis)
+    assert isinstance(result, AgentThesis)
+    assert result.directional_bias == "bearish"  # real content preserved, not the fallback
+    assert len(result.reasoning) <= 500
+    assert result.reasoning.endswith("…")
+
+
+def test_stage1b_clips_oversized_key_factors_list(agent):
+    # key_factors has max_length=4 (a list-length constraint, not a string one).
+    raw = (
+        '{"agent_name":"TestAgent","round":1,"directional_bias":"neutral",'
+        '"confidence":0.5,"reasoning":"r",'
+        '"key_factors":["a","b","c","d","e","f"],"regime_alignment":"neutral"}'
+    )
+    result = agent._try_parse_json(raw, AgentThesis)
+    assert isinstance(result, AgentThesis)
+    assert len(result.key_factors) == 4
+
+
+def test_stage1b_leaves_valid_fields_untouched(agent):
+    # No field violates its constraint — clip should be a no-op, stage 1 handles it.
+    raw = json.dumps(_VALID_THESIS)
+    result = agent._try_parse_json(raw, AgentThesis)
+    assert result.reasoning == "test"
+
+
+# ---------------------------------------------------------------------------
 # Stage 4: greedy extraction + trailing-comma repair
 # ---------------------------------------------------------------------------
 

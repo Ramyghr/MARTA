@@ -1,18 +1,19 @@
 """
 Month 2 Week 2 demo — run 4 debates across different regime states and log to MLflow.
 
-Regime availability note (2026-07-14 walk-forward retrain — n_states=6, all assets
-now have rows in every regime; label semantics below per
-data/validated/regime_semantics.json):
-    - BTC Regime 4 (extreme bull/high-vol, global Sharpe 2.21, ann. ret +202%)
-    - BTC Regime 2 (bear/crash, global Sharpe -1.22, ann. ret -78% — BTC's single
-      most frequent regime post-retrain)
-    - GOLD Regime 2 (same bear/crash regime, GOLD's occurrence within it — stress proxy)
+Crypto-only panel (2026-08-23 pivot) — 5 assets (BTC/ETH/BNB/LTC/XRP_USDT), regime
+semantics per data/validated/regime_semantics_crypto5_multihorizon.json (n_states=6,
+every asset has rows in every regime — unlike the old 4-asset panel, no per-asset
+regime-availability gaps to worry about):
+    - BTC Regime 4 (high-vol bull, global Sharpe 1.39, ann. ret +141%)
+    - BTC Regime 0 (bear/crash, global Sharpe -1.04, ann. ret -35%)
+    - XRP Regime 5 (high-vol bear/stress — highest ann. vol of any regime at 190%,
+      global Sharpe -0.44 — replaces the old panel's GOLD stress/crisis scenario)
     - BTC Regime 4 with high conviction (regime_prob > 0.80) — designed to trigger Contrarian
 
 Usage:
     python run_debate.py                         # 4 demo debates
-    python run_debate.py --val-window            # sample across 2021 val window (24h stride)
+    python run_debate.py --val-window            # sample across val window (24h stride)
     python run_debate.py --val-window --stride 48  # every 48h instead
     python run_debate.py --val-window --append   # append to existing debate_results.json
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import json
 import time
+from functools import partial
 from pathlib import Path
 
 import mlflow
@@ -30,26 +32,38 @@ from rich.table import Table
 
 from agents.contrarian_agent import ContrarianAgent
 from agents.fund_manager import FundManagerAgent
-from agents.graph import DebateGraph, run_debate
+from agents.graph import DebateGraph, run_debate as _run_debate_raw
 from agents.macro_agent import MacroAgent
 from agents.risk_agent import RiskAgent
 from agents.schemas import DebateResult
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
-from utils.freshness import load_debate_data
+from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH, load_debate_data
 from utils.logger import logger
 
-_DATA_DIR = Path("data/processed")
+_DATA_DIR = CRYPTO5_PROCESSED
+_DEBATE_ASSETS = CRYPTO5_DEBATE_ASSETS
+_SEMANTICS_PATH = CRYPTO5_SEMANTICS_PATH
 _OUTPUT_DIR = Path("data/debates")
 _MLFLOW_EXPERIMENT = "marta_agent_deliberation"
 
+# Every run_debate(...) call in this file must pass the same semantics_path used to
+# build FundManagerAgent below, or the displayed regime description and the
+# conviction/override logic will disagree about which regime stream's semantics apply
+# (agents/graph.py's run_debate docstring). Wrapped once here so every call site below
+# gets it automatically instead of repeating the kwarg at each of the 3 call sites.
+run_debate = partial(_run_debate_raw, semantics_path=_SEMANTICS_PATH)
+
 
 def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4) —
-    raises StaleRegimeStreamError if regime_stream.parquet predates the deployed
-    encoder checkpoint. Was previously a bespoke, unchecked implementation duplicated
-    near-verbatim across all four debate-generation scripts."""
-    return load_debate_data()
+    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4),
+    explicitly requesting the crypto-only 5-asset panel (data/processed/
+    crypto5_multihorizon) — load_debate_data()'s own default is still the old 4-asset
+    production panel, since dashboard/backend/debate_stream.py and the other three
+    debate-generation scripts rely on that default being unchanged. Was previously a
+    bespoke, unchecked implementation duplicated near-verbatim across all four
+    debate-generation scripts."""
+    return load_debate_data(processed_dir=_DATA_DIR, assets=_DEBATE_ASSETS)
 
 
 def _select_demo_timestamps(
@@ -106,9 +120,9 @@ def _select_demo_timestamps(
         return valid.iloc[0]["timestamp"] if not valid.empty else rows.iloc[0]["timestamp"]
 
     scenarios = [
-        ("BTC_USDT", 4, "BTC extreme bull/high-vol", None, None, False),
-        ("BTC_USDT", 2, "BTC bear/crash", None, None, False),
-        ("GOLD", 2, "GOLD stress/crisis", None, None, False),
+        ("BTC_USDT", 4, "BTC high-vol bull", None, None, False),
+        ("BTC_USDT", 0, "BTC bear/crash", None, None, False),
+        ("XRP_USDT", 5, "XRP high-vol bear/stress", None, None, False),
         ("BTC_USDT", 4, "BTC high-conviction bull [Contrarian trigger]", None, None, True),
     ]
 
@@ -143,6 +157,35 @@ def _select_demo_timestamps(
         logger.info(f"Selected {desc}: {ts}")
 
     return picks
+
+
+def _resolve_date_timestamp(
+    regime_stream: pd.DataFrame, asset: str, date_str: str
+) -> pd.Timestamp:
+    """Nearest regime_stream row for `asset` to the requested date/timestamp.
+
+    regime_stream.parquet is a static snapshot that stops growing the moment
+    run_regime.py last ran — a requested date past its coverage silently snaps to
+    the nearest edge row rather than erroring, so this always warns loudly when
+    the resolved timestamp is more than a few days from what was asked for.
+    """
+    stream = regime_stream[regime_stream["asset"] == asset].copy()
+    if stream.empty:
+        raise ValueError(f"No regime_stream rows for asset '{asset}'")
+    stream["timestamp"] = pd.to_datetime(stream["timestamp"], utc=True)
+    target = pd.Timestamp(date_str, tz="UTC")
+
+    idx = (stream["timestamp"] - target).abs().idxmin()
+    resolved = pd.Timestamp(stream.loc[idx, "timestamp"])
+    delta_days = abs((resolved - target).days)
+    if delta_days > 3:
+        lo, hi = stream["timestamp"].min(), stream["timestamp"].max()
+        logger.warning(
+            f"Requested date {date_str} is {delta_days} days from the nearest available "
+            f"{asset} row — regime_stream.parquet only covers {lo.date()} .. {hi.date()}. "
+            f"Falling back to nearest available timestamp: {resolved}"
+        )
+    return resolved
 
 
 def _print_debate_transcript(desc: str, result: DebateResult, console: Console) -> None:
@@ -356,6 +399,63 @@ def _run_val_window(
     console.print(f"[bold]MLflow run:[/bold] http://127.0.0.1:5000")
 
 
+def _run_single_date(
+    date_str: str,
+    asset: str,
+    regime_stream: pd.DataFrame,
+    aligned_dfs: dict[str, pd.DataFrame],
+    debate_graph: "DebateGraph",
+    append: bool,
+    console: Console,
+) -> None:
+    """Run one debate for the timestamp nearest `date_str`, print the transcript,
+    and save/append it to debate_results.json (same file the other modes write)."""
+    ts = _resolve_date_timestamp(regime_stream, asset, date_str)
+    desc = f"{asset} @ {date_str} (resolved: {str(ts)[:16]})"
+    console.print(f"[bold]Running single debate:[/bold] {desc}")
+    logger.info(f"Single-date debate: {desc}")
+
+    output_path = _OUTPUT_DIR / "debate_results.json"
+    existing: list[dict] = []
+    if append and output_path.exists():
+        with open(output_path) as f:
+            existing = json.load(f)
+        console.print(f"[dim]Appending to {len(existing)} existing debates in {output_path}[/dim]")
+
+    mlflow.set_experiment(_MLFLOW_EXPERIMENT)
+    with mlflow.start_run(run_name=f"single_date_{asset}_{date_str}") as run:
+        mlflow.log_param("asset", asset)
+        mlflow.log_param("requested_date", date_str)
+        mlflow.log_param("resolved_timestamp", str(ts))
+
+        result = run_debate(ts, asset, regime_stream, aligned_dfs, debate_graph)
+        _print_debate_transcript(desc, result, console)
+
+        fm = result.fund_manager_decision
+        mlflow.log_metrics({
+            "regime_label": result.regime_label,
+            "conviction": fm.conviction,
+            "position_size": fm.position_size,
+            "regime_override": int(fm.regime_override),
+            "tokens": result.total_tokens_used,
+            "duration_s": result.debate_duration_seconds,
+        })
+        mlflow.log_param("action", fm.final_action)
+        mlflow.log_param("consensus", fm.consensus_direction)
+
+        d = result.model_dump()
+        d["scenario_description"] = desc
+        serialized = existing + [d]
+
+        with open(output_path, "w") as f:
+            json.dump(serialized, f, indent=2, default=str)
+        mlflow.log_artifact(str(output_path))
+
+        mlflow_url = f"http://127.0.0.1:5000/#/experiments/{run.info.experiment_id}/runs/{run.info.run_id}"
+        console.print(f"\n[bold green]Saved:[/bold green] {output_path} ({len(serialized)} debates total)")
+        console.print(f"[bold green]MLflow run:[/bold green] {mlflow_url}")
+
+
 def main() -> None:
     import argparse
     parser = argparse.ArgumentParser(description="MARTA debate runner")
@@ -376,6 +476,21 @@ def main() -> None:
         action="store_true",
         help="append to existing debate_results.json instead of overwriting",
     )
+    parser.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="run a single debate for the date/timestamp nearest this value "
+             "(regime_stream.parquet coverage only — see CLAUDE.md for current bounds)",
+    )
+    parser.add_argument(
+        "--asset",
+        type=str,
+        default="BTC_USDT",
+        choices=_DEBATE_ASSETS,
+        help="asset for --date mode (default: BTC_USDT)",
+    )
     args = parser.parse_args()
 
     console = Console()
@@ -387,13 +502,15 @@ def main() -> None:
     regime_stream, aligned_dfs = _load_data()
     logger.info(f"Loaded regime stream: {len(regime_stream)} rows | {len(aligned_dfs)} aligned assets")
 
-    logger.info("Initializing agents...")
-    macro_agent = MacroAgent()
+    logger.info("Initializing agents (crypto-only panel)...")
+    macro_agent = MacroAgent(assets=_DEBATE_ASSETS, data_dir=_DATA_DIR)
     tech_agent = TechnicalAgent()
-    risk_agent = RiskAgent()
-    fm_agent = FundManagerAgent()
-    sentiment_agent = SentimentAgent()
-    contrarian_agent = ContrarianAgent()
+    risk_agent = RiskAgent(data_dir=_DATA_DIR)
+    fm_agent = FundManagerAgent(semantics_path=_SEMANTICS_PATH)
+    sentiment_agent = SentimentAgent(
+        macro_assets={"macro"}, fear_greed_assets=set(_DEBATE_ASSETS)
+    )
+    contrarian_agent = ContrarianAgent(regime_stream_df=regime_stream)
     debate_graph = DebateGraph(
         macro_agent, tech_agent, risk_agent, fm_agent, sentiment_agent, contrarian_agent
     )
@@ -402,6 +519,13 @@ def main() -> None:
     # Val-window mode: populate the debate cache for the full 2021 validation period.
     if args.val_window:
         _run_val_window(regime_stream, aligned_dfs, debate_graph, args.stride, args.append, console)
+        return
+
+    # Single-date mode: one debate for the timestamp nearest the requested date.
+    if args.date:
+        _run_single_date(
+            args.date, args.asset, regime_stream, aligned_dfs, debate_graph, args.append, console
+        )
         return
 
     demo_timestamps = _select_demo_timestamps(regime_stream)

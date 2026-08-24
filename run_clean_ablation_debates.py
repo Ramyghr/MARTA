@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import json
+from functools import partial
 from pathlib import Path
 
 import mlflow
@@ -32,18 +33,22 @@ import agents.sentiment_agent as sentiment_module
 import agents.technical_agent as technical_module
 from agents.contrarian_agent import ContrarianAgent
 from agents.fund_manager import FundManagerAgent
-from agents.graph import DebateGraph, run_debate
+from agents.graph import DebateGraph, run_debate as _run_debate_raw
 from agents.macro_agent import MacroAgent
 from agents.risk_agent import RiskAgent
 from agents.sentiment_agent import SentimentAgent
 from agents.technical_agent import TechnicalAgent
-from utils.freshness import load_debate_data
+from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH, load_debate_data
 from utils.logger import logger
 
-_DATA_DIR = Path("data/processed")
+_DATA_DIR = CRYPTO5_PROCESSED
+_DEBATE_ASSETS = CRYPTO5_DEBATE_ASSETS
+_SEMANTICS_PATH = CRYPTO5_SEMANTICS_PATH
 _SOURCE_PATH = Path("data/debates/debate_results.json")
 _OUTPUT_PATH = Path("data/debates/debate_results_no_regime.json")
 _MLFLOW_EXPERIMENT = "marta_agent_deliberation"
+
+run_debate = partial(_run_debate_raw, semantics_path=_SEMANTICS_PATH)
 
 # Every module that did `from agents.context import serialize_context_for_prompt` —
 # each holds its own module-level binding, so all of them need patching.
@@ -71,10 +76,10 @@ def _patch_no_regime() -> None:
 
 
 def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
-    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4) —
-    raises StaleRegimeStreamError if regime_stream.parquet predates the deployed
-    encoder checkpoint."""
-    return load_debate_data()
+    """Regime stream + per-asset aligned parquets, via the shared loader (P0.4),
+    explicitly requesting the crypto-only 5-asset panel — load_debate_data()'s own
+    default is still the old 4-asset production panel (see run_debate.py)."""
+    return load_debate_data(processed_dir=_DATA_DIR, assets=_DEBATE_ASSETS)
 
 
 def _load_source_timestamps() -> list[tuple[pd.Timestamp, str]]:
@@ -96,13 +101,15 @@ def main() -> None:
     pairs = _load_source_timestamps()
     logger.info(f"Mirroring {len(pairs)} (timestamp, asset) pairs from {_SOURCE_PATH}")
 
-    logger.info("Initializing agents...")
-    macro_agent = MacroAgent()
+    logger.info("Initializing agents (crypto-only panel)...")
+    macro_agent = MacroAgent(assets=_DEBATE_ASSETS, data_dir=_DATA_DIR)
     tech_agent = TechnicalAgent()
-    risk_agent = RiskAgent()
-    fm_agent = FundManagerAgent()
-    sentiment_agent = SentimentAgent()
-    contrarian_agent = ContrarianAgent()
+    risk_agent = RiskAgent(data_dir=_DATA_DIR)
+    fm_agent = FundManagerAgent(semantics_path=_SEMANTICS_PATH)
+    sentiment_agent = SentimentAgent(
+        macro_assets={"macro"}, fear_greed_assets=set(_DEBATE_ASSETS)
+    )
+    contrarian_agent = ContrarianAgent(regime_stream_df=regime_stream)
     debate_graph = DebateGraph(
         macro_agent, tech_agent, risk_agent, fm_agent, sentiment_agent, contrarian_agent
     )

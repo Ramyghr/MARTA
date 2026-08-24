@@ -10,6 +10,17 @@ A. Directional conditioning: does regime help decide WHEN TO TRUST a momentum si
                           had a positive train-period Sharpe for this exact momentum
                           rule (leakage-safe — "good regime" is determined from train
                           data only, per asset).
+   momentum_noise_gated:  the noise-control arm (added 2026-08-20) — same gating logic,
+                          but the "regime" is replaced by an independently-simulated
+                          Markov chain using the SAME real transition matrix (so it has
+                          the identical persistence/dwell-time structure and gating
+                          frequency as the real regime label) but carries zero actual
+                          information about this asset's price path. Tests whether the
+                          earlier regime-gating result was genuinely informative, or a
+                          mechanical artifact of intermittently cutting exposure on a
+                          structurally unprofitable momentum signal (any gate that
+                          reduces net exposure moves Sharpe toward 0 regardless of
+                          whether the gate carries information).
    This is different from Phase 6a's vol-target sizing (which never changed direction,
    always long) — here regime's job is to gate a real directional bet.
 
@@ -45,54 +56,59 @@ sys.path.insert(0, str(ROOT))
 
 from configs.splits import TEST_END_EXCLUSIVE, TEST_START, TRAIN_END_EXCLUSIVE, VAL_END_EXCLUSIVE, VAL_START
 from regime.phase6_regime_backtest import _annualized_sharpe, _bootstrap_sharpe_delta, _max_drawdown
+from regime.synthetic_regime_process import simulate_regime_path
 from utils.logger import logger
 
 PANEL_DIR = ROOT / "data" / "processed" / "crypto5_multihorizon"
 TXN_COST = 0.0005
 MOMENTUM_WINDOW = 24  # hours
 ASSETS = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
+NOISE_SEED_BASE = 9000  # fixed, asset-index-offset seeds for the noise-control arm
 
 
-def _load_asset(asset: str, regime_stream: pd.DataFrame) -> pd.DataFrame:
+def _load_asset(asset: str, asset_idx: int, regime_stream: pd.DataFrame) -> pd.DataFrame:
     aligned = pd.read_parquet(PANEL_DIR / f"{asset}_aligned.parquet", engine="pyarrow")
     rs_asset = regime_stream[regime_stream["asset"] == asset].set_index("timestamp")[["regime_label"]]
     rs_asset.index = pd.to_datetime(rs_asset.index, utc=True)
     df = aligned[["close_return", "realized_vol_raw"]].join(rs_asset, how="inner")
     df["momentum_24h"] = df["close_return"].rolling(MOMENTUM_WINDOW).sum()
-    return df.dropna()
+    df = df.dropna()
+
+    # noise-control label: independently-simulated Markov chain using the REAL
+    # transition matrix (same persistence/dwell-time structure and gating frequency as
+    # the real regime), but generated from a fresh random seed with zero relationship
+    # to this asset's actual price path.
+    rng = np.random.default_rng(NOISE_SEED_BASE + asset_idx)
+    df["noise_label"] = simulate_regime_path(len(df), rng)
+    return df
 
 
 # --------------------------------------------------------------------- A. directional
-def _run_directional(df: pd.DataFrame, good_regimes: set[int]) -> dict[str, pd.DataFrame]:
+def _run_directional(df: pd.DataFrame, good_states: set[int], label_col: str, strategy_name: str) -> dict[str, pd.DataFrame]:
     direction = np.sign(df["momentum_24h"]).shift(1).fillna(0.0)
-    regime_prev = df["regime_label"].shift(1)
-    gate = regime_prev.map(lambda r: 1.0 if r in good_regimes else 0.0).fillna(0.0)
+    label_prev = df[label_col].shift(1)
+    gate = label_prev.map(lambda r: 1.0 if r in good_states else 0.0).fillna(0.0)
 
-    weights = {
-        "momentum_only": direction,
-        "momentum_regime_gated": direction * gate,
-    }
-    out = {}
-    for name, w in weights.items():
-        turnover = w.diff().abs().fillna(0.0)
-        strat_return = w * df["close_return"] - TXN_COST * turnover
-        out[name] = pd.DataFrame({"return": strat_return, "weight": w})
-    return out
+    w = direction * gate
+    turnover = w.diff().abs().fillna(0.0)
+    strat_return = w * df["close_return"] - TXN_COST * turnover
+    return {strategy_name: pd.DataFrame({"return": strat_return, "weight": w})}
 
 
-def _train_good_regimes(df: pd.DataFrame, train_mask: pd.Series) -> set[int]:
-    """Per-regime train-period Sharpe of the momentum rule alone — regimes with a
+def _train_good_states(df: pd.DataFrame, train_mask: pd.Series, label_col: str) -> set[int]:
+    """Per-state train-period Sharpe of the momentum rule alone — states with a
     positive train Sharpe are 'good' (gate=1), everything else is 'bad' (gate=0).
     Leakage-safe: uses only train-period rows to decide, same discipline as Phase 6a's
-    regime_vol_map."""
+    regime_vol_map. Generic over label_col so the identical selection procedure applies
+    to both the real regime label and the noise-control label."""
     train = df.loc[train_mask].copy()
     direction = np.sign(train["momentum_24h"]).shift(1).fillna(0.0)
     strat_return = direction * train["close_return"]
     good = set()
-    for regime, idx in train.groupby("regime_label").groups.items():
+    for state, idx in train.groupby(label_col).groups.items():
         r = strat_return.loc[idx]
         if _annualized_sharpe(r.to_numpy()) > 0:
-            good.add(int(regime))
+            good.add(int(state))
     return good
 
 
@@ -115,23 +131,32 @@ def main() -> None:
     train_mask_fn = lambda df: df.index < train_cutoff  # noqa: E731
 
     regime_stream = pd.read_parquet(PANEL_DIR / "regime_stream.parquet", engine="pyarrow")
-    data = {a: _load_asset(a, regime_stream) for a in ASSETS}
+    data = {a: _load_asset(a, i, regime_stream) for i, a in enumerate(ASSETS)}
 
     results: dict = {"A_directional": {}, "B_cross_asset": {}}
 
-    # ---------------- A. directional conditioning ----------------
-    logger.info("=== A. Directional conditioning: momentum gated by regime ===")
-    panel_returns = {
-        "val": {"momentum_only": [], "momentum_regime_gated": []},
-        "test": {"momentum_only": [], "momentum_regime_gated": []},
-    }
+    # ---------------- A. directional conditioning (regime-gated + noise-control) ----------------
+    logger.info("=== A. Directional conditioning: momentum gated by regime, vs. a noise control ===")
+    strat_names = ["momentum_only", "momentum_regime_gated", "momentum_noise_gated"]
+    panel_returns = {split: {name: [] for name in strat_names} for split in ("val", "test")}
+
     for asset in ASSETS:
         df = data[asset]
         train_mask = train_mask_fn(df)
-        good_regimes = _train_good_regimes(df, train_mask)
-        strategies = _run_directional(df, good_regimes)
+        good_regimes = _train_good_states(df, train_mask, "regime_label")
+        good_noise = _train_good_states(df, train_mask, "noise_label")
 
-        asset_out = {"good_regimes_from_train": sorted(good_regimes)}
+        direction = np.sign(df["momentum_24h"]).shift(1).fillna(0.0)
+        turnover_only = direction.diff().abs().fillna(0.0)
+        strategies = {
+            "momentum_only": pd.DataFrame({
+                "return": direction * df["close_return"] - TXN_COST * turnover_only, "weight": direction,
+            }),
+            **_run_directional(df, good_regimes, "regime_label", "momentum_regime_gated"),
+            **_run_directional(df, good_noise, "noise_label", "momentum_noise_gated"),
+        }
+
+        asset_out = {"good_regimes_from_train": sorted(good_regimes), "good_noise_states_from_train": sorted(good_noise)}
         for split_name, (start, end) in [("val", (val_start, val_end)), ("test", (test_start, test_end))]:
             split_mask = (df.index >= start) & (df.index < end)
             split_out = {}
@@ -146,21 +171,29 @@ def main() -> None:
             asset_out[split_name] = split_out
         results["A_directional"][asset] = asset_out
         logger.success(
-            f"[{asset}] good_regimes(train)={sorted(good_regimes)}  "
+            f"[{asset}] good_regimes(train)={sorted(good_regimes)} good_noise(train)={sorted(good_noise)}  "
             f"test Sharpe — momentum_only={asset_out['test']['momentum_only']['sharpe']:.3f}  "
-            f"regime_gated={asset_out['test']['momentum_regime_gated']['sharpe']:.3f}"
+            f"regime_gated={asset_out['test']['momentum_regime_gated']['sharpe']:.3f}  "
+            f"noise_gated={asset_out['test']['momentum_noise_gated']['sharpe']:.3f}"
         )
 
     portfolio_a = {}
     for split_name in ("val", "test"):
         mom_r = pd.concat(panel_returns[split_name]["momentum_only"], axis=1).mean(axis=1).dropna()
         gated_r = pd.concat(panel_returns[split_name]["momentum_regime_gated"], axis=1).mean(axis=1).dropna()
-        delta, ci_lo, ci_hi = _bootstrap_sharpe_delta(gated_r.to_numpy(), mom_r.to_numpy())
+        noise_r = pd.concat(panel_returns[split_name]["momentum_noise_gated"], axis=1).mean(axis=1).dropna()
+
+        delta_vs_mom, ci_lo1, ci_hi1 = _bootstrap_sharpe_delta(gated_r.to_numpy(), mom_r.to_numpy())
+        delta_vs_noise, ci_lo2, ci_hi2 = _bootstrap_sharpe_delta(gated_r.to_numpy(), noise_r.to_numpy())
+        noise_delta_vs_mom, ci_lo3, ci_hi3 = _bootstrap_sharpe_delta(noise_r.to_numpy(), mom_r.to_numpy())
+
         portfolio_a[split_name] = {
             "momentum_only_sharpe": _annualized_sharpe(mom_r.to_numpy()),
             "momentum_regime_gated_sharpe": _annualized_sharpe(gated_r.to_numpy()),
-            "delta_sharpe_gated_minus_momentum": delta,
-            "ci_95": [ci_lo, ci_hi],
+            "momentum_noise_gated_sharpe": _annualized_sharpe(noise_r.to_numpy()),
+            "delta_sharpe_regime_gated_minus_momentum": delta_vs_mom, "ci_95_regime_vs_momentum": [ci_lo1, ci_hi1],
+            "delta_sharpe_regime_gated_minus_noise_gated": delta_vs_noise, "ci_95_regime_vs_noise": [ci_lo2, ci_hi2],
+            "delta_sharpe_noise_gated_minus_momentum": noise_delta_vs_mom, "ci_95_noise_vs_momentum": [ci_lo3, ci_hi3],
         }
     results["A_directional"]["portfolio"] = portfolio_a
     logger.success(f"[PORTFOLIO A] test: {portfolio_a['test']}")

@@ -14,6 +14,14 @@ from agents.schemas import AgentThesis
 from utils.logger import logger
 
 _MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent)))
+# Kept at the old production regime_stream.parquet — dashboard/backend/debate_stream.py
+# constructs ContrarianAgent() with no arguments and hardcodes that same production
+# stream elsewhere, so this default must keep matching it or live dashboard debates
+# would silently search the wrong (crypto5) stream for historical analogues. Was
+# previously ALWAYS this hardcoded path with no way to override — that part was the
+# real bug (it ignored whatever regime_stream_df the rest of a given debate was using).
+# Pass regime_stream_df to __init__ to inject the exact stream in use (preferred — also
+# avoids a redundant second parquet read); crypto-only callers (run_debate.py) do this.
 _REGIME_STREAM_PATH = _MARTA_ROOT / "data/processed/regime_stream.parquet"
 _ACTIVATION_THRESHOLD = 0.60  # Mistral 7B confident theses typically land at 0.60-0.70
 _HIGH_REGIME_PROB = 0.80
@@ -23,7 +31,13 @@ _MAX_ANALOGUE_SAMPLES = 100
 class ContrarianAgent(BaseAgent):
     name = "ContrarianAgent"
 
-    def __init__(self, model: str = "mistral:7b-instruct", temperature: float = 0.4) -> None:
+    def __init__(
+        self,
+        model: str = "mistral:7b-instruct",
+        temperature: float = 0.4,
+        regime_stream_df: pd.DataFrame | None = None,
+        regime_stream_path: Path | None = None,
+    ) -> None:
         # Wider timeout/retry/token budget than the other agents (base.py defaults: 300s, 2
         # attempts, 600 num_predict): 600s timeout, up to 3 total attempts (1 initial + 2
         # retries), and 900 num_predict before genuinely falling back to the neutral
@@ -36,7 +50,12 @@ class ContrarianAgent(BaseAgent):
         super().__init__(
             model=model, temperature=temperature, timeout_seconds=600, max_attempts=3, num_predict=900
         )
-        self._regime_stream = pd.read_parquet(_REGIME_STREAM_PATH, engine="pyarrow")
+        if regime_stream_df is not None:
+            self._regime_stream = regime_stream_df
+        else:
+            self._regime_stream = pd.read_parquet(
+                regime_stream_path or _REGIME_STREAM_PATH, engine="pyarrow"
+            )
 
     def _compute_consensus(self, theses: list[AgentThesis]) -> tuple[str, float]:
         """Return (consensus_direction, avg_confidence) from a list of theses."""
@@ -200,7 +219,8 @@ class ContrarianAgent(BaseAgent):
             "do not copy the example confidence value:\n"
             f'{{"agent_name":"ContrarianAgent","round":1,"directional_bias":"{opposite}",'
             '"confidence":<your confidence as a float between 0.0 and 1.0, based on how strong your counter-evidence is>,'
-            '"reasoning":"<strongest counter-argument citing regime risk and historical failure rate>",'
+            '"reasoning":"<strongest counter-argument citing regime risk and historical failure rate — '
+            'max 2 sentences, under 400 characters, this is a hard limit>",'
             '"key_factors":["historical_loss_rate","regime_complacency","overconfident_consensus"],'
             '"regime_alignment":"contrary"}}'
         )

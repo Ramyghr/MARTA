@@ -14,7 +14,8 @@ from agents.schemas import RiskLimits
 from utils.assets import aligned_path
 from utils.logger import logger
 
-_DATA_DIR = Path("data/processed")
+_DATA_DIR = Path("data/processed")  # dashboard/backend/debate_stream.py relies on this
+# default (constructs RiskAgent() with no args) — crypto-only callers pass data_dir= explicitly.
 _GARCH_WINDOW = 90 * 24  # 90 days of hourly data
 
 
@@ -53,13 +54,19 @@ def _event_risk_multiplier(upcoming_events: list | None) -> float:
 class RiskAgent(BaseAgent):
     name = "RiskAgent"
 
-    def __init__(self, model: str = "mistral:7b-instruct", temperature: float = 0.4) -> None:
+    def __init__(
+        self,
+        model: str = "mistral:7b-instruct",
+        temperature: float = 0.4,
+        data_dir: Path | None = None,
+    ) -> None:
         super().__init__(model=model, temperature=temperature)
+        self._data_dir = Path(data_dir) if data_dir is not None else _DATA_DIR
         self._aligned_cache: dict[str, pd.DataFrame] = {}
 
     def _load_aligned(self, asset: str) -> pd.DataFrame:
         if asset not in self._aligned_cache:
-            path = aligned_path(asset, _DATA_DIR)
+            path = aligned_path(asset, self._data_dir)
             if path.exists():
                 self._aligned_cache[asset] = pd.read_parquet(path, engine="pyarrow")
             else:

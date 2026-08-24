@@ -1,0 +1,140 @@
+\chapter{Results}
+\label{chap:results}
+
+This chapter reports the outcomes of the evaluation protocol described in Section~\ref{sec:evaluation-methodology-full}, following the same order as the methodology chapter. Section~\ref{sec:regime-results} reports the regime-detection layer's validation results in full, since that layer's methodology (Sections~\ref{subsec:regime-engine-audit}--\ref{subsec:regime-synthetic-validation}) was substantially revised over the course of this project and its results directly informed how the layers built on top of it are interpreted.
+
+\section{Regime Detection Results}
+\label{sec:regime-results}
+
+Six regime-detection configurations were carried through the full validation battery: the original four-asset, encoder-based production model; the five-asset crypto-only panel introduced in Section~\ref{subsec:regime-asset-panel-revision}, in both its 14-column production-feature form and a 22-column form extended with 90-day and 180-day rolling-normalization horizons alongside the production 720-hour window; and the same two feature variants restricted to BTC alone, retained throughout as a single-asset comparison baseline.
+
+\subsection{Statistical Validity Across Candidate Configurations}
+\label{subsec:regime-results-preview}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Seed stability and distinctness across all six configurations tested. Seed ARI is the mean pairwise Adjusted Rand Index across five independent EM restarts (Section~\ref{subsec:regime-engine-audit}). \texttt{close\_return} / \texttt{realized\_vol\_raw} distinctness report the outcome of a per-asset ANOVA across states on that quantity.}
+\label{tab:regime-six-model-distinctness}
+\begin{tabular}{|l|c|c|p{4.4cm}|c|}
+\hline
+\textbf{Configuration} & \textbf{States} & \textbf{Seed ARI} & \textbf{\texttt{close\_return} distinctness} & \textbf{\texttt{realized\_vol\_raw}} \\
+\hline
+Production (4-asset) & 4 & 0.193 & weak, 1--3/6 pairs indistinguishable per asset & $p\approx0$, all \\
+\hline
+5-asset, 14-col & 6 & 0.585 & 4/5 assets significant, 0 indistinguishable pairs & $p\approx0$, all \\
+\hline
+5-asset, 22-col & 6 & \textbf{1.000} & 2/5 assets significant, 0 indistinguishable pairs & $p\approx0$, all \\
+\hline
+BTC-only, 14-col & 6 & 0.698 & not significant, 0 indistinguishable pairs & $p\approx0$ \\
+\hline
+BTC-only, 22-col & 6 & \textbf{0.989} & not significant, 0 indistinguishable pairs & $p\approx0$ \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Next-hour directional predictive signal (AUC, logistic regression, walk-forward test split) for the same six configurations.}
+\label{tab:regime-six-model-auc}
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Configuration} & \textbf{regime\_only AUC} & \textbf{features\_only AUC} \\
+\hline
+Production (4-asset) & 0.489--0.505 & 0.506--0.544 \\
+\hline
+5-asset, 14-col & 0.498--0.523 & 0.528--0.548 \\
+\hline
+5-asset, 22-col & 0.503--0.521 & 0.528--0.548 \\
+\hline
+BTC-only, 14-col & 0.494 & 0.542 \\
+\hline
+BTC-only, 22-col & 0.501 & 0.542 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Two findings hold across all six configurations without a single exception. Volatility distinctness (\texttt{realized\_vol\_raw}, ANOVA across states, tested per asset independently) is significant at $p\approx0$ in every configuration and every asset --- the discovered states are genuine, statistically real volatility clusters regardless of panel or feature-horizon choice. Next-hour directional predictive signal from the regime label alone is chance-level (AUC 0.49--0.52) in every configuration, and adding the regime label on top of the raw features never measurably improves on the raw features alone.
+
+A trade-off not visible from either extreme alone emerged once every feature-horizon variant had been tested against the same battery: the 22-column feature set gives near-perfect seed stability (0.989--1.000) at the cost of weaker return distinctness (2/5 assets significant versus 4/5 for the 14-column set on the five-asset panel), and neither variant's return-distinctness advantage translates into predictive AUC. The 22-column set is preferred for anything requiring a reproducible regime definition across refits, on the reasoning that a return-distinctness advantage that does not translate into predictive signal is worth less than reproducibility, but this is a judgment call between two real, opposing properties rather than a configuration that dominates on every axis.
+
+\subsection{Downstream Value: Position Sizing and Directional Conditioning}
+\label{subsec:regime-downstream-value}
+
+Three self-contained backtests --- deliberately excluding the RL execution and multi-agent layers of Sections~\ref{sec:multi-agent-methodology}--\ref{sec:rl-execution-methodology}, so that the regime signal's standalone value could be isolated from anything a learned policy might extract from it --- were run on the walk-forward validation (2024) and test (2025) splits of the five-asset panel, using the 22-column configuration.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Regime-conditioned volatility-target position sizing versus buy-and-hold and continuous (regime-free) volatility targeting, five-asset equal-weight portfolio.}
+\label{tab:regime-sizing-backtest}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Split} & \textbf{buy\_hold} & \textbf{vol\_target (continuous)} & \textbf{regime\_conditioned} \\
+\hline
+2024 (validation) & \textbf{+1.203} & +0.353 & +0.386 \\
+\hline
+2025 (test) & \textbf{--0.131} & --0.343 & --0.364 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Buy-and-hold outperformed both sizing strategies in both periods, and regime-conditioned sizing was never significantly different from continuous, regime-free volatility targeting (block-bootstrap 95\% confidence interval on the Sharpe delta, 1000 resamples over non-overlapping 168-hour blocks, crosses zero in both 2024 and 2025). Discretizing volatility into HMM regime buckets did not outperform simply dividing by trailing realized volatility directly for this sizing rule.
+
+A second design tested whether regime could instead gate \emph{when to trust} a directional signal, rather than only scale an always-long position: a 24-hour momentum rule (long or short by the sign of the trailing 24-hour return) was combined with a gate that permitted a position only when the current state had shown a positive Sharpe ratio for that same rule on training data, with the gate threshold decided from training data only in every case. A first pass, without a control, found this gate improving the momentum rule's Sharpe by roughly one full point in both periods (95\% CI $[0.119, 2.094]$ in 2024, significant). A noise-control arm was then added --- an independently simulated Markov chain using the real fitted transition matrix, giving it identical persistence and gating frequency to the real regime label while carrying zero actual information about the asset's price path --- and this changed the conclusion materially:
+
+\begin{table}[h]
+\centering
+\small
+\caption{Directional gating: real regime versus a matched noise control, momentum strategy, five-asset portfolio.}
+\label{tab:regime-directional-backtest}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Split} & \textbf{momentum\_only} & \textbf{regime-gated} & \textbf{noise-gated} \\
+\hline
+2024 (validation) & --2.619 & --1.488 & \textbf{--1.050} \\
+\hline
+2025 (test) & --2.863 & --1.998 & --2.750 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+In 2024, the noise-gated control performed as well as, and by point estimate slightly better than, the real regime gate (regime-versus-noise 95\% CI $[-1.721, 0.984]$, not significant), while both were significantly better than no gating at all. The underlying momentum rule is deeply unprofitable on its own (Sharpe $-2.6$ to $-2.9$ in both periods), and any gate that reduces net exposure to a structurally losing strategy mechanically improves its Sharpe ratio whether or not the gate carries genuine information --- which is what the noise control demonstrates directly rather than leaving as a theoretical concern. 2025 shows a larger gap favoring the real regime gate (regime-versus-momentum CI $[-0.209, 2.162]$; noise-versus-momentum CI $[-1.134, 1.25]$), but neither period shows the real gate beating the noise control at conventional significance. Across all three backtest designs tested, standalone regime conditioning did not demonstrate a measurable, noise-control-surviving improvement in risk-adjusted return.
+
+\subsection{Synthetic Recovery Summary}
+\label{subsec:regime-synthetic-results}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Synthetic ground-truth recovery (Adjusted Rand Index) across every mechanism tested (Section~\ref{subsec:regime-synthetic-validation}).}
+\label{tab:regime-synthetic-results}
+\begin{tabular}{|l|c|}
+\hline
+\textbf{Configuration} & \textbf{ARI} \\
+\hline
+Single asset, 1 year, single seed & 0.166 \\
+\hline
+Single asset, 3 years, single seed & 0.167 \\
+\hline
+Single asset, 1 year, best-of-5-seed production procedure & 0.156 \\
+\hline
+5 independent synthetic assets pooled, 1 year each & 0.163 \\
+\hline
+5 correlated synthetic assets pooled (96\% simultaneous co-movement) & 0.176 \\
+\hline
+5 assets pooled at production's real scale ($\approx$246{,}000 rows) & 0.162 \\
+\hline
+\hline
+Bayes-optimal classifier, true parameters, no estimation & \textbf{0.047} \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+No mechanism tested moved recovery accuracy outside a narrow 0.15--0.20 band, including the configuration built to match production's real data scale and asset count directly, and the Bayes-optimal ceiling computed from the true generating parameters sits below every empirically achieved value in the table --- confirming, as discussed in Section~\ref{subsec:regime-synthetic-validation}, that recovery accuracy at this task is bounded by genuine overlap between the six states' return distributions rather than by anything the estimation pipeline could be expected to improve with more data.

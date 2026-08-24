@@ -49,28 +49,42 @@
 \contentsline {subsection}{\numberline {3.4.2}Dimensionality Reduction}{17}{}%
 \contentsline {subsection}{\numberline {3.4.3}Model Selection}{17}{}%
 \contentsline {subsection}{\numberline {3.4.4}Final Fit and Regime Stream Generation}{18}{}%
-\contentsline {section}{\numberline {3.5}Multi-Agent Deliberation System}{18}{}%
-\contentsline {subsection}{\numberline {3.5.1}Design Objective}{18}{}%
-\contentsline {subsection}{\numberline {3.5.2}Orchestration and LLM Backend}{19}{}%
-\contentsline {subsection}{\numberline {3.5.3}Regime Context}{19}{}%
-\contentsline {subsection}{\numberline {3.5.4}Agent Roster}{19}{}%
-\contentsline {subsection}{\numberline {3.5.5}Debate Flow}{19}{}%
-\contentsline {subsection}{\numberline {3.5.6}Risk Limit Computation}{20}{}%
-\contentsline {subsection}{\numberline {3.5.7}Fund Manager Synthesis}{20}{}%
-\contentsline {section}{\numberline {3.6}RL Execution Agent}{20}{}%
-\contentsline {subsection}{\numberline {3.6.1}Design Objective}{20}{}%
-\contentsline {subsection}{\numberline {3.6.2}MDP Formulation}{21}{}%
-\contentsline {subsection}{\numberline {3.6.3}Policy Network}{21}{}%
-\contentsline {subsection}{\numberline {3.6.4}Curriculum Training}{22}{}%
-\contentsline {subsection}{\numberline {3.6.5}Evaluation Determinism}{22}{}%
-\contentsline {section}{\numberline {3.7}Evaluation Methodology}{22}{}%
-\contentsline {subsection}{\numberline {3.7.1}Metrics}{22}{}%
-\contentsline {subsection}{\numberline {3.7.2}Ablation Design}{23}{}%
-\contentsline {subsection}{\numberline {3.7.3}Statistical Testing}{23}{}%
-\contentsline {subsection}{\numberline {3.7.4}In-Sample Regime Behavior Diagnostic}{23}{}%
-\contentsline {section}{\numberline {3.8}Dashboard and Live System}{23}{}%
-\contentsline {subsection}{\numberline {3.8.1}Design Objective}{23}{}%
-\contentsline {subsection}{\numberline {3.8.2}Architecture}{23}{}%
-\contentsline {subsection}{\numberline {3.8.3}Live Regime Lookup}{24}{}%
-\contentsline {subsection}{\numberline {3.8.4}Live Feature Bridge}{24}{}%
-\contentsline {subsection}{\numberline {3.8.5}Auditability}{24}{}%
+\contentsline {subsection}{\numberline {3.4.5}Engine Correctness Audit}{18}{}%
+\contentsline {subsection}{\numberline {3.4.6}Asset Panel Revision}{20}{}%
+\contentsline {subsection}{\numberline {3.4.7}Empirical State-Count Validation at Scale}{21}{}%
+\contentsline {subsection}{\numberline {3.4.8}Synthetic Ground-Truth Validation}{21}{}%
+\contentsline {section}{\numberline {3.5}Multi-Agent Deliberation System}{23}{}%
+\contentsline {subsection}{\numberline {3.5.1}Design Objective}{23}{}%
+\contentsline {subsection}{\numberline {3.5.2}Orchestration and LLM Backend}{23}{}%
+\contentsline {subsection}{\numberline {3.5.3}Regime Context}{23}{}%
+\contentsline {subsection}{\numberline {3.5.4}Agent Roster}{23}{}%
+\contentsline {subsection}{\numberline {3.5.5}Debate Flow}{23}{}%
+\contentsline {subsection}{\numberline {3.5.6}Risk Limit Computation}{24}{}%
+\contentsline {subsection}{\numberline {3.5.7}Fund Manager Synthesis}{24}{}%
+\contentsline {section}{\numberline {3.6}RL Execution Agent}{25}{}%
+\contentsline {subsection}{\numberline {3.6.1}Design Objective}{25}{}%
+\contentsline {subsection}{\numberline {3.6.2}MDP Formulation}{25}{}%
+\contentsline {subsection}{\numberline {3.6.3}Policy Network}{26}{}%
+\contentsline {subsection}{\numberline {3.6.4}Curriculum Training}{26}{}%
+\contentsline {subsection}{\numberline {3.6.5}Evaluation Determinism}{26}{}%
+\contentsline {section}{\numberline {3.7}Evaluation Methodology}{27}{}%
+\contentsline {subsection}{\numberline {3.7.1}Metrics}{27}{}%
+\contentsline {subsection}{\numberline {3.7.2}Ablation Design}{27}{}%
+\contentsline {subsection}{\numberline {3.7.3}Statistical Testing}{27}{}%
+\contentsline {subsection}{\numberline {3.7.4}In-Sample Regime Behavior Diagnostic}{27}{}%
+\contentsline {section}{\numberline {3.8}Dashboard and Live System}{28}{}%
+\contentsline {subsection}{\numberline {3.8.1}Design Objective}{28}{}%
+\contentsline {subsection}{\numberline {3.8.2}Architecture}{28}{}%
+\contentsline {subsection}{\numberline {3.8.3}Live Regime Lookup}{28}{}%
+\contentsline {subsection}{\numberline {3.8.4}Live Feature Bridge}{28}{}%
+\contentsline {subsection}{\numberline {3.8.5}Auditability}{29}{}%
+\contentsline {chapter}{\numberline {4}Results}{32}{}%
+\contentsline {section}{\numberline {4.1}Regime Detection Results}{32}{}%
+\contentsline {subsection}{\numberline {4.1.1}Statistical Validity Across Candidate Configurations}{32}{}%
+\contentsline {subsection}{\numberline {4.1.2}Downstream Value: Position Sizing and Directional Conditioning}{33}{}%
+\contentsline {subsection}{\numberline {4.1.3}Synthetic Recovery Summary}{34}{}%
+\contentsline {chapter}{\numberline {5}Conclusion}{36}{}%
+\contentsline {section}{\numberline {5.1}Regime Detection: Status and Interim Conclusion}{36}{}%
+\contentsline {subsection}{\numberline {5.1.1}What Was Found}{36}{}%
+\contentsline {subsection}{\numberline {5.1.2}Interpretation}{37}{}%
+\contentsline {subsection}{\numberline {5.1.3}Open Items}{37}{}%

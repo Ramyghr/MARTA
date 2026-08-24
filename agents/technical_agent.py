@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 
@@ -98,13 +99,34 @@ class TechnicalAgent(BaseAgent):
             return "Encoder attention: computation error"
 
     def _build_system_prompt(self, ctx: RegimeContext) -> str:
+        # Strip the regime's qualitative description ("High-volatility bull regime", etc.)
+        # before serializing — keep regime_label/regime_probs (the actual numeric signal,
+        # confirmed informative by the null-regime test) but drop the loaded "bull"/"bear"
+        # wording. A 2026-08-23 ablation found this text alone drove the model to call
+        # "bullish" on an unambiguous bearish extreme (RSI=12, ADX=45, MACD strongly
+        # negative, close_return=-6%) in 3/3 runs; stripping just the description text
+        # (numbers intact) corrected this to 4/5. Every other agent still gets the full
+        # description — this override is scoped to TechnicalAgent only.
+        ctx_for_prompt = dataclasses.replace(
+            ctx, regime_description=f"Regime {ctx.regime_label} (see probability vector below)"
+        )
         return (
             "You are the Technical Pattern Agent for a quantitative trading system.\n"
             "You have access to the TFT encoder's attention map showing which features "
             "the regime encoder found most significant. Ground your technical analysis "
-            "in what the encoder is attending to, combined with the indicator values.\n"
+            "in what the encoder is attending to, combined with the indicator values.\n\n"
+            "Interpretation rules for RSI/momentum extremes — apply these before concluding:\n"
+            "- Check ADX first. ADX > 25 means the market is trending strongly. In a trending "
+            "market, an extreme RSI (>70 or <30) confirms the prevailing move is strong — read it "
+            "as momentum continuation, NOT as an imminent reversal or bounce. Only read extreme "
+            "RSI as a mean-reversion/reversal signal when ADX < 20 (a genuinely ranging market).\n"
+            "- MACD histogram sign should agree with your call. A large negative MACD histogram "
+            "alongside a large negative recent return and ADX > 25 is bearish momentum, not an "
+            "oversold setup about to bounce.\n"
+            "- Base your call on RSI/MACD/ADX/recent return, not on the regime label — use the "
+            "regime probability vector only as secondary corroboration.\n\n"
             "You MUST respond with a single JSON object — no preamble, no markdown, no explanation outside the JSON.\n\n"
-            + serialize_context_for_prompt(ctx)
+            + serialize_context_for_prompt(ctx_for_prompt)
         )
 
     def post_thesis(
@@ -123,7 +145,9 @@ class TechnicalAgent(BaseAgent):
             f"Current indicators:\n{features_str}\n"
             f"RSI: {ctx.price_features.get('rsi', 0):.2f} | "
             f"ADX: {ctx.price_features.get('adx', 0):.2f} | "
-            f"MACD hist: {ctx.price_features.get('macd_histogram', 0):.4f}\n"
+            f"MACD hist: {ctx.price_features.get('macd_histogram', 0):.4f} | "
+            f"Latest close_return: {ctx.price_features.get('close_return', 0):+.4f} "
+            f"({'down' if ctx.price_features.get('close_return', 0) < 0 else 'up'} move)\n"
         )
 
         system_prompt = self._build_system_prompt(ctx) + tech_context

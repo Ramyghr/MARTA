@@ -32,6 +32,12 @@ _FINBERT_PATH = _MARTA_ROOT / "models/finbert"
 _NEWS_CACHE_PATH = _MARTA_ROOT / "data/news_cache.json"
 _DECAY_HALF_LIFE_HOURS = 6.0
 _WINDOW_HOURS = 24
+# Kept at the original values — dashboard/backend/debate_stream.py constructs
+# SentimentAgent() (via live_feed=...) relying on these defaults, and live GOLD/EURUSD
+# debates could plausibly see an "EURUSD"-tagged headline even though the static
+# data/news_cache.json never has (verified: only BTC_USDT/ETH_USDT/GOLD/macro exist
+# there). Crypto-only callers (run_debate.py) pass macro_assets=/fear_greed_assets=
+# explicitly instead of relying on these.
 _MACRO_ASSETS = {"macro", "EURUSD"}
 # Fear & Greed is a crypto-market-wide index — weighting it into e.g. a GOLD thesis
 # would inject an unrelated crypto signal, so it only applies to the assets it's
@@ -73,8 +79,12 @@ class SentimentAgent(BaseAgent):
         model: str = "mistral:7b-instruct",
         temperature: float = 0.4,
         live_feed: "LiveNewsFeed | None" = None,
+        macro_assets: set[str] | None = None,
+        fear_greed_assets: set[str] | None = None,
     ) -> None:
         super().__init__(model=model, temperature=temperature)
+        self._macro_assets = macro_assets if macro_assets is not None else _MACRO_ASSETS
+        self._fear_greed_assets = fear_greed_assets if fear_greed_assets is not None else _FEAR_GREED_ASSETS
         if _TRANSFORMERS_AVAILABLE and _FINBERT_PATH.exists():
             self._finbert = _load_finbert_pipeline(str(_FINBERT_PATH))
         else:
@@ -112,7 +122,7 @@ class SentimentAgent(BaseAgent):
             matched = []
             for h in live_headlines:
                 h_asset = h.get("asset", "macro")
-                if h_asset == asset or h_asset in _MACRO_ASSETS or h_asset == "macro":
+                if h_asset == asset or h_asset in self._macro_assets or h_asset == "macro":
                     matched.append({**h, "_ts": pd.Timestamp.now(tz="UTC")})
             return matched
 
@@ -130,7 +140,7 @@ class SentimentAgent(BaseAgent):
             if h_ts < cutoff or h_ts > ts_utc:
                 continue
             h_asset = h.get("asset", "")
-            if h_asset == asset or h_asset in _MACRO_ASSETS:
+            if h_asset == asset or h_asset in self._macro_assets:
                 matched.append({**h, "_ts": h_ts})
 
         matched.sort(key=lambda x: x["_ts"])
@@ -257,7 +267,7 @@ class SentimentAgent(BaseAgent):
         sentiment fetch (return_exceptions=True) — a social-data hiccup should
         enrich-or-omit, never take down the core sentiment signal.
         """
-        fetch_fng = asset in _FEAR_GREED_ASSETS
+        fetch_fng = asset in self._fear_greed_assets
         results = await asyncio.gather(
             live_feed.get_sentiment(asset),
             live_feed.get_stocktwits_sentiment(asset),

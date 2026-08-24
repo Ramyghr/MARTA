@@ -18,13 +18,30 @@ import pandas as pd
 
 from utils.assets import aligned_path
 
+# Kept at the old 4-asset, encoder+PCA-based production panel as the DEFAULT — dashboard
+# code doesn't call this loader, but run_weekly_debates.py/run_clean_ablation_debates.py/
+# run_validation_debates.py all call load_debate_data() with no arguments and then
+# construct FundManagerAgent()/ContrarianAgent()/etc with THEIR OWN no-argument
+# defaults (also still production, for the same dashboard-safety reason documented in
+# agents/macro_agent.py etc.) — changing this default alone, without also updating those
+# scripts' agent construction, would silently feed crypto5 data through agents still
+# reading production semantics/regime streams, a worse and less consistent state than
+# before. Crypto-only callers (run_debate.py) pass CRYPTO5_PROCESSED/CRYPTO5_DEBATE_ASSETS
+# explicitly instead — see that file for the fully-wired example.
 _PROCESSED = Path("data/processed")
 _ENCODER_PATH = Path("encoder/checkpoints/best_encoder.pt")
 _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
 
-# Shared by all four debate-generation entrypoints (previously each redefined this list
-# independently, always with the same 4 values).
 DEBATE_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
+
+# Crypto-only panel (2026-08 regime-layer rebuild) — the validated, preferred config
+# (raw 22-col features, no TFT encoder/PCA in the loop; see rapport_pfe results.tex and
+# data/validated/regime_semantics_crypto5_multihorizon.json). Pass these explicitly to
+# load_debate_data() (and the matching kwargs to every agent constructed alongside it —
+# see run_debate.py) to use the crypto-only panel instead of the production default.
+CRYPTO5_PROCESSED = Path("data/processed/crypto5_multihorizon")
+CRYPTO5_SEMANTICS_PATH = Path("data/validated/regime_semantics_crypto5_multihorizon.json")
+CRYPTO5_DEBATE_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 
 
 class StaleRegimeStreamError(RuntimeError):
@@ -65,12 +82,17 @@ def load_debate_data(
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     """Load the regime stream + per-asset aligned parquets for debate generation.
 
-    Checks regime-stream freshness first (raises StaleRegimeStreamError if stale) —
-    previously each of the four debate scripts loaded this data directly and skipped
-    the check entirely. Shared by run_debate.py, run_weekly_debates.py,
-    run_clean_ablation_debates.py, and run_validation_debates.py.
+    Checks regime-stream freshness first (raises StaleRegimeStreamError if stale) when
+    loading the default production panel — previously each of the four debate scripts
+    loaded this data directly and skipped the check entirely. Shared by run_debate.py,
+    run_weekly_debates.py, run_clean_ablation_debates.py, and run_validation_debates.py.
+    Pass CRYPTO5_PROCESSED/CRYPTO5_DEBATE_ASSETS to load the crypto-only panel instead —
+    that HMM is fit directly on raw 22-col features with no TFT encoder or PCA in the
+    loop, so this check is skipped for it (comparing it against best_encoder.pt's mtime
+    would be a category error, not a staleness signal).
     """
-    check_encoder_regime_stream_freshness()
+    if processed_dir == _PROCESSED:
+        check_encoder_regime_stream_freshness()
     regime_stream = pd.read_parquet(processed_dir / "regime_stream.parquet", engine="pyarrow")
     aligned_dfs: dict[str, pd.DataFrame] = {}
     for asset in assets:

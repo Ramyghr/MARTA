@@ -219,7 +219,8 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         from agents.fund_manager import FundManagerAgent
         from agents.sentiment_agent import SentimentAgent
         from agents.contrarian_agent import ContrarianAgent
-        from utils.assets import logical_asset_name
+        from utils.assets import aligned_path
+        from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH
         import pandas as pd
 
         await websocket.send_json({"type": "debate_start", "asset": asset, "timestamp": timestamp, "mode": "live"})
@@ -227,24 +228,23 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         ts = pd.Timestamp(timestamp, tz="UTC")
 
         regime_stream_df = pd.read_parquet(
-            MARTA_ROOT / "data/processed/regime_stream.parquet", engine="pyarrow"
+            CRYPTO5_PROCESSED / "regime_stream.parquet", engine="pyarrow"
         )
-        aligned_full = pd.read_parquet(
-            MARTA_ROOT / "data/processed/all_assets_aligned.parquet", engine="pyarrow"
-        )
-        # Build per-asset dict and single-asset df for context. all_assets_aligned.parquet's
-        # MultiIndex top-level columns are keyed by file stem (GOLD -> "XAUUSD", its histdata
-        # instrument name), but `asset` here and every downstream agent lookup
-        # (agents/graph.py's aligned_dfs.get(ctx.asset)) use the logical name ("GOLD") — hence
-        # the KeyError('GOLD') this crashed with. Translate the dict's keys back to logical
-        # names once, then look the single-asset df up from that already-translated dict.
+        # Crypto-only panel (2026-08-23 migration) — CRYPTO5_PROCESSED holds one
+        # {asset}_aligned.parquet per asset, not a combined MultiIndex file like the old
+        # panel's all_assets_aligned.parquet. Crypto symbols need no file-stem translation
+        # (aligned_path is a no-op passthrough for anything not in ASSET_FILE_STEM, which
+        # only maps GOLD -> XAUUSD), unlike the old GOLD/XAUUSD mismatch this replaces.
         aligned_dfs = {
-            logical_asset_name(col): aligned_full[col]
-            for col in aligned_full.columns.get_level_values(0).unique()
+            a: pd.read_parquet(aligned_path(a, CRYPTO5_PROCESSED), engine="pyarrow")
+            for a in CRYPTO5_DEBATE_ASSETS
+            if aligned_path(a, CRYPTO5_PROCESSED).exists()
         }
         aligned_df = aligned_dfs.get(asset)
 
-        context = build_regime_context(ts, asset, regime_stream_df, aligned_df)
+        context = build_regime_context(
+            ts, asset, regime_stream_df, aligned_df, semantics_path=CRYPTO5_SEMANTICS_PATH
+        )
 
         # Upcoming economic-calendar events — narrative context for every agent
         # (serialize_context_for_prompt) + RiskAgent's quantitative position throttle.
@@ -255,15 +255,22 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         except Exception as exc:
             logger.warning(f"Economic calendar fetch failed for {asset}: {exc}")
 
+        _fear_greed = set(CRYPTO5_DEBATE_ASSETS)
         try:
-            sentiment_agent = SentimentAgent(live_feed=_get_news_feed())
+            sentiment_agent = SentimentAgent(
+                live_feed=_get_news_feed(), macro_assets={"macro"}, fear_greed_assets=_fear_greed
+            )
         except Exception as exc:
             logger.warning(f"Live news feed unavailable ({exc}) — SentimentAgent falls back to static cache")
-            sentiment_agent = SentimentAgent()
+            sentiment_agent = SentimentAgent(macro_assets={"macro"}, fear_greed_assets=_fear_greed)
 
         graph = DebateGraph(
-            MacroAgent(), TechnicalAgent(), RiskAgent(),
-            FundManagerAgent(), sentiment_agent, ContrarianAgent(),
+            MacroAgent(assets=CRYPTO5_DEBATE_ASSETS, data_dir=CRYPTO5_PROCESSED),
+            TechnicalAgent(),
+            RiskAgent(data_dir=CRYPTO5_PROCESSED),
+            FundManagerAgent(semantics_path=CRYPTO5_SEMANTICS_PATH),
+            sentiment_agent,
+            ContrarianAgent(regime_stream_df=regime_stream_df),
         )
 
         # Stream R1 thinking indicators
