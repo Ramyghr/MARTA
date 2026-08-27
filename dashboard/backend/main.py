@@ -132,12 +132,16 @@ app.add_middleware(
 
 @app.get("/api/assets")
 def get_assets():
+    # Crypto-only panel (2026-08 migration) — EURUSD/GOLD dropped from the live asset
+    # list (see docs/RESULTS_AND_METHODOLOGY.md Section 7-9); all 5 are genuinely
+    # live-tradeable via the same Binance/ccxt feed, no Twelve Data dependency.
     return {
         "assets": [
-            {"id": "BTC_USDT",  "label": "BTC/USDT",  "type": "crypto",    "live": True},
-            {"id": "ETH_USDT",  "label": "ETH/USDT",  "type": "crypto",    "live": True},
-            {"id": "EURUSD",    "label": "EUR/USD",    "type": "forex",     "live": bool(live_feed.TWELVE_DATA_KEY)},
-            {"id": "GOLD",      "label": "XAU/USD",    "type": "commodity", "live": bool(live_feed.TWELVE_DATA_KEY)},
+            {"id": "BTC_USDT",  "label": "BTC/USDT",  "type": "crypto", "live": True},
+            {"id": "ETH_USDT",  "label": "ETH/USDT",  "type": "crypto", "live": True},
+            {"id": "BNB_USDT",  "label": "BNB/USDT",  "type": "crypto", "live": True},
+            {"id": "LTC_USDT",  "label": "LTC/USDT",  "type": "crypto", "live": True},
+            {"id": "XRP_USDT",  "label": "XRP/USDT",  "type": "crypto", "live": True},
         ]
     }
 
@@ -148,18 +152,28 @@ def get_data_range(asset: str):
 
 
 @app.get("/api/regime/semantics")
-def get_regime_semantics():
-    # Live-only semantics (regime_semantics_live.json) — fit on 2018 -> today, not the
-    # sacred train<2024 model. The Regime page displays this alongside get_live_regime(),
-    # so its stats/descriptions must come from the same model, not the frozen one.
-    path = MARTA_ROOT / "data" / "validated" / "regime_semantics_live.json"
+def get_regime_semantics(asset: str = "BTC_USDT"):
+    # Crypto-only panel (2026-08 migration): crypto5 assets read the crypto5
+    # multihorizon HMM's own semantics (raw features, no encoder/PCA — see
+    # regime_service.py's dispatch); anything else falls back to the legacy live
+    # semantics file. The Regime page displays this alongside get_live_regime(), so its
+    # stats/descriptions must come from the same model that produced the regime label,
+    # not a mismatched one.
+    is_crypto5 = asset in regime_service._CRYPTO5_ASSETS
+    path = (
+        regime_service._CRYPTO5_SEMANTICS_PATH if is_crypto5
+        else MARTA_ROOT / "data" / "validated" / "regime_semantics_live.json"
+    )
     if not path.exists():
         return {}
     data = json.loads(path.read_text())
     # Inject the same dynamically-generated description used everywhere else in the
-    # backend (regime_service._load_regime_descriptions) so the frontend never has to
-    # duplicate the vol/sharpe bucket thresholds — one source of truth for the label.
-    descriptions = regime_service._load_regime_descriptions()
+    # backend so the frontend never has to duplicate the vol/sharpe bucket thresholds —
+    # one source of truth for the label.
+    descriptions = (
+        regime_service._load_crypto5_regime_descriptions() if is_crypto5
+        else regime_service._load_regime_descriptions()
+    )
     for label, stats in data.get("regimes", {}).items():
         stats["description"] = descriptions.get(int(label), "Unknown")
     return data
@@ -512,6 +526,29 @@ def set_approval_mode_setting(enabled: bool = Query(...)):
     queue (see /api/trades/pending) instead of executing them immediately."""
     import app_settings
     return {"approval_mode": app_settings.set_approval_mode(enabled)}
+
+
+@app.get("/api/settings/rl-execution")
+def get_rl_execution_setting():
+    """RL execution toggle — default off. See docs/RESULTS_AND_METHODOLOGY.md Section 9:
+    a complete, controlled ablation on the crypto5 panel found no RL configuration with
+    a statistically defensible edge over buy-and-hold. LLM consensus + static
+    (rule-based) execution is the default signal source; RL is opt-in only."""
+    import app_settings
+    return {
+        "rl_execution_enabled": app_settings.get_rl_execution_enabled(),
+        "warning": (
+            "RL execution is experimental. A controlled ablation found no crypto5 "
+            "configuration with a confirmed edge over buy-and-hold — enabling this "
+            "trades on a model without a validated advantage."
+        ),
+    }
+
+
+@app.post("/api/settings/rl-execution")
+def set_rl_execution_setting(enabled: bool = Query(...)):
+    import app_settings
+    return {"rl_execution_enabled": app_settings.set_rl_execution_enabled(enabled)}
 
 
 @app.get("/api/trades/pending")

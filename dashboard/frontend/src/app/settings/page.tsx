@@ -341,6 +341,64 @@ function ExecutionControlsSection() {
   );
 }
 
+// ── Section 3b-2 — RL Execution (experimental, opt-in) ─────────────────────────
+
+function RlExecutionSection() {
+  const rlExecutionEnabled = useMARTAStore((s) => s.rlExecutionEnabled);
+  const setRlExecutionEnabled = useMARTAStore((s) => s.setRlExecutionEnabled);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async () => {
+    const next = !rlExecutionEnabled;
+    setSaving(true);
+    setRlExecutionEnabled(next);
+    try {
+      const res = await api.setRlExecution(next);
+      setRlExecutionEnabled(res.rl_execution_enabled);
+    } catch {
+      setRlExecutionEnabled(!next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 text-[11px]">
+      <label className="flex items-center justify-between cursor-pointer">
+        <span className="stat-label">RL Execution (experimental)</span>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          className="relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50"
+          style={{ background: rlExecutionEnabled ? "#ff373733" : "#1a1a1a" }}
+        >
+          <span
+            className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+            style={{ left: rlExecutionEnabled ? 18 : 2, background: rlExecutionEnabled ? "#ff3737" : "#555" }}
+          />
+        </button>
+      </label>
+      {rlExecutionEnabled && (
+        <div
+          className="text-[10px] leading-relaxed rounded px-2.5 py-2 border"
+          style={{ background: "#ff373714", borderColor: "#ff373744", color: "#ff8f8f" }}
+        >
+          <strong>⚠ Warning:</strong> a complete, controlled ablation (regime conditioning,
+          reward formulation, behavior-cloning warm-start, discrete vs. continuous action
+          space) found no crypto5 PPO configuration with a statistically defensible edge
+          over buy-and-hold. Enabling this trades on a model without a confirmed advantage —
+          see docs/RESULTS_AND_METHODOLOGY.md Section 9 for the full results.
+        </div>
+      )}
+      <div className="text-[10px] text-[#3a3a3a] leading-relaxed border-t border-[#161616] pt-2">
+        {rlExecutionEnabled
+          ? "ON — the trained PPO checkpoint drives the signal when available, falling back to the rule below if it isn't."
+          : "OFF (default) — signals come from LLM multi-agent consensus, falling back to a static regime-based rule when no recent debate exists."}
+      </div>
+    </div>
+  );
+}
+
 // ── Section 3c — Indicator Visibility ──────────────────────────────────────────
 
 function IndicatorVisibilitySection() {
@@ -472,6 +530,7 @@ export default function SettingsPage() {
         <Panel title="Model Configuration"><ModelConfigSection /></Panel>
         <Panel title="Agent Configuration"><AgentConfigSection /></Panel>
         <Panel title="Execution Controls"><ExecutionControlsSection /></Panel>
+        <Panel title="RL Execution"><RlExecutionSection /></Panel>
         <Panel title="Indicator Visibility"><IndicatorVisibilitySection /></Panel>
         <Panel title="System Status"><SystemStatusSection /></Panel>
       </div>

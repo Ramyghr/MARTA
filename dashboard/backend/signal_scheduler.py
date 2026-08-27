@@ -30,7 +30,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_ACTIVE_ASSETS = ["BTC_USDT", "ETH_USDT"]
+_ACTIVE_ASSETS = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 
 _scheduler: Optional["AsyncIOScheduler"] = None
 _last_signals: dict[str, dict] = {}
@@ -87,10 +87,11 @@ async def _run_signal_tick() -> None:
     now = datetime.now(timezone.utc).isoformat()
     logger.info(f"signal_scheduler: tick at {now}")
 
-    # Refresh all 4 assets' live-bridge normalized features FIRST, before generating any
-    # signal below — so the BTC/ETH trading signal (and every get_live_regime() caller
-    # this hour: current-regime badge, chart tagging, chat) reads this hour's data, not
-    # last hour's. A failure here must never block the trading loop that follows.
+    # Refresh all 5 crypto5 assets' live-bridge normalized features FIRST, before
+    # generating any signal below — so this hour's trading signal (and every
+    # get_live_regime() caller this hour: current-regime badge, chart tagging, chat)
+    # reads this hour's data, not last hour's. A failure here must never block the
+    # trading loop that follows.
     await _refresh_live_bridges()
 
     for asset in _ACTIVE_ASSETS:
@@ -99,21 +100,20 @@ async def _run_signal_tick() -> None:
         except Exception as exc:
             logger.warning(f"signal_scheduler: tick failed for {asset} — {exc}")
 
-    # EURUSD/GOLD aren't in _ACTIVE_ASSETS (no trading loop for them), so nothing above
-    # logs their live regime the way _tick_asset -> live_signal.py does for BTC/ETH.
-    # Log it here instead, same hourly cadence, so historical.py's chart tagging
-    # (get_regime_series_live_aware) has per-hour resolution for all 4 assets, not just
-    # the two that trade.
+    # EURUSD/GOLD (2026-08 crypto-only migration: no longer in _ACTIVE_ASSETS or the
+    # live-bridge refresh above) still get a best-effort regime log entry here so
+    # historical.py's chart tagging doesn't regress for anyone still viewing their
+    # (now static/frozen) historical charts. Not a trading loop — same as before.
     await _log_nontrading_regimes()
 
 
 async def _refresh_live_bridges() -> None:
-    """Keep all 4 assets' live-bridge normalized features current (see
+    """Keep all 5 crypto5 assets' live-bridge normalized features current (see
     live_feature_bridge.py — this is what get_live_regime() reads). Runs in the executor:
-    network calls (Twelve Data / Binance) + pandas recomputation are blocking.
+    network calls (Binance) + pandas recomputation are blocking.
     """
     loop = asyncio.get_running_loop()
-    for asset in ("BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"):
+    for asset in _ACTIVE_ASSETS:
         try:
             await loop.run_in_executor(_tick_executor, _update_live_bridge_sync, asset)
         except Exception as exc:

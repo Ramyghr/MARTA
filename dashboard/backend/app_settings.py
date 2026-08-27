@@ -18,7 +18,16 @@ _SETTINGS_PATH = Path(
     os.environ.get("APP_SETTINGS_PATH", str(MARTA_ROOT / "data" / "app_settings.json"))
 )
 
-_DEFAULTS = {"approval_mode": False}
+_DEFAULTS = {
+    "approval_mode": False,
+    # RL execution toggle (2026-08-25) — default False per
+    # docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete, controlled ablation across
+    # regime conditioning, reward formulation, BC warm-start, and action-space
+    # parameterization found no crypto5 RL configuration with a statistically
+    # defensible edge over buy-and-hold. LLM consensus + static (rule-based) execution
+    # is the default; RL stays available as an explicit, opt-in experimental toggle.
+    "rl_execution_enabled": False,
+}
 _lock = threading.Lock()
 
 
@@ -47,3 +56,16 @@ def set_approval_mode(enabled: bool) -> bool:
         settings["approval_mode"] = bool(enabled)
         _write(settings)
         return settings["approval_mode"]
+
+
+def get_rl_execution_enabled() -> bool:
+    with _lock:
+        return bool(_read().get("rl_execution_enabled", False))
+
+
+def set_rl_execution_enabled(enabled: bool) -> bool:
+    with _lock:
+        settings = _read()
+        settings["rl_execution_enabled"] = bool(enabled)
+        _write(settings)
+        return settings["rl_execution_enabled"]

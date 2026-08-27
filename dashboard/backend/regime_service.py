@@ -51,12 +51,34 @@ _pca_model = None
 _hmm_model = None
 _regime_models_loaded = False
 
+# Crypto-only panel (2026-08 migration) — the "latest regime model": a GaussianHMM fit
+# directly on 22 raw multihorizon features, NO encoder, NO PCA (see
+# regime/run_hmm_crypto5_test.py / regime/hmm.py's pca_n_components=None path). This is
+# architecturally different from the encoder->PCA->HMM pipeline above, not a path swap —
+# get_live_regime() below dispatches to whichever one matches the asset.
+_CRYPTO5_ASSETS = {"BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"}
+_CRYPTO5_HMM_PATH = MARTA_ROOT / "regime" / "checkpoints" / "crypto5_multihorizon" / "hmm_model.pkl"
+_CRYPTO5_PROCESSED = MARTA_ROOT / "data" / "processed" / "crypto5_multihorizon"
+_CRYPTO5_SEMANTICS_PATH = MARTA_ROOT / "data" / "validated" / "regime_semantics_crypto5_multihorizon.json"
+# Same 22-column order normalize_features_multihorizon() always produces — verified
+# identical to what the HMM was fit on (both paths go through the same function).
+_CRYPTO5_FEATURE_COLS = [
+    "atr", "adx", "rsi", "bb_width", "macd_histogram", "obv_raw", "vol_zscore",
+    "realized_vol", "vol_ratio", "return_skew", "return_kurtosis", "autocorr_lag1",
+    "realized_vol_raw", "close_return", "realized_vol_z90d", "realized_vol_z180d",
+    "atr_z90d", "atr_z180d", "bb_width_z90d", "bb_width_z180d", "vol_ratio_z90d",
+    "vol_ratio_z180d",
+]
+
+_crypto5_hmm_model = None
+_crypto5_descriptions_cache: dict[int, str] | None = None
+
 
 def load_regime_models() -> None:
     """Load the fitted PCA(16) + GaussianHMM once, for live regime inference. Call
     once from main.py's startup lifespan, alongside load_regime_stream().
     """
-    global _pca_model, _hmm_model, _regime_models_loaded
+    global _pca_model, _hmm_model, _crypto5_hmm_model, _regime_models_loaded
     _regime_models_loaded = True
     try:
         import joblib
@@ -71,6 +93,91 @@ def load_regime_models() -> None:
               f"get_live_regime() will fall back to the historical lookup")
         _pca_model = None
         _hmm_model = None
+
+    try:
+        import joblib
+        _crypto5_hmm_model = joblib.load(_CRYPTO5_HMM_PATH)
+        print(f"[regime_service] loaded crypto5 live HMM ({_crypto5_hmm_model.n_components} states, no PCA)")
+    except Exception as exc:
+        print(f"[regime_service] could not load crypto5 HMM ({exc}) — "
+              f"get_live_regime() for crypto5 assets will fall back to the historical lookup")
+        _crypto5_hmm_model = None
+
+
+def _load_crypto5_regime_descriptions() -> dict[int, str]:
+    global _crypto5_descriptions_cache
+    if _crypto5_descriptions_cache is not None:
+        return _crypto5_descriptions_cache
+    if not _CRYPTO5_SEMANTICS_PATH.exists():
+        _crypto5_descriptions_cache = dict(_FALLBACK_DESCRIPTIONS)
+        return _crypto5_descriptions_cache
+    try:
+        sem = json.loads(_CRYPTO5_SEMANTICS_PATH.read_text())
+    except Exception:
+        _crypto5_descriptions_cache = dict(_FALLBACK_DESCRIPTIONS)
+        return _crypto5_descriptions_cache
+
+    descriptions: dict[int, str] = {}
+    for label, stats in sem.get("regimes", {}).items():
+        rvol = float(stats.get("realized_vol_mean", 0.0))
+        sharpe = float(stats.get("sharpe", 0.0))
+        dom = str(stats.get("dominant_asset", "")).replace("_USDT", "")
+        vol_desc = "High Volatility" if rvol > 0.8 else "Moderate Volatility" if rvol > 0.2 else "Low Volatility" if rvol < -0.2 else "Neutral Volatility"
+        perf_desc = "Strong Bull" if sharpe > 1.5 else "Positive" if sharpe > 0.5 else "Mildly Positive" if sharpe > 0 else "Mildly Negative" if sharpe > -0.5 else "Bear"
+        descriptions[int(label)] = f"{vol_desc} / {perf_desc}" + (f" ({dom}-dominant)" if dom else "")
+    _crypto5_descriptions_cache = descriptions or dict(_FALLBACK_DESCRIPTIONS)
+    return _crypto5_descriptions_cache
+
+
+def get_live_regime_crypto5(asset: str, timestamp: pd.Timestamp, log: bool = False) -> dict:
+    """Live regime for a crypto5 asset — raw multihorizon features straight into the
+    HMM, no encoder/PCA step (architecturally distinct from get_live_regime() above).
+    Same 168h-lookback-sequence-then-take-last-position approach and the same reasoning
+    for why (a single-frame predict_proba() is dominated by the model's prior — see
+    get_live_regime()'s docstring, the same finding applies here since it's a property
+    of HMM forward-filtering in general, not specific to which features are used).
+
+    Reads dashboard/backend/live_feature_bridge.py's {asset}_normalized_live.parquet —
+    falls back to the historical lookup if that file doesn't exist yet, is too short for
+    a full lookback window, or the crypto5 HMM failed to load.
+    """
+    if not _regime_models_loaded:
+        load_regime_models()
+    if _crypto5_hmm_model is None:
+        return {**get_regime(asset, timestamp), "live": False}
+
+    path = _CRYPTO5_PROCESSED / f"{asset}_normalized_live.parquet"
+    if not path.exists():
+        return {**get_regime(asset, timestamp), "live": False}
+
+    try:
+        df = pd.read_parquet(path, engine="pyarrow")
+        df = df[df.index <= timestamp]
+        if len(df) < _LIVE_LOOKBACK_HOURS:
+            return {**get_regime(asset, timestamp), "live": False}
+        window = df[_CRYPTO5_FEATURE_COLS].tail(_LIVE_LOOKBACK_HOURS).to_numpy(dtype=np.float64)
+        probs_seq = _crypto5_hmm_model.predict_proba(window)
+        probs_arr = probs_seq[-1]
+    except Exception as exc:
+        print(f"[regime_service] crypto5 live regime computation failed for {asset} ({exc})")
+        return {**get_regime(asset, timestamp), "live": False}
+
+    label = int(probs_arr.argmax())
+    probs = {f"regime_{i}": float(p) for i, p in enumerate(probs_arr)}
+    result = {
+        "regime_label": label,
+        "regime_description": _load_crypto5_regime_descriptions().get(label, "Unknown"),
+        "probabilities": probs,
+        "dominant_regime": label,
+        "stale": False,
+        "age_hours": 0.0,
+        "live": True,
+        "computed_at": pd.Timestamp(timestamp, tz="UTC").isoformat() if timestamp.tzinfo is None else timestamp.isoformat(),
+        "lookback_hours": _LIVE_LOOKBACK_HOURS,
+    }
+    if log:
+        _append_live_regime_log(asset, timestamp, result)
+    return result
 
 
 def _n_regime_states() -> int:
@@ -148,10 +255,11 @@ def invalidate_regime_descriptions_cache() -> None:
 REGIME_DESCRIPTIONS = _load_regime_descriptions()
 
 _df: pd.DataFrame | None = None
+_crypto5_df: pd.DataFrame | None = None
 
 
 def load_regime_stream() -> None:
-    global _df
+    global _df, _crypto5_df
     # Live-only stream (regime_stream_live.parquet) — same model as get_live_regime(),
     # self-consistent 2018 -> today. The sacred regime_stream.parquet (train<2024 model)
     # is read independently by agents/context.py and RL/backtest, never through here.
@@ -164,6 +272,35 @@ def load_regime_stream() -> None:
     _df.index = pd.to_datetime(_df.index, utc=True)
     print(f"[regime_service] loaded {len(_df):,} rows from {path}")
 
+    # Crypto-only panel — kept as a SEPARATE table (not merged into _df): a different
+    # HMM's regime labels mean different things at the same integer index, and this
+    # stream has 5 assets _df has never heard of (BNB/LTC/XRP). get_regime()/get_regime_
+    # series() dispatch to whichever table actually matches the requested asset.
+    crypto5_path = _CRYPTO5_PROCESSED / "regime_stream.parquet"
+    if crypto5_path.exists():
+        _crypto5_df = pd.read_parquet(crypto5_path, engine="pyarrow")
+        if "timestamp" in _crypto5_df.columns and not isinstance(_crypto5_df.index, pd.DatetimeIndex):
+            _crypto5_df = _crypto5_df.set_index("timestamp")
+        _crypto5_df.index = pd.to_datetime(_crypto5_df.index, utc=True)
+        print(f"[regime_service] loaded {len(_crypto5_df):,} rows from {crypto5_path}")
+    else:
+        print(f"[regime_service] crypto5 regime stream not found at {crypto5_path}")
+
+
+def _resolve_stream_and_descriptions(asset: str):
+    """Return (stream_df, descriptions_fn, n_states) for whichever regime model
+    actually covers `asset` — crypto5's raw-feature HMM for the 5 crypto5 assets,
+    the legacy encoder-based one otherwise. Centralizes the dispatch every lookup
+    function below needs so a new caller can't accidentally read the wrong table."""
+    if asset in _CRYPTO5_ASSETS:
+        if _crypto5_df is None:
+            load_regime_stream()
+        n_states = _crypto5_hmm_model.n_components if _crypto5_hmm_model is not None else 6
+        return _crypto5_df, _load_crypto5_regime_descriptions, n_states
+    if _df is None:
+        load_regime_stream()
+    return _df, _load_regime_descriptions, _n_regime_states()
+
 
 def get_regime(asset: str, timestamp: pd.Timestamp) -> dict:
     """Historical regime lookup — nearest precomputed row in regime_stream.parquet.
@@ -174,24 +311,22 @@ def get_regime(asset: str, timestamp: pd.Timestamp) -> dict:
     over a year ago, so it reports that gap explicitly via `stale`/`age_hours`
     instead of presenting an old row as if it were current.
     """
-    if _df is None:
-        load_regime_stream()
+    stream, descriptions_fn, n_states = _resolve_stream_and_descriptions(asset)
     ts = pd.Timestamp(timestamp, tz="UTC") if not isinstance(timestamp, pd.Timestamp) else timestamp
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
-    asset_df = _df[_df["asset"] == asset]
+    asset_df = stream[stream["asset"] == asset] if stream is not None else pd.DataFrame()
     if asset_df.empty:
-        return _empty_regime()
+        return _empty_regime(descriptions_fn, n_states)
     idx = asset_df.index.get_indexer([ts], method="nearest")
     row = asset_df.iloc[idx[0]]
     matched_ts = asset_df.index[idx[0]]
     label = int(row["regime_label"])
-    n_states = _n_regime_states()
     probs = {f"regime_{i}": float(row.get(f"regime_prob_{i}", 0.0)) for i in range(n_states)}
     age_hours = abs((ts - matched_ts).total_seconds()) / 3600
     return {
         "regime_label": label,
-        "regime_description": _load_regime_descriptions().get(label, "Unknown"),
+        "regime_description": descriptions_fn().get(label, "Unknown"),
         "probabilities": probs,
         "dominant_regime": label,
         "stale": age_hours > _STALE_THRESHOLD_HOURS,
@@ -201,9 +336,8 @@ def get_regime(asset: str, timestamp: pd.Timestamp) -> dict:
 
 def get_regime_series(asset: str, timestamps: list[pd.Timestamp]) -> list[dict]:
     """Batch regime lookup for a list of timestamps."""
-    if _df is None:
-        load_regime_stream()
-    asset_df = _df[_df["asset"] == asset]
+    stream, descriptions_fn, n_states = _resolve_stream_and_descriptions(asset)
+    asset_df = stream[stream["asset"] == asset] if stream is not None else pd.DataFrame()
     results = []
     for ts in timestamps:
         if not isinstance(ts, pd.Timestamp):
@@ -212,11 +346,11 @@ def get_regime_series(asset: str, timestamps: list[pd.Timestamp]) -> list[dict]:
             ts = ts.tz_localize("UTC")
         idx = asset_df.index.get_indexer([ts], method="nearest")
         if len(idx) == 0 or asset_df.empty:
-            results.append(_empty_regime())
+            results.append(_empty_regime(descriptions_fn, n_states))
             continue
         row = asset_df.iloc[idx[0]]
         label = int(row["regime_label"])
-        results.append({"regime_label": label, "regime_description": _load_regime_descriptions().get(label, "Unknown")})
+        results.append({"regime_label": label, "regime_description": descriptions_fn().get(label, "Unknown")})
     return results
 
 
@@ -243,9 +377,8 @@ def get_regime_stream_tail(asset: str, limit: int = 500) -> list[dict]:
     get_regime_stream_tail_live_aware for anything user-facing (the Regime page); this is
     kept for callers that specifically want the static historical stream.
     """
-    if _df is None:
-        load_regime_stream()
-    asset_df = _df[_df["asset"] == asset]
+    stream, _, _ = _resolve_stream_and_descriptions(asset)
+    asset_df = stream[stream["asset"] == asset] if stream is not None else pd.DataFrame()
     return _format_stream_rows(asset_df, limit)
 
 
@@ -264,9 +397,8 @@ def get_regime_stream_tail_live_aware(asset: str, limit: int = 500) -> list[dict
     hourly ticks land; it never repeats one frozen value across the gap the way the old
     behavior did.
     """
-    if _df is None:
-        load_regime_stream()
-    asset_df = _df[_df["asset"] == asset]
+    stream, _, _ = _resolve_stream_and_descriptions(asset)
+    asset_df = stream[stream["asset"] == asset] if stream is not None else pd.DataFrame()
     if asset_df.empty:
         return _format_stream_rows(asset_df, limit)
     frozen_max = asset_df.index.max()
@@ -300,14 +432,19 @@ def get_regime_stream_tail_live_aware(asset: str, limit: int = 500) -> list[dict
 def get_available_assets() -> list[str]:
     if _df is None:
         load_regime_stream()
-    return sorted(_df["asset"].unique().tolist())
+    assets = set(_df["asset"].unique().tolist())
+    if _crypto5_df is not None:
+        assets |= set(_crypto5_df["asset"].unique().tolist())
+    return sorted(assets)
 
 
-def _empty_regime() -> dict:
+def _empty_regime(descriptions_fn=None, n_states: int | None = None) -> dict:
+    descriptions_fn = descriptions_fn or _load_regime_descriptions
+    n_states = n_states if n_states is not None else _n_regime_states()
     return {
         "regime_label": 0,
-        "regime_description": _load_regime_descriptions().get(0, "Unknown"),
-        "probabilities": {f"regime_{i}": 0.0 for i in range(_n_regime_states())},
+        "regime_description": descriptions_fn().get(0, "Unknown"),
+        "probabilities": {f"regime_{i}": 0.0 for i in range(n_states)},
         "dominant_regime": 0,
         "stale": True,
         "age_hours": None,
@@ -337,10 +474,17 @@ def get_live_regime(asset: str, timestamp: pd.Timestamp | None = None, log: bool
     intact) if the live models aren't loaded or there isn't enough history before
     `timestamp` for a full lookback window — e.g. GOLD/EURUSD when their normalized
     parquet hasn't been refreshed close to `timestamp`.
+
+    Crypto-only panel (2026-08 migration): dispatches to get_live_regime_crypto5() for
+    the 5 crypto5 assets instead — a different model (raw features, no encoder/PCA), not
+    just a different data path. EURUSD/GOLD still use the encoder-based path below.
     """
     ts = timestamp if isinstance(timestamp, pd.Timestamp) else pd.Timestamp("now", tz="UTC")
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
+
+    if asset in _CRYPTO5_ASSETS:
+        return get_live_regime_crypto5(asset, ts, log=log)
 
     if not _regime_models_loaded:
         load_regime_models()
@@ -474,11 +618,10 @@ def get_regime_series_live_aware(asset: str, timestamps: list[pd.Timestamp]) -> 
     chart load (see _add_regime's docstring in main.py for the same reasoning applied
     to the live-tick websocket path).
     """
-    if _df is None:
-        load_regime_stream()
-    asset_df = _df[_df["asset"] == asset]
+    stream, descriptions_fn, n_states = _resolve_stream_and_descriptions(asset)
+    asset_df = stream[stream["asset"] == asset] if stream is not None else pd.DataFrame()
     if asset_df.empty:
-        return [_empty_regime() for _ in timestamps]
+        return [_empty_regime(descriptions_fn, n_states) for _ in timestamps]
     frozen_max = asset_df.index.max()
 
     fresh_live: Optional[dict] = None  # lazily computed at most once, shared below
@@ -500,5 +643,5 @@ def get_regime_series_live_aware(asset: str, timestamps: list[pd.Timestamp]) -> 
                 hit = fresh_live
             label = hit["regime_label"]
 
-        results.append({"regime_label": label, "regime_description": _load_regime_descriptions().get(label, "Unknown")})
+        results.append({"regime_label": label, "regime_description": descriptions_fn().get(label, "Unknown")})
     return results

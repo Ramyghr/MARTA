@@ -2,7 +2,7 @@ import os
 import time
 import pandas as pd
 from pathlib import Path
-from regime_service import get_regime_series_live_aware, REGIME_DESCRIPTIONS
+from regime_service import get_regime_series_live_aware
 import live_feed
 
 MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.parent)))
@@ -14,6 +14,10 @@ ASSET_FILE_MAP = {
     "ETH_USDT": "ETH_USDT_features.parquet",
     "EURUSD":   "EURUSD_features.parquet",
     "GOLD":     "XAUUSD_features.parquet",
+    # Crypto-only panel (2026-08 migration)
+    "BNB_USDT": "BNB_USDT_features.parquet",
+    "LTC_USDT": "LTC_USDT_features.parquet",
+    "XRP_USDT": "XRP_USDT_features.parquet",
 }
 
 # Raw (pre-normalize.py, human-scale) indicator columns present in *_features.parquet —
@@ -36,6 +40,10 @@ _YF_TICKERS = {
 _BINANCE_SYMBOLS = {
     "BTC_USDT": "BTC/USDT",
     "ETH_USDT": "ETH/USDT",
+    # Crypto-only panel (2026-08 migration)
+    "BNB_USDT": "BNB/USDT",
+    "LTC_USDT": "LTC/USDT",
+    "XRP_USDT": "XRP/USDT",
 }
 
 _CACHE_TTL_S = 2 * 3600   # re-fetch live extension every 2 h
@@ -299,6 +307,7 @@ def _build_records(asset: str, df: pd.DataFrame) -> list[dict]:
     records = []
     for i, (ts, row) in enumerate(df.iterrows()):
         regime_label = regimes[i]["regime_label"] if i < len(regimes) else 0
+        regime_description = regimes[i]["regime_description"] if i < len(regimes) else ""
         # Extension rows appended by _extend() (live ccxt/yfinance backfill) only carry
         # OHLCV — indicator columns are reindexed to NaN there (see _extend's docstring),
         # so those candles legitimately report indicators=None rather than a stale value.
@@ -314,7 +323,7 @@ def _build_records(asset: str, df: pd.DataFrame) -> list[dict]:
             "close":              float(row["close"])           if pd.notna(row.get("close"))  else None,
             "volume":             float(row.get("volume", 0))  if pd.notna(row.get("volume")) else 0.0,
             "regime_label":       regime_label,
-            "regime_description": REGIME_DESCRIPTIONS.get(regime_label, ""),
+            "regime_description": regime_description,
             "indicators":         indicators,
         })
     return records

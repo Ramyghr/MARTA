@@ -218,6 +218,9 @@ export const api = {
   getApprovalMode: () => fetchApi<{ approval_mode: boolean }>("/api/settings/approval-mode"),
   setApprovalMode: (enabled: boolean) =>
     fetch(`${API_URL}/api/settings/approval-mode?enabled=${enabled}`, { method: "POST" }).then((r) => r.json()) as Promise<{ approval_mode: boolean }>,
+  getRlExecution: () => fetchApi<{ rl_execution_enabled: boolean; warning: string }>("/api/settings/rl-execution"),
+  setRlExecution: (enabled: boolean) =>
+    fetch(`${API_URL}/api/settings/rl-execution?enabled=${enabled}`, { method: "POST" }).then((r) => r.json()) as Promise<{ rl_execution_enabled: boolean }>,
   getPendingTrades: (status: "pending" | "approved" | "rejected" = "pending") =>
     fetchApi<{ trades: PendingTrade[] }>(`/api/trades/pending?status=${status}`),
   approvePendingTrade: (id: number) =>

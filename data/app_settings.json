@@ -1,3 +1,4 @@
 {
-  "approval_mode": false
+  "approval_mode": false,
+  "rl_execution_enabled": false
 }

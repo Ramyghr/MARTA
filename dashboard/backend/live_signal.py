@@ -211,8 +211,14 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
     regime_label = regime_info.get("regime_label", 0)
     regime_prob = regime_info.get("probabilities", {})
 
-    # --- Signal priority 1: trained PPO ---
-    ppo_result = ppo_inference.predict(asset, now)
+    # --- Signal priority 1: trained PPO — opt-in only (see app_settings.py) ---
+    # Default off per docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete, controlled
+    # ablation found no crypto5 RL configuration with a defensible edge over
+    # buy-and-hold. Skipping the predict() call entirely when disabled (not just
+    # ignoring its result) so this behaves exactly like "no checkpoint loaded" already
+    # does below — no new code path, just gating the existing fallback earlier.
+    import app_settings
+    ppo_result = ppo_inference.predict(asset, now) if app_settings.get_rl_execution_enabled() else None
     if ppo_result is not None:
         action = ppo_result["action"]
         size = ppo_result["position_size"]
@@ -332,8 +338,8 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
 
 def _fetch_latest_price(asset: str) -> float:
     """Best-effort latest close price — tries CCXT REST, falls back to last parquet row."""
-    symbol_map = {"BTC_USDT": "BTC/USDT", "ETH_USDT": "ETH/USDT"}
-    symbol = symbol_map.get(asset)
+    from live_feed import SYMBOL_MAP
+    symbol = SYMBOL_MAP.get(asset)
     if symbol:
         try:
             import ccxt  # type: ignore

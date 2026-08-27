@@ -24,7 +24,11 @@ import ta.volatility as ta_vol
 
 from utils.logger import logger
 
-PROCESSED_DIR = Path("data/processed")
+# Anchored to this file's location, not the caller's cwd (Path("data/processed") alone
+# resolved wherever the process happened to be launched from — silently wrong, and
+# occasionally a real PermissionError, when the caller's cwd isn't the project root,
+# e.g. the dashboard backend's uvicorn process running from dashboard/backend/).
+PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 INDICATOR_COLS = [
     "atr",

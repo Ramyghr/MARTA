@@ -36,9 +36,29 @@ from rl.evaluate import (
     run_walk_forward,
 )
 from rl.env import CANONICAL_ASSETS, TRAIN_END, VAL_END_EXTENDED
-from rl.train import CURRICULUM_PHASES, train_ppo
+from rl.train import (
+    CRYPTO5_CANONICAL_ASSETS,
+    CRYPTO5_CURRICULUM_PHASES,
+    CRYPTO5_PROCESSED,
+    CRYPTO5_REGIME_STREAM_CAUSAL_PATH,
+    CURRICULUM_PHASES,
+    train_ppo,
+)
 from utils.logger import logger
 from utils.reproducibility import set_seed
+
+
+def _policy_class_for(config: dict):
+    """Return the policy class a checkpoint was trained with, based on
+    config["action_mode"] — every PPO.load(..., custom_objects={"policy_class": ...})
+    call site must use this instead of hardcoding MARTAActorCriticPolicy, or loading a
+    checkpoint trained with --action-mode discrete crashes with a state_dict key
+    mismatch (direction_head/position_head vs action_head — found running the first
+    discrete-action smoke test, 2026-08-24)."""
+    from rl.policy import MARTAActorCriticPolicy, MARTADiscretePolicy
+    if config.get("action_mode", "hybrid") == "discrete":
+        return MARTADiscretePolicy
+    return MARTAActorCriticPolicy
 
 _console = Console()
 _EXPERIMENT = "marta_ppo_training"
@@ -427,7 +447,6 @@ def _load_for_eval(config: dict, checkpoint: str) -> tuple[Any, Any]:
     """Build an env factory and load a saved PPO checkpoint (no training)."""
     from stable_baselines3 import PPO
 
-    from rl.policy import MARTAActorCriticPolicy
     from rl.train import build_env_factory, load_data, load_debate_results
 
     aligned_dfs, regime_stream_df, encoder = load_data(config)
@@ -440,7 +459,7 @@ def _load_for_eval(config: dict, checkpoint: str) -> tuple[Any, Any]:
     model = PPO.load(
         checkpoint,
         device="cpu",
-        custom_objects={"policy_class": MARTAActorCriticPolicy},
+        custom_objects={"policy_class": _policy_class_for(config)},
     )
     logger.success(f"Loaded checkpoint {checkpoint} for evaluation")
     return model, env_factory
@@ -453,7 +472,6 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     from rl.evaluate import analyze_regime_behavior, evaluate_ppo
     from rl.train import train_ppo
     from stable_baselines3 import PPO
-    from rl.policy import MARTAActorCriticPolicy
 
     cfg = _copy.deepcopy(config)
     cfg["seed"] = seed
@@ -481,7 +499,7 @@ def _run_single_seed(config: dict, seed: int) -> dict:
     if ckpt_path:
         # CPU for eval — see _load_for_eval for why.
         model = PPO.load(str(ckpt_path), device="cpu",
-                         custom_objects={"policy_class": MARTAActorCriticPolicy})
+                         custom_objects={"policy_class": _policy_class_for(cfg)})
     else:
         model = train_out["model"]
 
@@ -594,6 +612,21 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--crypto5",
+        action="store_true",
+        help=(
+            "train on the crypto-only 5-asset panel (BTC/ETH/BNB/LTC/XRP_USDT, "
+            "data/processed/crypto5_multihorizon) instead of the old 4-asset production "
+            "panel (2026-08-24 migration). Sets all_assets/canonical_assets/processed_dir "
+            "to the crypto5 panel and phases to CRYPTO5_CURRICULUM_PHASES (BTC, then "
+            "BTC+ETH — same step budgets as CURRICULUM_PHASES[:2] for a controlled "
+            "comparison). Combine with --obs-mode raw_regime and this flag also sets "
+            "--regime-stream-path to the crypto5 panel's own regime_stream.parquet "
+            "unless you override it explicitly. obs_mode='encoder' is NOT meaningful "
+            "here — no encoder was ever trained on this panel."
+        ),
+    )
+    parser.add_argument(
         "--phase-steps-multiplier",
         type=float,
         default=1.0,
@@ -625,6 +658,84 @@ def main() -> None:
             "disable early stopping for one diagnostic run."
         ),
     )
+    parser.add_argument(
+        "--min-hold-bars",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "override the minimum bars a newly-opened position must be held before "
+            "flattening/reversing (default 4 — config['min_hold_bars'], rl/env.py). Raise "
+            "this if the trained policy is churning (opening/closing every few bars) more "
+            "than a real directional edge would justify."
+        ),
+    )
+    parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=None,
+        metavar="C",
+        help="override PPO's starting entropy coefficient (default 0.05 — config['ent_coef']).",
+    )
+    parser.add_argument(
+        "--ent-coef-final",
+        type=float,
+        default=None,
+        metavar="C",
+        help="override the entropy coefficient EntropyDecayCallback decays to (default 0.005).",
+    )
+    parser.add_argument(
+        "--ent-coef-decay-steps",
+        type=int,
+        default=None,
+        metavar="N",
+        help="override how many steps EntropyDecayCallback takes to decay ent_coef (default 100_000).",
+    )
+    parser.add_argument(
+        "--bc-warmstart",
+        action="store_true",
+        help=(
+            "behavior-cloning pretrain the policy on a buy_hold teacher (rl/behavior_cloning.py) "
+            "before PPO training starts. See that module's docstring for why buy_hold, not "
+            "agents_no_regime, is the teacher — the debate cache has essentially zero coverage "
+            "over the training split, so agents_no_regime's rule would just clone 'hold'."
+        ),
+    )
+    parser.add_argument(
+        "--bc-epochs", type=int, default=None, metavar="N",
+        help="BC pretraining epochs over the teacher dataset (default 20).",
+    )
+    parser.add_argument(
+        "--learning-rate", type=float, default=None, metavar="LR",
+        help="override PPO's learning rate (default 3e-4). Lower (e.g. 1e-5) after --bc-warmstart "
+             "so PPO fine-tunes near the cloned prior instead of immediately overwriting it.",
+    )
+    parser.add_argument(
+        "--clip-range", type=float, default=None, metavar="C",
+        help="override PPO's clip_range (default 0.2). Tighter (e.g. 0.1) keeps fine-tuning "
+             "close to a BC-warm-started prior.",
+    )
+    parser.add_argument(
+        "--action-mode",
+        choices=["hybrid", "discrete"],
+        default="hybrid",
+        help=(
+            "'hybrid' (default): Categorical direction + Beta position-fraction "
+            "(MARTAActorCriticPolicy, exact prior behavior). 'discrete': single "
+            "Categorical over rl.policy.DISCRETE_POSITION_MAP's fixed position levels "
+            "(MARTADiscretePolicy, 2026-08-24) — removes the Beta head entirely, added "
+            "after rl/crypto5_feature_predictability.py found ~zero R2 on next-bar "
+            "return magnitude (only a small directional edge), so the Beta head has no "
+            "real magnitude signal to fit and micro-jitters instead."
+        ),
+    )
+    parser.add_argument(
+        "--single-phase",
+        action="store_true",
+        help="train only phases[0], ignoring every later curriculum phase. For "
+             "standalone single-asset experiments (e.g. --crypto5 --action-mode discrete) "
+             "that shouldn't auto-advance to a multi-asset phase.",
+    )
     args = parser.parse_args()
 
     config = build_config(args.quick)
@@ -642,17 +753,76 @@ def main() -> None:
         config["checkpoint_suffix"] = (
             config.get("checkpoint_suffix", "") + f"_es{args.early_stop_sharpe:g}"
         )
+    if args.min_hold_bars is not None:
+        config["min_hold_bars"] = args.min_hold_bars
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_hold{args.min_hold_bars}"
+    if args.ent_coef is not None:
+        config["ent_coef"] = args.ent_coef
+    if args.ent_coef_final is not None:
+        config["ent_coef_final"] = args.ent_coef_final
+    if args.ent_coef_decay_steps is not None:
+        config["ent_coef_decay_steps"] = args.ent_coef_decay_steps
+    if args.bc_warmstart:
+        config["bc_warmstart"] = True
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + "_bc"
+    if args.bc_epochs is not None:
+        config["bc_epochs"] = args.bc_epochs
+    if args.learning_rate is not None:
+        config["learning_rate"] = args.learning_rate
+    if args.clip_range is not None:
+        config["clip_range"] = args.clip_range
+    if args.action_mode != "hybrid":
+        config["action_mode"] = args.action_mode
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_{args.action_mode}"
     # P0.3: seed Python random/NumPy/torch globally before anything else runs. The
     # --seeds sweep re-seeds per-seed inside _run_single_seed; this covers the
     # single-seed (default) path, which previously relied solely on SB3's internal
     # PPO(seed=...) handling and was never seeded at the script level.
     set_seed(config["seed"])
+    # Crypto-only panel (2026-08-24 migration) — set before obs_mode/regime_stream_path
+    # handling below so --crypto5's own regime_stream_path default is in place before an
+    # explicit --regime-stream-path (checked after) can still override it.
+    if args.crypto5:
+        if args.obs_mode == "encoder":
+            raise SystemExit(
+                "--crypto5 requires --obs-mode raw or raw_regime — no encoder was ever "
+                "trained on the crypto5 panel, so obs_mode='encoder' would silently feed "
+                "out-of-distribution data through it."
+            )
+        config["all_assets"] = CRYPTO5_CANONICAL_ASSETS
+        config["canonical_assets"] = CRYPTO5_CANONICAL_ASSETS
+        # str(), not a bare Path — rl/evaluate.py's _build_provenance() serializes
+        # config["regime_stream_path"] straight into ppo_evaluation.json's JSON output via
+        # json.dumps(..., default=float); a raw PosixPath there crashes json.dumps AFTER
+        # training completes and a real checkpoint is already saved (found running the
+        # first real crypto5 training run — the CLI's own --regime-stream-path flag never
+        # hit this because argparse stores it as a plain str already).
+        config["processed_dir"] = str(CRYPTO5_PROCESSED)
+        # --quick already set its own tiny (1024-step) BTC/BTC+ETH phases in build_config —
+        # both asset names are valid crypto5 assets too, so keep those for a fast smoke
+        # test instead of clobbering them with the full 500k-step curriculum.
+        if not args.quick:
+            config["phases"] = copy.deepcopy(CRYPTO5_CURRICULUM_PHASES)
+        # Causal stream (regime/causal_regime_stream.py), not the leaky
+        # regime_stream.parquet — see rl/train.py's CRYPTO5_REGIME_STREAM_PATH docstring
+        # for why the leaky one must never be a default again. --regime-stream-path below
+        # can still override this explicitly (e.g. to reproduce the old leaky numbers).
+        config["regime_stream_path"] = str(CRYPTO5_REGIME_STREAM_CAUSAL_PATH)
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + "_crypto5"
+    # --single-phase must run AFTER --crypto5 (which sets config["phases"] to the full
+    # 2-phase CRYPTO5_CURRICULUM_PHASES) and before the "cap at N phases" length checks
+    # further below (both only trigger on len(phases) > 2, so a length-1 list from here
+    # passes through untouched either way) — placed here so it reliably wins regardless
+    # of what any earlier flag set config["phases"] to.
+    if args.single_phase:
+        config["phases"] = config["phases"][:1]
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + "_1phase"
     # Eval-only is BTC-focused (val metrics, ablation, baselines are all BTC) → keep it light.
     if args.eval_only:
         config["all_assets"] = ["BTC_USDT"]
     if args.benchmark_relative:
         config["benchmark_relative"] = True
-        config["checkpoint_suffix"] = "_benchrel"
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + "_benchrel"
     if args.obs_mode != "encoder":
         config["obs_mode"] = args.obs_mode
         config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_{args.obs_mode}"
@@ -771,8 +941,6 @@ def main() -> None:
             # in phases 3-4. ppo_best.zip holds the best policy seen during training.
             from stable_baselines3 import PPO
 
-            from rl.policy import MARTAActorCriticPolicy
-
             # train_out["best_path"] already carries checkpoint_suffix (e.g. "_benchrel"
             # for --benchmark-relative runs) — reading it here instead of hardcoding
             # "ppo_best.zip" is what keeps a benchmark_relative run's checkpoint from
@@ -784,7 +952,7 @@ def main() -> None:
                 model = PPO.load(
                     str(best_ckpt),
                     device="cpu",
-                    custom_objects={"policy_class": MARTAActorCriticPolicy},
+                    custom_objects={"policy_class": _policy_class_for(config)},
                 )
                 logger.info("Evaluating ppo_best.zip (best val Sharpe), not the final model")
             else:
@@ -829,11 +997,10 @@ def main() -> None:
                 ckpt = Path(f"rl/checkpoints/ppo_best_seed{seed}.zip")
                 if ckpt.exists():
                     from stable_baselines3 import PPO
-                    from rl.policy import MARTAActorCriticPolicy
                     # CPU for eval — see _load_for_eval for why.
                     extra = PPO.load(
                         str(ckpt), device="cpu",
-                        custom_objects={"policy_class": MARTAActorCriticPolicy},
+                        custom_objects={"policy_class": _policy_class_for(config)},
                     )
                     all_models.append(extra)
             multi_res = evaluate_multi_asset(

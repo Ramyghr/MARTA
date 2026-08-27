@@ -142,17 +142,19 @@ _FEEDS: list[dict] = [
     {
         "url": "https://www.coindesk.com/arc/outboundfeeds/rss/",
         "source": "CoinDesk",
-        "assets": ["BTC_USDT", "ETH_USDT", "GOLD", "macro"],
+        # Crypto-only panel (2026-08 migration) — general crypto-market coverage,
+        # extended to the full crypto5 panel like sentiment_agent.py's Fear&Greed set.
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT", "macro"],
     },
     {
         "url": "https://cointelegraph.com/rss",
         "source": "CoinTelegraph",
-        "assets": ["BTC_USDT", "ETH_USDT", "macro"],
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT", "macro"],
     },
     {
         "url": "https://decrypt.co/feed",
         "source": "Decrypt",
-        "assets": ["BTC_USDT", "ETH_USDT", "macro"],
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT", "macro"],
     },
     # feeds.reuters.com/reuters/technologyNews (the old value here) is dead — Reuters
     # retired classic RSS years ago (DNS failure, verified 2026-08-11; confirmed live

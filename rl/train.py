@@ -32,6 +32,26 @@ _HISTORY_PATH = Path("data/results/curriculum_history.json")
 _ENCODER_PATH = Path("encoder/checkpoints/best_encoder.pt")
 _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
 
+# Crypto-only panel (2026-08-24 migration) — pass config["processed_dir"]=CRYPTO5_PROCESSED
+# and config["canonical_assets"]=CRYPTO5_CANONICAL_ASSETS explicitly (run_rl.py's --crypto5
+# flag does this). _PROCESSED/CANONICAL_ASSETS above stay unchanged as the defaults —
+# dashboard/backend/ppo_inference.py and the diagnostic scripts (rl/diagnose_env.py,
+# rl/supervised_predictability.py, rl/audit_test3.py) depend on them.
+CRYPTO5_CANONICAL_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
+CRYPTO5_PROCESSED = Path("data/processed/crypto5_multihorizon")
+# regime_stream.parquet is built by regime/hmm.py's generate_regime_stream(), which calls
+# predict_proba() on the FULL train+val+test embedding sequence in one shot — hmmlearn's
+# forward-backward smoothing means a 2019 row's regime probability is influenced by 2025
+# data (confirmed CRITICAL finding, 2026-08-26 pre-RL audit). Kept as its own named
+# constant (not deleted) only so an explicit, informed comparison against the old leaky
+# numbers (e.g. docs/RESULTS_AND_METHODOLOGY.md Section 9 row 1, "raw_regime, no fixes")
+# stays reproducible — nothing should default to this path anymore.
+CRYPTO5_REGIME_STREAM_PATH = CRYPTO5_PROCESSED / "regime_stream.parquet"
+# regime/causal_regime_stream.py's walk-forward, forward-filtering-only replacement — the
+# artifact any new obs_mode="raw_regime" crypto5 training run should actually read. See
+# run_rl.py's --crypto5 handling, which now defaults config["regime_stream_path"] here.
+CRYPTO5_REGIME_STREAM_CAUSAL_PATH = CRYPTO5_PROCESSED / "regime_stream_causal.parquet"
+
 # Curriculum: each phase adds an asset and raises the Sharpe bar.
 # idle_penalty=0.002 in the env reward is a small constant deduction each step the
 # agent holds a near-zero position, breaking the "always-flat is cheapest" local
@@ -74,6 +94,39 @@ CURRICULUM_PHASES: list[dict] = [
     },
 ]
 
+# Crypto-only curriculum (2026-08-24) — same 2-phase step budgets/idle_penalty as the old
+# panel's CURRICULUM_PHASES[:2] (BTC, then BTC+ETH) so the crypto5 result is a controlled,
+# apples-to-apples comparison against that existing baseline with panel/regime-stream as
+# close to the only changed variable as practical. Unlike the old panel, crypto5 has no
+# forex/commodity daily-upsampling problem (every asset here is native-hourly crypto), so
+# the historical "Phase 3-4 collapse" reason for capping at 2 phases doesn't automatically
+# apply — CRYPTO5_CURRICULUM_PHASES is deliberately kept short for this first run's
+# wall-clock budget, not because a longer crypto5 curriculum is expected to collapse the
+# way the old panel's forex/commodity phases did.
+#
+# Thresholds lowered 2026-08-24 (0.5->0.0, 0.8->0.3) alongside rl/callbacks.py's new hard
+# phase gate (CurriculumCallback._on_step): with the gate now actually stopping training
+# instead of just warning, 0.5/0.8 (the old panel's numbers, tuned for a very different
+# obs_mode/reward setup) would almost certainly gate-fail Phase 1 immediately regardless
+# of whether the fixes actually helped. 0.0 is the real bar this run needs to clear
+# (non-negative risk-adjusted return, not "beats buy-and-hold") before Phase 2 is trusted.
+CRYPTO5_CURRICULUM_PHASES: list[dict] = [
+    {
+        "assets": ["BTC_USDT"],
+        "sharpe_threshold": 0.0,
+        "max_steps": 200_000,
+        "label": "Phase1_BTC",
+        "idle_penalty": 0.002,
+    },
+    {
+        "assets": ["BTC_USDT", "ETH_USDT"],
+        "sharpe_threshold": 0.3,
+        "max_steps": 300_000,
+        "label": "Phase2_BTC_ETH",
+        "idle_penalty": 0.002,
+    },
+]
+
 
 def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTRegimeEncoder | None]:
     """Load aligned parquets, the regime stream, and the frozen encoder.
@@ -94,11 +147,17 @@ def load_data(config: dict) -> tuple[dict[str, pd.DataFrame], pd.DataFrame, TFTR
                          (e.g. data/processed/raw_baseline/regime_stream.parquet for
                          raw_regime), else falls back to the production path (irrelevant
                          content for "raw" mode, which never reads it).
+
+    config["processed_dir"] (2026-08-24 crypto-only migration): overrides where aligned
+    parquets are read from (default _PROCESSED = data/processed). The crypto5 panel's
+    BNB/LTC/XRP aligned parquets only exist under data/processed/crypto5_multihorizon/,
+    not the top-level directory — pass CRYPTO5_PROCESSED for crypto5 training.
     """
     obs_mode = config.get("obs_mode", "encoder")
     assets = config.get("all_assets", CANONICAL_ASSETS)
+    processed_dir = Path(config.get("processed_dir", _PROCESSED))
     aligned_dfs = {
-        a: pd.read_parquet(aligned_path(a, _PROCESSED), engine="pyarrow")
+        a: pd.read_parquet(aligned_path(a, processed_dir), engine="pyarrow")
         for a in assets
     }
     regime_stream_path = Path(config.get("regime_stream_path", _REGIME_STREAM_PATH))
@@ -203,6 +262,14 @@ def build_env_factory(
             min_hold_stop_loss_dd=config.get("min_hold_stop_loss_dd", 0.05),
             max_drawdown_termination=config.get("max_drawdown_termination", 0.20),
             benchmark_relative=config.get("benchmark_relative", False),
+            # None (default) -> MARTATradingEnv falls back to the module CANONICAL_ASSETS
+            # (old 4-asset panel) — see that parameter's docstring. Crypto5 training passes
+            # config["canonical_assets"] = CRYPTO5_CANONICAL_ASSETS explicitly.
+            canonical_assets=config.get("canonical_assets"),
+            # "hybrid" (default) preserves exact prior behavior. Must match the policy
+            # class selected in train_ppo() (MARTADiscretePolicy needs action_mode=
+            # "discrete", or action_space/policy output head shapes disagree).
+            action_mode=config.get("action_mode", "hybrid"),
         )
 
     return factory
@@ -278,8 +345,13 @@ def train_ppo(
         monitored = Monitor(train_env)
 
     device = config["device"]
+    if config.get("action_mode", "hybrid") == "discrete":
+        from rl.policy import MARTADiscretePolicy
+        policy_cls = MARTADiscretePolicy
+    else:
+        policy_cls = MARTAActorCriticPolicy
     model = PPO(
-        policy=MARTAActorCriticPolicy,
+        policy=policy_cls,
         env=monitored,
         learning_rate=config["learning_rate"],
         n_steps=config["n_steps"],
@@ -295,6 +367,27 @@ def train_ppo(
         seed=config.get("seed", 0),
         device=device,
     )
+
+    # Behavior-cloning warm-start (2026-08-24) — see rl/behavior_cloning.py's module
+    # docstring for why buy_hold, not agents_no_regime, is the teacher. Runs on a
+    # dedicated sequential train-split env (not train_env/val_env, which the curriculum
+    # callback owns) so it never disturbs the phase-1 asset list or PPO's own rollout
+    # buffer state.
+    if config.get("bc_warmstart"):
+        from rl.behavior_cloning import generate_buy_hold_trajectories, pretrain_bc
+
+        bc_env = env_factory(
+            assets=[phase1_assets[0]], split="train", sequential=True, debate=False,
+        )
+        bc_obs, bc_actions = generate_buy_hold_trajectories(bc_env, asset=phase1_assets[0])
+        pretrain_bc(
+            model.policy,
+            bc_obs,
+            bc_actions,
+            epochs=config.get("bc_epochs", 20),
+            batch_size=config.get("bc_batch_size", 256),
+            lr=config.get("bc_lr", 1e-3),
+        )
 
     # checkpoint_suffix isolates this run's checkpoints from any other seed's — see
     # CurriculumCallback's docstring on checkpoint_suffix for the clobbering bug this

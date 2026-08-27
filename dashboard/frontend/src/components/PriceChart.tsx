@@ -152,7 +152,12 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
     const assetChanged = prevAssetRef.current !== asset;
     prevAssetRef.current = asset;
 
-    const isBridgedAsset = asset === "EURUSD" || asset === "GOLD";
+    // Crypto-only panel (2026-08 migration): every asset now has a live-bridge
+    // boundary (dashboard/backend/live_feature_bridge.py extends all 5 crypto5
+    // assets the same way EURUSD/GOLD were bridged before), so this is no longer
+    // asset-specific — always append-and-bridge rather than treat a live tick as a
+    // fresh dataset.
+    const isBridgedAsset = true;
     const datasetSwapped =
       assetChanged ||
       candles.length === 0 ||
@@ -280,10 +285,10 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
     return bounds.slice(-20);
   }, [displayCandles]);
 
-  // Marks where historical data (ends 2024-12-31 for EURUSD/GOLD) hands off to
-  // today's live Twelve Data ticks, so the transition reads as a gap, not a bar.
+  // Marks where historical data hands off to live-bridged ticks, so the transition
+  // reads as a gap, not a bar. All 5 crypto5 assets are bridged the same way
+  // EURUSD/GOLD were (see live_feature_bridge.py) — no longer asset-specific.
   const liveBridgeBoundary = useMemo(() => {
-    if (asset !== "EURUSD" && asset !== "GOLD") return null;
     const boundary = historicalEndRef.current;
     const last = displayCandles.at(-1);
     if (!boundary || !last || last.timestamp === boundary) return null;

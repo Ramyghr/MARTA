@@ -14,6 +14,12 @@ from typing import Callable
 SYMBOL_MAP = {
     "BTC_USDT": "BTC/USDT",
     "ETH_USDT": "ETH/USDT",
+    # Crypto-only panel (2026-08 migration) — same Binance/ccxt path as BTC/ETH above,
+    # no bridging needed (unlike EURUSD/GOLD's Twelve Data workaround below): all three
+    # are genuinely live-tradeable pairs on the same exchange.
+    "BNB_USDT": "BNB/USDT",
+    "LTC_USDT": "LTC/USDT",
+    "XRP_USDT": "XRP/USDT",
 }
 
 # Twelve Data /price symbols, keyed by the dashboard's internal asset id (matches

@@ -11,6 +11,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebarCollapsed = useMARTAStore((s) => s.sidebarCollapsed);
   const setRegimeNames = useMARTAStore((s) => s.setRegimeNames);
   const setApprovalMode = useMARTAStore((s) => s.setApprovalMode);
+  const setRlExecutionEnabled = useMARTAStore((s) => s.setRlExecutionEnabled);
 
   // Regime semantics shift every time the HMM is refit — pull the live, dynamically
   // generated descriptions once at app boot instead of trusting the static REGIME_NAMES
@@ -31,6 +32,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.getApprovalMode().then((s) => setApprovalMode(s.approval_mode)).catch(() => {});
   }, [setApprovalMode]);
+
+  // RL execution toggle — same server-persisted hydration pattern. Default off (see
+  // docs/RESULTS_AND_METHODOLOGY.md Section 9).
+  useEffect(() => {
+    api.getRlExecution().then((s) => setRlExecutionEnabled(s.rl_execution_enabled)).catch(() => {});
+  }, [setRlExecutionEnabled]);
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>

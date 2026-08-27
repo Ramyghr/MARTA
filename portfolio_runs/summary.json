@@ -1,0 +1,53 @@
+{
+  "baseline": {
+    "sharpe": -0.7533225259362996,
+    "sortino": -0.9140491278058317,
+    "max_drawdown": 0.667610583984005,
+    "calmar": -0.617278713404598,
+    "total_return": -0.43080126818898024,
+    "n_trades": 0,
+    "n_meaningful_trades": 0,
+    "mean_turnover": 0.0,
+    "hold_ratio": 0.0,
+    "mean_trade_duration_hours": 0.0,
+    "median_trade_duration_hours": 0.0,
+    "mean_turnover_cost_fraction": 0.0001394652213722487,
+    "mean_cash_weight": 0.18061693874023949,
+    "n_steps": 8783,
+    "wall_clock_seconds": 1257.503399848938,
+    "timesteps": 200000,
+    "obs_dim": 6688
+  },
+  "regime": {
+    "sharpe": -1.3726941854061527,
+    "sortino": -1.59256686370339,
+    "max_drawdown": 0.7226807674053237,
+    "calmar": -1.0343724554843137,
+    "total_return": -0.5930223580894398,
+    "n_trades": 0,
+    "n_meaningful_trades": 0,
+    "mean_turnover": 0.0,
+    "hold_ratio": 0.0,
+    "mean_trade_duration_hours": 0.0,
+    "median_trade_duration_hours": 0.0,
+    "mean_turnover_cost_fraction": 0.00014328329869749959,
+    "mean_cash_weight": 0.14559052678729142,
+    "n_steps": 8783,
+    "wall_clock_seconds": 1340.6473696231842,
+    "timesteps": 200000,
+    "obs_dim": 6718
+  },
+  "buy_hold_equal_weight": {
+    "sharpe": 1.2030589479582925,
+    "sortino": 1.408849112674594,
+    "max_drawdown": 0.4306301822971542,
+    "calmar": 1.6466757474756673,
+    "total_return": 0.7093874425089435,
+    "n_trades": 0,
+    "n_meaningful_trades": 0,
+    "mean_turnover": 0.0,
+    "hold_ratio": 0.0,
+    "mean_trade_duration_hours": 0.0,
+    "median_trade_duration_hours": 0.0
+  }
+}

@@ -83,9 +83,9 @@ async def notify_system_startup() -> None:
     """Notify when the MARTA backend finishes lifespan startup."""
     msg = (
         "🟢 <b>MARTA System Online</b>\n\n"
-        "• PPO inference: active\n"
+        "• Execution: LLM consensus + static rule (RL execution is an opt-in toggle)\n"
         "• Hourly scheduler: running\n"
-        "• Live feeds: BTC/ETH (Binance) + EURUSD/GOLD (Twelve Data)\n"
+        "• Live feeds: BTC/ETH/BNB/LTC/XRP (Binance)\n"
         "• Paper trading: enabled"
     )
     await send_telegram(msg)

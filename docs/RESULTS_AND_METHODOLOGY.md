@@ -18,9 +18,22 @@ unresolved. Read this one first if you need to decide what to ask your advisor.*
   baselines (raw features, random projection, buy-and-hold), and negative results were kept
   and documented rather than hidden or silently re-tried until something looked good.
 - The current, honest state: raw market features carry a **real but weak** predictive edge
-  (better than a learned encoder, but still small); no RL configuration tried has turned that
-  weak edge into a profitable policy — the best result so far still loses money, just less
-  badly than earlier attempts.
+  (better than a learned encoder on standalone predictive AUC, but still small); no RL
+  configuration tried has turned that into a *statistically defensible* profitable policy. The
+  single best checkpoint found (`ppo_best_benchrel.zip`, Sharpe +0.707, positive total return)
+  is nominally profitable but its edge over buy-and-hold is not statistically significant — see
+  the 2026-08-24 correction in Section 2 for the reconciliation of several checkpoints that had
+  never been directly compared before, including a since-corrected "-1.21 is the current best"
+  claim that was actually the *worst* of the three checkpoints compared.
+- **Final word on the RL layer (2026-08-24/25, Section 9)**: after that reconciliation, the same
+  question was re-tested on the crypto-only panel with a complete, controlled ablation — regime
+  conditioning, reward formulation (`benchmark_relative`), behavior-cloning warm-start, and
+  discrete vs. continuous action space, each isolated one at a time. None produced a confirmed,
+  statistically defensible edge over buy-and-hold. **This is being treated as final, not as a
+  configuration still being searched over** — the recommendation is to ship the dashboard with
+  the multi-agent LLM consensus + static execution path as the default, keep RL execution as an
+  explicit, opt-in experimental toggle with a warning banner, and document this ablation as the
+  project's controlled negative result on RL execution.
 - This document exists to help you (1) decide what to ask your advisor, and (2) have a
   15-minute-ready narrative that shows the rigor even though the number at the end is negative.
 
@@ -166,13 +179,78 @@ money badly:
   expected value) — a steady bleed, not a blowup.
 - Retrained with 3x the training steps (after discovering and fixing a bug where an early-
   stopping guard was silently cutting training short before the longer run could ever be
-  tested): Sharpe improved from -2.75 to -1.21, and the result is **no longer statistically
-  distinguishable from buy-and-hold**. But the win rate stayed at ~47% — the improvement came
-  from the policy learning to size down and trade less, not from learning to predict direction.
+  tested): Sharpe improved from -2.75 to -1.21, still losing money and still worse than every
+  other checkpoint in the table below — see the correction directly under it.
 
-**Current honest state: still not profitable, meaningfully less unprofitable than earlier
-attempts, and the ceiling appears to be set by the market signal being genuinely weak, not by
-undertrained models or fixable bugs.**
+**Correction (2026-08-24 reconciliation, part of the LLM/agent-layer follow-up audit) — "-1.21
+was not, in fact, the current best result.** Several parallel checkpoint families exist on disk
+under similar names, and they had never been directly compared side by side under one
+consistent, fresh re-evaluation until now. Doing that (re-running `run_rl.py --eval-only` on
+every plausible "final" candidate, reading each checkpoint's own stored `observation_space`
+directly via `PPO.load()` rather than trusting filenames) gives:
+
+| Checkpoint | `obs_mode` | Reward | `marta_full` Sharpe | vs. buy-hold |
+|---|---|---|---|---|
+| `ppo_best_3x_es-10_raw_regime.zip` | raw + regime prob, 3x steps | absolute | **-1.211** | not significant |
+| `ppo_best.zip` (current default) | raw, no regime prob | absolute | **+0.322** | not significant |
+| `ppo_best_benchrel.zip` | **encoder** (128-dim), benchmark_relative | excess-over-buy-hold | **+0.707** | not significant |
+
+"-1.21" was a real, correctly-computed number for the specific checkpoint that produced it — but
+that checkpoint (raw features *plus* the raw-baseline regime probability vector, 3x training
+steps) turns out to be the **worst** of the three, not the "current, latest" result the original
+write-up implied. The actual best Sharpe found anywhere in this project's history so far is
++0.707, on `ppo_best_benchrel.zip` — which combines the *encoder* embedding (the architecture
+this whole pivot concluded was weaker on standalone predictive AUC) with the
+`benchmark_relative` reward formulation. The two variables (observation architecture, reward
+shaping) were never tested factorially against each other, so this does not mean the encoder
+"wins" — it means `benchmark_relative` was only ever combined with the encoder, not with raw
+features, and that specific untested combination could be either better or worse.
+
+**Current honest state, corrected: still not profitable, and no configuration tested — including
++0.707, the best one found — is statistically distinguishable from buy-and-hold. The core
+conclusion is unchanged from before this correction (nothing beats buy-and-hold with
+confidence); what changed is which specific number and checkpoint should be cited as "the
+current best," and the acknowledgment that the raw-feature-plus-regime-probability combination
+specifically (not raw features alone) is the worst performer found, not a representative
+"current" result.**
+
+### Crypto-only panel result (2026-08-24, same reconciliation session)
+
+Following the agent-layer's crypto-only migration (Section 7), the RL environment was migrated
+too: `rl/env.py`'s asset-ID/portfolio sizing was converted from hardcoded 4-asset constants to
+an instance-level `canonical_assets=` parameter (module defaults kept unchanged — see that
+section for why: `dashboard/backend/ppo_inference.py` depends on them for the live-deployed
+checkpoint), and a second real bug was fixed in the same pass: the raw observation window's
+per-bar feature count was hardcoded to 14, which would have silently mismatched
+crypto5_multihorizon's actual 22-column aligned data (now derived from the data itself). Both
+fixes are covered by new unit tests (`tests/test_rl_env.py`, 17/17 passing).
+
+A real PPO training run was launched on the crypto5 panel with `obs_mode="raw_regime"` (raw
+features + crypto5's own 6-state regime probability vector) — the config that actually tests
+this project's core thesis, as opposed to `obs_mode="raw"` which doesn't use regime information
+at all. **Result: Sharpe -2.717, statistically significantly worse than buy-and-hold** (95%
+bootstrap CI [-7.103, -1.329], `significant: true`) — the only one of the four checkpoints
+compared in this document (the three reconciled above, plus this one) where the gap from
+buy-and-hold clears statistical significance at all, in the negative direction.
+
+**A real bug was also caught mid-run**: the first attempt crashed during final JSON
+serialization (`TypeError: float() argument must be a string or a real number, not
+'PosixPath'`) — `run_rl.py`'s new `--crypto5` flag stored `regime_stream_path`/`processed_dir`
+as `pathlib.Path` objects, and `rl/evaluate.py`'s provenance stamping serializes
+`config["regime_stream_path"]` directly into the output JSON. The training run and its
+checkpoint were unaffected (already saved to disk before the crash); fixed by storing both as
+plain strings, and evaluation was re-run cleanly against the already-trained checkpoint.
+
+**Important caveat on how much this result can conclusively say:** training early-stopped at
+only 30,000 steps (three consecutive validation evals below the -0.5 Sharpe threshold), far
+short of the old panel's comparable raw_regime run, which was deliberately extended to 3x its
+original step budget specifically because the original, shorter run was found to be
+undertrained. This crypto5 run never got that extension — it is a legitimate first data point
+against the crypto-conditioning thesis, but it is also the least-trained of the four checkpoints
+compared here, and it is not possible from this run alone to cleanly separate "the crypto5 panel
+plus regime conditioning doesn't help" from "this specific run didn't get enough steps before
+the early-stop guard (correctly, on its own terms) cut it off." A longer run, and/or the
+`obs_mode="raw"` (no regime) crypto5 comparison, would be needed to say more.
 
 ---
 
@@ -484,3 +562,106 @@ intentional, documented default kept for a specific untouched consumer (this fil
 Section 7/8 notes exactly which). The RL environment itself (`rl.env.CANONICAL_ASSETS`) is
 still the old 4-asset panel — untouched, and correctly so: migrating it is the RL layer's own
 work, not a precondition the agent layer needed to satisfy first.
+
+---
+
+## 9. RL on the crypto5 panel — a complete, controlled ablation, and a final decision (2026-08-24/25)
+
+Following the crypto-only migration (Section 8), `rl/env.py` was migrated the same way — asset
+sizing (`canonical_assets=`), portfolio/asset-ID blocks, and the raw-window feature count all
+converted from hardcoded 4-asset constants to instance-level parameters, module defaults left
+untouched for `dashboard/backend/ppo_inference.py`'s sake (17/17 new tests passing,
+`tests/test_rl_env.py`). With that in place, every lever raised as a plausible fix for "PPO
+never beats buy-and-hold" was tested, one at a time, against the same BTC(+ETH) validation
+window. `buy_hold`'s own Sharpe on this window is **1.498** (91.8% total return) — the number
+every variant below is measured against.
+
+| # | Config | Sharpe | Δ vs buy-hold (95% CI) | Significant | `n_trades` |
+|---|---|---|---|---|---|
+| 1 | `raw_regime`, no fixes | -2.717 | -4.300 [-7.103, -1.329] | **yes, worse** | 4,032 |
+| 2 | `raw`, no fixes | -1.211 | -2.680 [-5.351, -0.044] | **yes, worse** | 6,019 |
+| 3 | `raw` + `benchmark_relative` + `min_hold_bars=24` | -0.515 | -2.076 [-4.099, -0.048] | **yes, worse** | 5,991 |
+| 4 | (3) + behavior-cloning warm-start from a `buy_hold` teacher | **+1.461** | -0.035 [-0.140, 0.070] | no (matches teacher) | 181 (10 meaningful) |
+| 5 | `raw` + discrete 5-action space (no BC), `min_hold_bars=168` | -0.034 | -1.643 [-3.714, 0.548] | no (inconclusive) | 1,028 |
+
+**What each row actually tested, and what it found:**
+
+**Rows 1-2 (obs_mode, no reward shaping):** dropping the regime-probability block (`raw_regime`
+→ `raw`) improved Sharpe by 1.5 points, consistent with the lookahead-bias finding — the HMM's
+`predict()`/`predict_proba()` decode the *entire* concatenated per-asset sequence (Viterbi/
+forward-backward smoothing), so `regime_prob_*` at any training-split timestamp is influenced by
+data from after it, up to 2025. Removing it helped, but both configurations were still
+**significantly worse than buy-and-hold** — dropping the leaky feature wasn't sufficient on its
+own.
+
+**Row 3 (reward shaping, no BC):** `benchmark_relative=True` (reward excess return over
+buy-and-hold, not absolute risk-adjusted return) plus `min_hold_bars=24` (up from 4) narrowed the
+gap further (-1.211 → -0.515) but the policy was still trading almost as often (5,991 trades) and
+still significantly underperforming.
+
+**Row 4 (behavior-cloning warm-start):** the only configuration not significantly different from
+buy-and-hold. Root-caused during the pass: `agents_no_regime` (the originally proposed BC
+teacher) has real debate-cache coverage over only **1 of ~40,000 training-split hours** — cloning
+it would have taught the network to always hold. Used `buy_hold` instead (dense, no
+debate-cache dependency, and the strongest baseline in every table above). A first BC attempt
+(`ent_coef=0.001`, `lr=1e-5`) visibly froze the policy at the cloned prior (`approx_kl` near
+zero, `entropy_loss` flipped positive — the differential-entropy signature of a Beta distribution
+collapsed to a spike) and was killed and relaunched with `ent_coef=0.02`/`lr=5e-5`. The result,
++1.461 Sharpe, is real in the sense that the policy is not frozen (10 genuine trades, not the
+teacher's zero) — but a per-feature predictability check (new: `rl/crypto5_feature_predictability.py`)
+found only a modest edge exists at all (best single feature `rsi`, 54.3% directional accuracy
+out-of-sample, R² ≈ 0 for magnitude on every feature), and 10 trades over a full year has no
+statistical power to confirm this result reflects genuine skill rather than a well-executed
+reproduction of the teacher it started from. Both readings are consistent with the data; neither
+is provable at this sample size.
+
+**Row 5 (discrete action space, no BC):** tested the hypothesis that the continuous Beta
+position head was itself the source of excess trading — a plausible, well-reasoned bet given
+the 5,991-6,019 trade counts in rows 2-3. It wasn't: with the *same* `min_hold_bars=168` (7×
+tighter than row 3) locking every open position, the discrete policy still produced 1,028
+trades — roughly one every 8.5 days, almost exactly the minimum-hold floor itself — and did not
+clear the pre-registered 0.0 Sharpe gate at 200k steps (a hard stop this session added to
+`rl/callbacks.py:CurriculumCallback`, which fired correctly here). `min_hold_bars` was the
+load-bearing lever for trade frequency all along, not the parameterization of the action
+distribution.
+
+**Ceiling check (`rl/crypto5_feature_predictability.py`):** before concluding this is a
+structural limit rather than an unfound architecture, each of the 22 crypto5 features was tested
+alone (20 lags, Ridge for R², logistic regression for direction, train `<2024`, evaluate
+out-of-sample on 2024) against next-bar direction. 4 of 22 clear 52% directional accuracy
+(`rsi` 54.3%, `close_return` 53.4%, `obv_raw`/`macd_histogram` ~53.1%); R² is ≈0 or negative for
+every feature — no linear signal on return *magnitude*, only a weak directional lean. This rules
+out "there is genuinely nothing to find" as a complete explanation (row 4's BC-preserved edge
+is not obviously impossible given a 54% signal exists) without confirming "the RL formulation is
+leaving it on the table" either — the edge is real but small, and every architectural lever tried
+against it (regime conditioning, reward shaping, BC warm-start, discrete actions) either made
+things worse or reproduced the teacher without demonstrably exceeding it.
+
+### Final decision on the RL layer
+
+Following the session's own pre-committed stopping rule (set before row 5 ran, to avoid
+open-ended iteration against a defense deadline): rows 1, 2, 3, and 5 are all either
+significantly worse than buy-and-hold or statistically inconclusive; row 4 cannot be confirmed
+as a genuine edge over its own teacher at 10 trades. Four independent architectural levers
+(regime conditioning, reward formulation, imitation warm-start, action-space parameterization)
+were each tested in isolation and none produced a confirmed, statistically defensible
+improvement over buy-and-hold. **This is being treated as the RL layer's final result for this
+project**, not a configuration still being searched over.
+
+**Concrete recommendation, adopted:**
+1. **Ship the dashboard with the multi-agent LLM consensus + static execution path as the
+   default** (`agents_no_regime`-style, the same rule-based sizing already in
+   `rl/ablation.py` — real Sharpe 1.4-2.0 across this session's ablations, though itself only
+   validated on a thin, ~44-51-trade sample and not immune to the same statistical-power
+   caveat applied to row 4 above).
+2. **RL execution stays in the dashboard as an explicit, opt-in experimental toggle** with a
+   visible warning banner — not removed (the engineering and checkpoints are real and
+   reproducible), but not the default a user lands on without choosing it.
+3. **This ablation table is the documented negative result** — controlled, one variable at a
+   time, every number reproducible from the checkpoint/ablation-JSON pairs referenced above.
+   Consistent with this document's Section 2/3 framing throughout: a rigorous negative result,
+   clearly bounded and evidenced, is the deliverable here, not a disguised failure.
+
+Neither the dashboard default-path change nor the warning-banner UI work has been implemented
+yet as of this entry — this section records the decision and its evidence; the dashboard code
+change is separate, explicit follow-up work.

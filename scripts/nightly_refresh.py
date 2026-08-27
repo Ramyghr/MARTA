@@ -30,6 +30,10 @@ _FRESHNESS   = _ROOT / "data" / "freshness.json"
 _CRYPTO_ASSETS = [
     {"symbol": "BTC/USDT", "safe_name": "BTC_USDT", "exchange": "binance"},
     {"symbol": "ETH/USDT", "safe_name": "ETH_USDT", "exchange": "binance"},
+    # Crypto-only panel (2026-08 migration)
+    {"symbol": "BNB/USDT", "safe_name": "BNB_USDT", "exchange": "binance"},
+    {"symbol": "LTC/USDT", "safe_name": "LTC_USDT", "exchange": "binance"},
+    {"symbol": "XRP/USDT", "safe_name": "XRP_USDT", "exchange": "binance"},
 ]
 _STALE_HOURS = 26   # alert if last bar is more than this many hours old
 

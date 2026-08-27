@@ -15,6 +15,7 @@ import torch
 
 from encoder.model import TFTRegimeEncoder
 from rl.env import (
+    ASSET_ID_DIM,
     CONSENSUS_DIM,
     PORTFOLIO_DIM,
     REGIME_DIM,
@@ -87,7 +88,73 @@ def env(aligned_df, regime_stream, encoder) -> MARTATradingEnv:
 
 def test_observation_space_shape(env):
     assert env.observation_space.shape == (STATE_DIM,)
-    assert STATE_DIM == REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM  # 152
+    # STATE_DIM includes the per-episode asset-ID one-hot block (added 2026-08-08) on top
+    # of regime+consensus+portfolio — 156, not the pre-asset-ID 152 this test used to check.
+    assert STATE_DIM == REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156
+
+
+def test_observation_space_shape_scales_with_canonical_assets(aligned_df, regime_stream, encoder):
+    """2026-08-24: canonical_assets= must size the portfolio/asset-id blocks off
+    len(canonical_assets), not the module-level 4-asset PORTFOLIO_DIM/ASSET_ID_DIM —
+    otherwise a 5th asset either gets truncated into an existing slot or indexed out of
+    bounds. n_position_slots=5 -> portfolio_dim=9 (5 slots + 4 scalars), asset_id_dim=5."""
+    vol_array = np.full(N_ROWS, 0.02, dtype=np.float64)
+    five_assets = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"],
+            aligned_dfs={"BTC_USDT": aligned_df},
+            regime_stream_df=regime_stream,
+            encoder=encoder,
+            debate_results=None,
+            split="all",
+            max_steps=50,
+            canonical_assets=five_assets,
+        )
+    assert e.n_position_slots == 5
+    assert e.portfolio_dim == 9
+    assert e.asset_id_dim == 5
+    expected_obs_dim = REGIME_DIM + CONSENSUS_DIM + 9 + 5  # 158
+    assert e.observation_space.shape == (expected_obs_dim,)
+    obs, _ = e.reset(seed=0)
+    assert obs.shape == (expected_obs_dim,)
+    # Asset-id one-hot should mark BTC_USDT's position (index 0 in five_assets).
+    portfolio_vec = e._portfolio_vec("BTC_USDT", e._t)
+    asset_id_vec = e._asset_id_vec("BTC_USDT")
+    assert portfolio_vec.shape == (9,)
+    assert asset_id_vec.shape == (5,)
+    assert asset_id_vec[0] == 1.0
+    assert asset_id_vec[1:].sum() == 0.0
+
+
+def test_raw_obs_mode_uses_actual_feature_count(regime_stream):
+    """2026-08-24: obs_mode='raw' must derive its window dim from the aligned data's own
+    column count (crypto5_multihorizon has 22 columns, not the original panel's 14) rather
+    than a hardcoded 14 — otherwise a 22-column panel produces a raw window array that
+    doesn't match the declared observation_space shape."""
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2018-06-01", periods=N_ROWS, freq="1h", tz="UTC")
+    cols_22 = [f"feat_{i}" for i in range(21)] + ["close_return"]
+    df_22 = pd.DataFrame(
+        rng.standard_normal((N_ROWS, 22)).astype(np.float32), index=idx, columns=cols_22
+    )
+    vol_array = np.full(N_ROWS, 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"],
+            aligned_dfs={"BTC_USDT": df_22},
+            regime_stream_df=regime_stream,
+            encoder=None,
+            debate_results=None,
+            split="all",
+            max_steps=50,
+            obs_mode="raw",
+        )
+    assert e.n_raw_features == 22
+    expected_obs_dim = 60 * 22 + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+    assert e.observation_space.shape == (expected_obs_dim,)
+    obs, _ = e.reset(seed=0)
+    assert obs.shape == (expected_obs_dim,)
 
 
 def test_action_space_shape(env):

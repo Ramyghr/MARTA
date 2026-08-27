@@ -46,7 +46,12 @@ for p in (str(MARTA_ROOT), str(Path(__file__).resolve().parent)):
 import ppo_inference
 import regime_service
 
+# Crypto-only panel (2026-08 migration) — legacy 4-asset list kept for the encoder-based
+# backfill path below (_backfill_asset); the 5 crypto5 assets use _backfill_asset_crypto5
+# instead (raw features straight into the crypto5 HMM, no encoder/PCA — same dispatch
+# regime_service.get_live_regime() makes for live queries).
 _CANONICAL_ASSETS = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
+_CRYPTO5_ASSETS = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 _LIVE_LOG_PATH = MARTA_ROOT / "data" / "processed" / "regime_live_log.parquet"
 
 
@@ -103,14 +108,77 @@ def _backfill_asset(asset: str) -> pd.DataFrame | None:
     return out
 
 
+def _backfill_asset_crypto5(asset: str) -> pd.DataFrame | None:
+    """Same reconstruction as _backfill_asset, but for the crypto5 raw-feature HMM —
+    reads dashboard/backend/live_feature_bridge.py's {asset}_normalized_live.parquet
+    directly instead of going through ppo_inference's encoder embedding path (crypto5's
+    model was never trained on encoder embeddings at all)."""
+    if regime_service._crypto5_df is None:
+        regime_service.load_regime_stream()
+    asset_df = regime_service._crypto5_df[regime_service._crypto5_df["asset"] == asset]
+    if asset_df.empty:
+        print(f"[{asset}] no crypto5 regime_stream rows — skipping")
+        return None
+    frozen_max = asset_df.index.max()
+
+    bridge_path = regime_service._CRYPTO5_PROCESSED / f"{asset}_normalized_live.parquet"
+    if not bridge_path.exists():
+        print(f"[{asset}] no live-bridge file at {bridge_path} — run live_feature_bridge.py first — skipping")
+        return None
+    live_df = pd.read_parquet(bridge_path, engine="pyarrow")
+    data_max = live_df.index.max()
+
+    gap_hours = pd.date_range(frozen_max, data_max, freq="1h", inclusive="right")
+    if len(gap_hours) == 0:
+        print(f"[{asset}] no gap to backfill (data ends at/before {frozen_max})")
+        return None
+    print(f"[{asset}] backfilling {len(gap_hours):,} hours: {gap_hours[0]} -> {gap_hours[-1]}")
+
+    # Every timestamp in the gap needs its own trailing 168h window (same lookback
+    # get_live_regime_crypto5 uses) — batched into one predict_proba() call per
+    # timestamp's window is still one call per hour, not per-feature, so this stays fast.
+    rows_out = []
+    for ts in gap_hours:
+        window = live_df[live_df.index <= ts][regime_service._CRYPTO5_FEATURE_COLS].tail(
+            regime_service._LIVE_LOOKBACK_HOURS
+        )
+        if len(window) < regime_service._LIVE_LOOKBACK_HOURS:
+            continue
+        probs_seq = regime_service._crypto5_hmm_model.predict_proba(window.to_numpy(dtype=np.float64))
+        probs_arr = probs_seq[-1]
+        row = {"timestamp": ts, "asset": asset, "regime_label": int(probs_arr.argmax())}
+        for i, p in enumerate(probs_arr):
+            row[f"regime_prob_{i}"] = float(p)
+        rows_out.append(row)
+
+    if not rows_out:
+        print(f"[{asset}] no valid windows in the gap — skipping")
+        return None
+    out = pd.DataFrame(rows_out).set_index("timestamp")
+    print(f"[{asset}] backfilled {len(out):,} rows")
+    return out
+
+
 def main() -> None:
     ppo_inference.load_model()
     regime_service.load_regime_stream()
     regime_service.load_regime_models()
     if regime_service._pca_model is None or regime_service._hmm_model is None:
-        raise RuntimeError("PCA/HMM models failed to load — check regime/checkpoints/")
+        print("WARNING: legacy PCA/HMM models failed to load — skipping EURUSD/GOLD backfill")
 
-    backfilled = [df for asset in _CANONICAL_ASSETS if (df := _backfill_asset(asset)) is not None]
+    backfilled = []
+    if regime_service._pca_model is not None and regime_service._hmm_model is not None:
+        for asset in ("EURUSD", "GOLD"):
+            if (df := _backfill_asset(asset)) is not None:
+                backfilled.append(df)
+
+    if regime_service._crypto5_hmm_model is None:
+        print("WARNING: crypto5 HMM failed to load — skipping crypto5 backfill")
+    else:
+        for asset in _CRYPTO5_ASSETS:
+            if (df := _backfill_asset_crypto5(asset)) is not None:
+                backfilled.append(df)
+
     if not backfilled:
         print("Nothing to backfill.")
         return

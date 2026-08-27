@@ -54,6 +54,13 @@ interface MARTAStore {
   approvalMode: boolean;
   setApprovalMode: (on: boolean) => void;
 
+  // RL execution toggle — server-persisted, same reasoning as approvalMode above.
+  // Default off: docs/RESULTS_AND_METHODOLOGY.md Section 9's controlled ablation found
+  // no crypto5 RL configuration with a defensible edge over buy-and-hold. LLM consensus
+  // + static execution is the default signal source; this is an explicit opt-in.
+  rlExecutionEnabled: boolean;
+  setRlExecutionEnabled: (on: boolean) => void;
+
   // Sidebar collapse
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -100,6 +107,9 @@ export const useMARTAStore = create<MARTAStore>((set) => ({
 
   approvalMode: false,
   setApprovalMode: (approvalMode) => set({ approvalMode }),
+
+  rlExecutionEnabled: false,
+  setRlExecutionEnabled: (rlExecutionEnabled) => set({ rlExecutionEnabled }),
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

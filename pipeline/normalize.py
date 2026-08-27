@@ -24,7 +24,9 @@ import pandas as pd
 
 from utils.logger import logger
 
-PROCESSED_DIR = Path("data/processed")
+# Anchored to this file's location, not the caller's cwd — see pipeline/features.py's
+# identical fix for why (a real PermissionError surfaced when called with a non-root cwd).
+PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 # Indicators that receive the standard 720h rolling z-score.
 NORMALIZE_COLS = [

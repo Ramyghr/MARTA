@@ -59,11 +59,16 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pipeline.features import compute_features
-from pipeline.normalize import normalize_features
+from pipeline.normalize import normalize_features, normalize_features_multihorizon
 from utils.assets import ASSET_FILE_STEM
 from live_feed import FOREX_SYMBOLS, TWELVE_DATA_KEY, SYMBOL_MAP as CRYPTO_SYMBOLS
 
 _PROCESSED = MARTA_ROOT / "data" / "processed"
+# Crypto-only panel (2026-08 migration) — the "latest regime model" (crypto5_multihorizon's
+# raw-feature HMM, no encoder/PCA) needs the 22-column multihorizon schema, not the old
+# 14-column one. Every asset in CRYPTO_SYMBOLS (now 5, after live_feed.py's migration) is
+# bridged into this schema instead — EURUSD/GOLD (FOREX_SYMBOLS) are untouched, still 14-col.
+_CRYPTO5_PROCESSED = _PROCESSED / "crypto5_multihorizon"
 
 # Rows of trailing raw-OHLCV context fed into compute_features each cycle, so the 720h
 # rolling z-score has full history right at whatever the current boundary is — without
@@ -136,20 +141,24 @@ def _raw_live_path(file_stem: str) -> Path:
 
 
 def _load_raw_accumulator(file_stem: str) -> pd.DataFrame:
-    """The append-only raw-OHLCV store. Bootstrapped from the historical
-    {file_stem}_features.parquet's trailing OHLCV on first-ever call."""
+    """The append-only raw-OHLCV store. Bootstrapped from data/raw/{file_stem}_1h_raw.parquet
+    (the common fetch-stage output every asset has, crypto5 or legacy) rather than a
+    feature-stage file — crypto5's new assets (BNB/LTC/XRP) were never run through the
+    standard pipeline.features.py caching path build_crypto5_features.py uses instead, so
+    no {file_stem}_features.parquet exists for them, but the raw fetch file always does."""
     path = _raw_live_path(file_stem)
     if path.exists():
         return pd.read_parquet(path)
-    hist_features = pd.read_parquet(_PROCESSED / f"{file_stem}_features.parquet")
-    return hist_features[_OHLCV_COLS].tail(_TRAILING_CONTEXT_ROWS)
+    raw = pd.read_parquet(MARTA_ROOT / "data" / "raw" / f"{file_stem}_1h_raw.parquet")
+    return raw[_OHLCV_COLS].tail(_TRAILING_CONTEXT_ROWS)
 
 
 def update_live_bridge(asset: str, config: dict, outputsize: int | None = None) -> Path | None:
     """Extend `asset`'s live-bridge normalized features up to the latest available bar —
-    Twelve Data for EURUSD/GOLD, Binance for BTC/ETH. Self-selecting: the raw accumulator
-    bootstraps from historical data on the first-ever call; every call after that is a
-    cheap incremental extension.
+    Twelve Data for EURUSD/GOLD (14-col legacy schema), Binance for every crypto5 asset
+    (22-col multihorizon schema — see module-level _CRYPTO5_PROCESSED comment). Self-
+    selecting: the raw accumulator bootstraps from historical data on the first-ever call;
+    every call after that is a cheap incremental extension.
 
     Returns the written normalized-live path, or None if there was nothing new to add
     (e.g. market closed since the last run, or the source hasn't ticked yet) — not an
@@ -162,14 +171,22 @@ def update_live_bridge(asset: str, config: dict, outputsize: int | None = None) 
     if is_forex and not TWELVE_DATA_KEY:
         raise RuntimeError("TWELVE_DATA_KEY not set")
 
-    file_stem = ASSET_FILE_STEM.get(asset, asset)
-    normalized_live_path = _PROCESSED / f"{file_stem}_normalized_live.parquet"
+    # Crypto assets need no ASSET_FILE_STEM aliasing (BTC_USDT etc. are already their own
+    # file stem); only GOLD->XAUUSD (forex/legacy path) needs the translation.
+    file_stem = asset if is_crypto else ASSET_FILE_STEM.get(asset, asset)
+    processed_dir = _CRYPTO5_PROCESSED if is_crypto else _PROCESSED
+    normalized_live_path = processed_dir / f"{file_stem}_normalized_live.parquet"
     is_first_run = not normalized_live_path.exists()
-    base_normalized = (
-        pd.read_parquet(normalized_live_path)
-        if not is_first_run
-        else pd.read_parquet(_PROCESSED / f"{file_stem}_normalized.parquet")
-    )
+    if is_first_run:
+        # Crypto5 bootstraps from the multihorizon aligned parquet (22-col); legacy
+        # forex bootstraps from the old training-time normalized parquet (14-col).
+        bootstrap_path = (
+            _CRYPTO5_PROCESSED / f"{file_stem}_aligned.parquet"
+            if is_crypto else _PROCESSED / f"{file_stem}_normalized.parquet"
+        )
+        base_normalized = pd.read_parquet(bootstrap_path)
+    else:
+        base_normalized = pd.read_parquet(normalized_live_path)
     cutoff = base_normalized.index.max()
 
     if is_crypto:
@@ -200,10 +217,14 @@ def update_live_bridge(asset: str, config: dict, outputsize: int | None = None) 
     # Recompute features/normalization fresh over a trailing slice of the (untrimmed)
     # accumulator — same functions training used, not a reimplementation. Distinct
     # `symbol` so compute_features' internal save doesn't overwrite the canonical
-    # {file_stem}_features.parquet.
+    # {file_stem}_features.parquet. Crypto5 uses the 22-col multihorizon normalizer to
+    # match the latest regime model's input; legacy forex keeps the 14-col one.
     context = raw_accum.tail(_TRAILING_CONTEXT_ROWS + len(live_bars))
     features = compute_features(context, symbol=f"{file_stem}_livebridge")
-    normalized = normalize_features(features, config)
+    normalized = (
+        normalize_features_multihorizon(features, config) if is_crypto
+        else normalize_features(features, config)
+    )
 
     new_rows = normalized[normalized.index > cutoff]
     if new_rows.empty:
@@ -227,7 +248,7 @@ def update_live_bridge(asset: str, config: dict, outputsize: int | None = None) 
 def main() -> None:
     with open(MARTA_ROOT / "configs" / "assets.yaml") as f:
         config = yaml.safe_load(f)
-    for asset in ["EURUSD", "GOLD", "BTC_USDT", "ETH_USDT"]:
+    for asset in ["EURUSD", "GOLD", "BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]:
         try:
             update_live_bridge(asset, config)
         except Exception as exc:

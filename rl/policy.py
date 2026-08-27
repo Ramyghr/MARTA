@@ -139,3 +139,105 @@ class MARTAActorCriticPolicy(ActorCriticPolicy):
         latent = self._latent(obs)
         dir_dist, _ = self._distributions(latent)
         return dir_dist
+
+
+# Discrete action index -> signed position fraction. 5 levels: flat, small/full long,
+# small/full short. Index order matches N_DISCRETE_ACTIONS below.
+DISCRETE_POSITION_MAP: list[float] = [0.0, 0.25, 0.50, -0.25, -0.50]
+N_DISCRETE_ACTIONS = len(DISCRETE_POSITION_MAP)
+
+
+class MARTADiscretePolicy(ActorCriticPolicy):
+    """Actor-critic policy with a single Categorical head over N_DISCRETE_ACTIONS position
+    levels (2026-08-24 discrete-action experiment).
+
+    Motivation (see rl/crypto5_feature_predictability.py): the crypto5 panel shows a real
+    but small directional edge (best single feature ~54.3% accuracy) and ~zero R² on
+    return magnitude. MARTAActorCriticPolicy's Beta head is trying to learn a
+    magnitude/position-fraction signal that isn't there, and micro-jitters around its mean
+    as a result (6,019 trades in one crypto5 eval). This policy removes the Beta head
+    entirely — it only ever picks one of N_DISCRETE_ACTIONS fixed position levels, so there
+    is no continuous fraction to jitter.
+
+    Requires action_space=Discrete(N_DISCRETE_ACTIONS) (MARTATradingEnv's action_mode=
+    "discrete" — see rl/env.py). Entirely separate from MARTAActorCriticPolicy — that
+    class, its Box(2) action space, and every existing checkpoint/caller (including
+    dashboard/backend/ppo_inference.py) are untouched by this addition.
+    """
+
+    def __init__(
+        self,
+        observation_space: Any,
+        action_space: Any,
+        lr_schedule: Schedule,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        kwargs.setdefault("ortho_init", False)
+        super().__init__(observation_space, action_space, lr_schedule, *args, **kwargs)
+
+    def _build(self, lr_schedule: Schedule) -> None:
+        feature_dim = int(self.features_dim)
+
+        # Same 3-layer trunk shape as MARTAActorCriticPolicy (256->128->64) — deliberately
+        # unchanged from the hybrid policy's architecture, so a discrete-vs-continuous
+        # action-space comparison isn't confounded by also changing the trunk.
+        self.shared_net = nn.Sequential(
+            nn.Linear(feature_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+        )
+        self.action_head = nn.Linear(64, N_DISCRETE_ACTIONS)
+        self.value_head = nn.Linear(64, 1)
+
+        self.optimizer = self.optimizer_class(
+            self.parameters(), lr=lr_schedule(1), **self.optimizer_kwargs
+        )
+
+    def _latent(self, obs: torch.Tensor) -> torch.Tensor:
+        features = self.extract_features(obs)
+        return self.shared_net(features)
+
+    def _distribution(self, latent: torch.Tensor) -> Categorical:
+        return Categorical(logits=self.action_head(latent))
+
+    def forward(
+        self, obs: torch.Tensor, deterministic: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        latent = self._latent(obs)
+        dist = self._distribution(latent)
+
+        # Return the discrete ACTION INDEX, not the mapped position — SB3 stores whatever
+        # forward() returns as the rollout-buffer action and later feeds it straight back
+        # into evaluate_actions(). Returning the mapped continuous position here instead
+        # would silently corrupt every log_prob/entropy computation once evaluate_actions
+        # tries to .long() a float position back into an action index.
+        action = torch.argmax(dist.probs, dim=1) if deterministic else dist.sample()
+        log_prob = dist.log_prob(action)
+        values = self.value_head(latent)
+        return action.unsqueeze(-1).float(), values, log_prob
+
+    def evaluate_actions(
+        self, obs: torch.Tensor, actions: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        latent = self._latent(obs)
+        dist = self._distribution(latent)
+
+        action_idx = actions.long().reshape(-1).clamp(0, N_DISCRETE_ACTIONS - 1)
+        log_prob = dist.log_prob(action_idx)
+        entropy = dist.entropy()
+        values = self.value_head(latent)
+        return values, log_prob, entropy
+
+    def _predict(self, observation: torch.Tensor, deterministic: bool = False) -> torch.Tensor:
+        action, _, _ = self.forward(observation, deterministic=deterministic)
+        return action
+
+    def predict_values(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.value_head(self._latent(obs))
+
+    def get_distribution(self, obs: torch.Tensor):  # type: ignore[override]
+        return self._distribution(self._latent(obs))

@@ -488,9 +488,10 @@ export default function RegimePage() {
       </div>
 
       <LearningPanel>
-        t-SNE projection of 159,824 encoder embeddings. Clusters confirm the encoder learned distinct
-        market personalities across 7 years of BTC, ETH, EURUSD, XAUUSD data — the downstream Gaussian
-        HMM only has to draw boundaries between clusters the contrastive pretraining already separated.
+        The regime model runs directly on 22 raw multi-horizon market features — no learned
+        encoder or PCA step. A contrastive encoder was tried and audited across several
+        variants; none beat raw features on predictive accuracy, so the Gaussian HMM fits
+        the raw feature space itself across the crypto-only panel (BTC, ETH, BNB, LTC, XRP).
       </LearningPanel>
     </div>
   );

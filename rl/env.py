@@ -53,7 +53,6 @@ from typing import Any, Literal
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-import torch
 from gymnasium import spaces
 from scipy.stats import norm
 
@@ -65,14 +64,28 @@ from configs.splits import (
     TestSetContaminationError,
 )
 from encoder.model import TFTRegimeEncoder
+from rl import obs_builder
 from utils.logger import logger
 
 # Canonical asset ordering — fixes the portfolio position slots so the 8-dim portfolio
-# vector is stable across curriculum phases.
+# vector is stable across curriculum phases. Kept at the old 4-asset production panel as
+# the module DEFAULT — dashboard/backend/ppo_inference.py imports this directly to serve
+# the live-deployed checkpoint (trained on this exact asset list/ordering) and several
+# diagnostic scripts (rl/diagnose_env.py, rl/supervised_predictability.py,
+# rl/audit_test3.py) assume it too. Crypto-only training (2026-08-24 migration) passes
+# canonical_assets= to MARTATradingEnv explicitly instead of changing this default — see
+# that parameter's docstring below.
 CANONICAL_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 
 REGIME_DIM = 128
 CONSENSUS_DIM = 16
+# PORTFOLIO_DIM/ASSET_ID_DIM/STATE_DIM/N_POSITION_SLOTS below are the MODULE-LEVEL
+# defaults for the 4-asset CANONICAL_ASSETS panel above — kept unchanged for the same
+# backward-compatibility reason. MARTATradingEnv computes its OWN instance-level
+# self.n_position_slots/self.asset_id_dim/self.portfolio_dim from
+# len(self.canonical_assets) at construction time (2026-08-24) rather than reading these
+# globals directly, so passing canonical_assets=<a 5-asset list> gives a correctly-sized
+# 9-dim portfolio / 5-dim asset-id block without touching any of the constants here.
 PORTFOLIO_DIM = 8
 ASSET_ID_DIM = 4  # one-hot over CANONICAL_ASSETS — see module docstring, added 2026-08-08
 STATE_DIM = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156
@@ -80,9 +93,12 @@ N_POSITION_SLOTS = 4  # first 4 portfolio dims hold per-asset signed positions
 
 # obs_mode="raw"/"raw_regime" (added 2026-08-12, raw-feature-baseline pivot — see project
 # memory: the contrastive encoder never beat raw_14 features on predictability). Replaces
-# the 128-dim encoder slot with the flattened 60x14 raw feature window itself — zero
-# learned compression. window_size=60, 14 features/bar (see rl/env.py's _arrays, which
-# already holds exactly this window before it's ever passed to the encoder).
+# the 128-dim encoder slot with the flattened window x n_raw_features window itself — zero
+# learned compression. window_size=60, 14 features/bar on the original panel — see
+# MARTATradingEnv.__init__'s self.n_raw_features (2026-08-24), which derives the actual
+# per-bar feature count from the aligned data itself (crypto5_multihorizon's panel has 22
+# columns, not 14) rather than assuming this constant. Kept here only as the historical/
+# documentation default for the original 14-column panel.
 RAW_WINDOW_DIM = 60 * 14  # 840
 
 # Derived from configs/splits.py (the canonical source — see that module's docstring).
@@ -278,8 +294,23 @@ class MARTATradingEnv(gym.Env):
         # experiment, not a strict improvement, and compare against the default explicitly.
         # Default False preserves all prior results exactly.
         benchmark_relative: bool = False,
+        # Asset-ID/portfolio-slot ordering (2026-08-24 crypto-only migration) — None (the
+        # default) preserves exact prior behavior by falling back to the module-level
+        # CANONICAL_ASSETS (4-asset production panel). Pass an explicit list (e.g. the
+        # 5-asset crypto5 panel) to size the portfolio/asset-id blocks correctly instead of
+        # silently truncating/misindexing a 5th asset into CANONICAL_ASSETS' 4 slots.
+        canonical_assets: list[str] | None = None,
+        # 2026-08-24 discrete-action experiment — "hybrid" (default) preserves exact prior
+        # behavior (flat Box(2), MARTAActorCriticPolicy's Categorical direction + Beta
+        # fraction). "discrete" switches to a single Categorical over N_DISCRETE_ACTIONS
+        # fixed position levels (rl/policy.py's MARTADiscretePolicy) — see that class's
+        # docstring for why: the Beta head has no real magnitude signal to fit
+        # (rl/crypto5_feature_predictability.py found ~zero R² on next-bar return
+        # magnitude, only a small directional edge) and micro-jitters as a result.
+        action_mode: Literal["hybrid", "discrete"] = "hybrid",
     ) -> None:
         super().__init__()
+        self.action_mode = action_mode
 
         self.assets = list(assets)
         self.aligned_dfs = aligned_dfs
@@ -305,6 +336,17 @@ class MARTATradingEnv(gym.Env):
         self.max_drawdown_termination = float(max_drawdown_termination)
         self.benchmark_relative = bool(benchmark_relative)
 
+        # Instance-level asset-ID/portfolio sizing (2026-08-24) — derived from
+        # len(self.canonical_assets) instead of the module globals PORTFOLIO_DIM/
+        # ASSET_ID_DIM/N_POSITION_SLOTS, so a 5-asset canonical_assets list gets a
+        # correctly-sized 9-dim portfolio / 5-dim asset-id block. Defaulting
+        # canonical_assets=None to the module CANONICAL_ASSETS reproduces the exact prior
+        # 8/4/4 sizing for every existing caller.
+        self.canonical_assets: list[str] = list(canonical_assets) if canonical_assets is not None else list(CANONICAL_ASSETS)
+        self.n_position_slots = len(self.canonical_assets)
+        self.asset_id_dim = self.n_position_slots
+        self.portfolio_dim = self.n_position_slots + 4  # + [pnl_norm, drawdown, steps_since_trade, vol]
+
         # regime_prob_* column count — dynamic, not hardcoded, so this env works with
         # any HMM's regime_stream_df (n_states=4 production, n_states=6 raw-baseline, ...).
         self._regime_prob_cols = [
@@ -320,42 +362,59 @@ class MARTATradingEnv(gym.Env):
         self._valid_starts: dict[str, np.ndarray] = {}
         self._regime_labels: dict[str, np.ndarray] = {}
         self._regime_probs: dict[str, np.ndarray] = {}
-        for asset in CANONICAL_ASSETS:
+        for asset in self.canonical_assets:
             if asset in aligned_dfs:
                 self._prepare_asset(asset)
 
         # Consensus lookup keyed by (asset, timestamp) → 16-dim vector.
         self._consensus_lookup = self._build_consensus_lookup(debate_results)
 
+        # Raw per-bar feature count (2026-08-24) — derived from the actual aligned data
+        # rather than assumed to be 14. crypto5_multihorizon's panel has 22 columns (14
+        # base + 8 multi-horizon-normalization columns); feeding that through a raw window
+        # sized for 14 would silently produce a (window_size, 22) array reshaped into an
+        # observation_space declared for window_size*14 dims — a shape mismatch that numpy
+        # would either crash on or, worse, silently misinterpret. Only meaningful for
+        # obs_mode in ("raw", "raw_regime"); "encoder" mode never reads this.
+        self.n_raw_features = next(iter(self._arrays.values())).shape[1] if self._arrays else 14
+
         # Observation dim depends on obs_mode — see module docstring for the three modes.
         if self.obs_mode == "encoder":
-            obs_dim = REGIME_DIM + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM  # 156, == STATE_DIM
+            obs_dim = REGIME_DIM + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
         elif self.obs_mode == "raw":
-            obs_dim = self.window_size * 14 + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+            obs_dim = self.window_size * self.n_raw_features + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
         else:  # "raw_regime"
             obs_dim = (
-                self.window_size * 14 + self._n_regime_prob_dims
-                + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+                self.window_size * self.n_raw_features + self._n_regime_prob_dims
+                + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
             )
         self.observation_space = spaces.Box(
             low=-10.0, high=10.0, shape=(obs_dim,), dtype=np.float32
         )
-        # Flattened Box action (training interface for SB3).
-        self.action_space = spaces.Box(
-            low=np.array([0.0, 0.01], dtype=np.float32),
-            high=np.array([2.0, 0.99], dtype=np.float32),
-            shape=(2,),
-            dtype=np.float32,
-        )
-        # Semantic Dict equivalent (reference only).
-        self.action_space_dict = spaces.Dict(
-            {
-                "direction": spaces.Discrete(3),
-                "position_fraction": spaces.Box(
-                    low=0.01, high=0.99, shape=(1,), dtype=np.float32
-                ),
-            }
-        )
+        if self.action_mode == "discrete":
+            # 2026-08-24 discrete-action experiment (rl/policy.py's MARTADiscretePolicy) —
+            # see DISCRETE_POSITION_MAP there for the index->position mapping. No
+            # action_space_dict here — that existed only to document the flat-Box-vs-Dict
+            # workaround the hybrid policy needs; a plain Discrete space has no such gap.
+            from rl.policy import N_DISCRETE_ACTIONS
+            self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
+        else:
+            # Flattened Box action (training interface for SB3).
+            self.action_space = spaces.Box(
+                low=np.array([0.0, 0.01], dtype=np.float32),
+                high=np.array([2.0, 0.99], dtype=np.float32),
+                shape=(2,),
+                dtype=np.float32,
+            )
+            # Semantic Dict equivalent (reference only).
+            self.action_space_dict = spaces.Dict(
+                {
+                    "direction": spaces.Discrete(3),
+                    "position_fraction": spaces.Box(
+                        low=0.01, high=0.99, shape=(1,), dtype=np.float32
+                    ),
+                }
+            )
 
         # Episode state (initialised in reset).
         self._asset: str = self.assets[0]
@@ -417,12 +476,7 @@ class MARTATradingEnv(gym.Env):
     def _build_regime_label_series(
         self, asset: str, index: pd.DatetimeIndex
     ) -> np.ndarray:
-        sub = self.regime_stream_df[self.regime_stream_df["asset"] == asset]
-        if sub.empty:
-            return np.full(len(index), -1, dtype=np.int64)
-        sub = sub.set_index("timestamp")["regime_label"].sort_index()
-        aligned = sub.reindex(index, method="pad")  # forward-fill only — never use future labels
-        return aligned.fillna(-1).to_numpy(dtype=np.int64)
+        return obs_builder.build_regime_label_series(self.regime_stream_df, asset, index)
 
     def _build_regime_prob_series(
         self, asset: str, index: pd.DatetimeIndex
@@ -430,90 +484,60 @@ class MARTATradingEnv(gym.Env):
         """Same forward-fill contract as _build_regime_label_series, but for the full
         regime_prob_* vector (used by obs_mode='raw_regime'). Missing rows -> all-zero
         (a flat/uninformative prior), never a future value."""
-        n = self._n_regime_prob_dims
-        sub = self.regime_stream_df[self.regime_stream_df["asset"] == asset]
-        if sub.empty or n == 0:
-            return np.zeros((len(index), max(n, 1)), dtype=np.float32)
-        sub = sub.set_index("timestamp")[self._regime_prob_cols].sort_index()
-        aligned = sub.reindex(index, method="pad")
-        return aligned.fillna(0.0).to_numpy(dtype=np.float32)
+        return obs_builder.build_regime_prob_series(
+            self.regime_stream_df, self._regime_prob_cols, asset, index
+        )
 
     def _build_consensus_lookup(
         self, debate_results: list[dict] | None
     ) -> dict[tuple[str, pd.Timestamp], np.ndarray]:
-        lookup: dict[tuple[str, pd.Timestamp], np.ndarray] = {}
-        if not debate_results:
-            return lookup
-        bias_sign = {"bullish": 1.0, "bearish": -1.0, "neutral": 0.0}
-        action_sign = {"long": 1.0, "short": -1.0, "hold": 0.0}
-        for d in debate_results:
-            asset = d.get("asset")
-            ts_raw = d.get("timestamp")
-            if asset is None or ts_raw is None:
-                continue
-            ts = pd.Timestamp(ts_raw)
-            ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
-            vec = np.zeros(CONSENSUS_DIM, dtype=np.float32)
-            theses = d.get("round1_theses", []) or []
-            for i, th in enumerate(theses[:5]):
-                conf = float(th.get("confidence", 0.0))
-                vec[i] = bias_sign.get(th.get("directional_bias", "neutral"), 0.0) * conf
-            fmd = d.get("fund_manager_decision", {}) or {}
-            vec[5] = action_sign.get(fmd.get("final_action", "hold"), 0.0) * float(
-                fmd.get("conviction", 0.0)
-            )
-            vec[6] = float(fmd.get("position_size", 0.0))
-            vec[7] = 1.0 if fmd.get("regime_override", False) else 0.0
-            vec[8] = float(len(fmd.get("dissenting_agents", [])))
-            lookup[(asset, ts)] = vec
-        return lookup
+        return obs_builder.build_consensus_lookup(debate_results)
 
     # ----------------------------------------------------------- observations
+    # 2026-08-26: the four methods below now delegate to rl/obs_builder.py's pure
+    # functions (extracted so a future portfolio env can share the identical per-asset
+    # block logic) — bodies changed, behavior (including the zero_regime asymmetry: it
+    # zeroes the encoder embedding / regime-prob tail but never the raw window itself)
+    # verified byte-identical via tests/test_rl_env.py's existing 15 tests.
     def _encode_window(self, asset: str, t: int) -> np.ndarray:
         if self.zero_regime:
             return np.zeros(REGIME_DIM, dtype=np.float32)
-        window = self._arrays[asset][t - self.window_size + 1 : t + 1]  # (60, 14)
-        tensor = torch.from_numpy(window).unsqueeze(0).to(self.device)  # (1, 60, 13)
-        with torch.no_grad():
-            emb = self.encoder.encode(tensor)  # (1, 128)
-        return emb.squeeze(0).cpu().numpy().astype(np.float32)
+        return obs_builder.encode_window(
+            self.encoder, self._arrays[asset], t, self.window_size, self.device
+        )
 
     def _raw_window_vec(self, asset: str, t: int) -> np.ndarray:
         """Flattened (window_size, 14) raw feature window — zero learned compression.
         Used by obs_mode='raw'/'raw_regime'. Same window slice _encode_window feeds the
         encoder, just returned flat instead of passed through TFTRegimeEncoder."""
-        window = self._arrays[asset][t - self.window_size + 1 : t + 1]  # (60, 14)
-        return window.reshape(-1).astype(np.float32)  # (840,)
+        return obs_builder.raw_window_vec(self._arrays[asset], t, self.window_size)
 
     def _regime_prob_vec(self, asset: str, t: int) -> np.ndarray:
         if self.zero_regime:
             return np.zeros(self._n_regime_prob_dims, dtype=np.float32)
-        arr = self._regime_probs[asset]
-        idx = min(t, len(arr) - 1)
-        return arr[idx]
+        return obs_builder.regime_prob_vec(self._regime_probs[asset], t)
 
     def _consensus_vec(self, asset: str, t: int) -> np.ndarray:
         if self.zero_consensus:
             return np.zeros(CONSENSUS_DIM, dtype=np.float32)
         ts = self._index[asset][t]
-        return self._consensus_lookup.get(
-            (asset, ts), np.zeros(CONSENSUS_DIM, dtype=np.float32)
-        )
+        return obs_builder.consensus_vec(self._consensus_lookup, asset, ts)
 
     def _portfolio_vec(self, asset: str, t: int) -> np.ndarray:
-        vec = np.zeros(PORTFOLIO_DIM, dtype=np.float32)
-        slot = min(CANONICAL_ASSETS.index(asset), N_POSITION_SLOTS - 1)
+        vec = np.zeros(self.portfolio_dim, dtype=np.float32)
+        slot = min(self.canonical_assets.index(asset), self.n_position_slots - 1)
         vec[slot] = self._signed_position
-        vec[4] = self._portfolio_value / self.initial_capital - 1.0
-        vec[5] = self._current_drawdown()
-        vec[6] = min(self._steps_since_trade / 100.0, 1.0)
-        vec[7] = float(self._vol[asset][t])
+        base = self.n_position_slots
+        vec[base] = self._portfolio_value / self.initial_capital - 1.0
+        vec[base + 1] = self._current_drawdown()
+        vec[base + 2] = min(self._steps_since_trade / 100.0, 1.0)
+        vec[base + 3] = float(self._vol[asset][t])
         return vec
 
     def _asset_id_vec(self, asset: str) -> np.ndarray:
-        vec = np.zeros(ASSET_ID_DIM, dtype=np.float32)
-        idx = CANONICAL_ASSETS.index(asset) if asset in CANONICAL_ASSETS else None
-        if idx is not None and idx < ASSET_ID_DIM:
+        vec = np.zeros(self.asset_id_dim, dtype=np.float32)
+        idx = self.canonical_assets.index(asset) if asset in self.canonical_assets else None
+        if idx is not None and idx < self.asset_id_dim:
             vec[idx] = 1.0
         return vec
 
@@ -586,10 +610,36 @@ class MARTATradingEnv(gym.Env):
         return obs, self._info(pnl_delta=0.0, cvar_t=cvar_from_vol(self._vol[self._asset][self._t]))
 
     # ------------------------------------------------------------------- step
+    def _decode_discrete_action(self, action: np.ndarray | int) -> dict[str, Any]:
+        """Decode a Discrete(N_DISCRETE_ACTIONS) action index into the same
+        {direction, position_fraction} shape unflatten_action produces, so step()'s
+        downstream logic (min-hold lock, transaction cost, reward) is identical
+        regardless of action_mode. Separate from unflatten_action (not a branch inside
+        it) so that method's existing Box(2) contract/callers are untouched."""
+        from rl.policy import DISCRETE_POSITION_MAP
+
+        if isinstance(action, np.ndarray):
+            idx = int(action.reshape(-1)[0])
+        else:
+            idx = int(action)
+        idx = int(np.clip(idx, 0, len(DISCRETE_POSITION_MAP) - 1))
+        pos = DISCRETE_POSITION_MAP[idx]
+        if pos > 0:
+            direction, frac = 0, pos
+        elif pos < 0:
+            direction, frac = 1, abs(pos)
+        else:
+            direction, frac = 2, 0.01  # "hold" — matches unflatten_action's hold convention
+        return {"direction": direction, "position_fraction": frac}
+
     def step(
-        self, action: np.ndarray | dict
+        self, action: np.ndarray | dict | int
     ) -> tuple[np.ndarray, float, bool, bool, dict]:
-        decoded = self.unflatten_action(action)
+        decoded = (
+            self._decode_discrete_action(action)
+            if self.action_mode == "discrete"
+            else self.unflatten_action(action)
+        )
         direction = decoded["direction"]
         frac = decoded["position_fraction"]
 

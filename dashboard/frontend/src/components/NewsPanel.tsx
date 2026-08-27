@@ -58,8 +58,9 @@ function FearGreedGauge({ data }: { data: FearGreedIndex }) {
 const ASSET_TABS: Array<{ id: string; label: string }> = [
   { id: "BTC_USDT", label: "BTC" },
   { id: "ETH_USDT", label: "ETH" },
-  { id: "GOLD", label: "GOLD" },
-  { id: "EURUSD", label: "EUR" },
+  { id: "BNB_USDT", label: "BNB" },
+  { id: "LTC_USDT", label: "LTC" },
+  { id: "XRP_USDT", label: "XRP" },
 ];
 
 function sentimentFromText(text: string): "bullish" | "bearish" | "neutral" {

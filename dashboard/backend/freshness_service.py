@@ -26,8 +26,9 @@ from utils.assets import ASSET_FILE_STEM  # noqa: E402
 _ASSETS = [
     {"id": "BTC_USDT",  "label": "BTC/USDT",  "type": "crypto"},
     {"id": "ETH_USDT",  "label": "ETH/USDT",  "type": "crypto"},
-    {"id": "EURUSD",    "label": "EUR/USD",    "type": "forex"},
-    {"id": "GOLD",      "label": "XAU/USD",    "type": "commodity"},
+    {"id": "BNB_USDT",  "label": "BNB/USDT",  "type": "crypto"},
+    {"id": "LTC_USDT",  "label": "LTC/USDT",  "type": "crypto"},
+    {"id": "XRP_USDT",  "label": "XRP/USDT",  "type": "crypto"},
 ]
 
 

@@ -126,12 +126,31 @@ class CurriculumCallback(BaseCallback):
         if not self.done_curriculum:
             threshold_met = sharpe >= phase["sharpe_threshold"]
             max_steps_hit = steps_in_phase >= phase["max_steps"]
-            if threshold_met or max_steps_hit:
+            if threshold_met:
                 self._advance_phase(threshold_met, sharpe, steps_in_phase)
+            elif max_steps_hit:
+                # Hard gate (2026-08-24) — previously this branch still called
+                # _advance_phase() and moved on to the next phase regardless, logging only
+                # a WARNING. That let a policy that never proved itself on Phase 1 keep
+                # training on Phase 2's harder, multi-asset problem — propagating a broken
+                # policy forward instead of stopping to fix it. _record_phase_result still
+                # saves the per-phase checkpoint and phase_history entry (diagnostic value
+                # unchanged) but the curriculum does not advance and training stops here.
+                self._record_phase_result(threshold_met, sharpe, steps_in_phase)
+                logger.warning(
+                    f"[curriculum] phase {self.phase_idx + 1} FAILED: max_steps reached "
+                    f"without meeting threshold ({sharpe:.3f} < {phase['sharpe_threshold']:.2f}). "
+                    f"Stopping training — policy is not ready to advance."
+                )
+                self.early_stopped = True
+                return False
 
         return True
 
-    def _advance_phase(self, threshold_met: bool, sharpe: float, steps_in_phase: int) -> None:
+    def _record_phase_result(self, threshold_met: bool, sharpe: float, steps_in_phase: int) -> Path:
+        """Save the per-phase checkpoint + phase_history entry. Called on both a
+        successful (threshold met) and failed (max_steps hit, gated — see _on_step)
+        phase outcome, so either way there's a checkpoint and a record to inspect."""
         phase = self._current_phase()
         n = self.phase_idx + 1
         ckpt = _CHECKPOINT_DIR / f"ppo_phase_{n}{self.checkpoint_suffix}.zip"
@@ -149,12 +168,14 @@ class CurriculumCallback(BaseCallback):
                 "threshold_met": bool(threshold_met),
             }
         )
-        status = "threshold met" if threshold_met else "max_steps reached"
+        status = "threshold met" if threshold_met else "max_steps reached (gated, not advancing)"
         logger.success(
             f"[curriculum] phase {n} complete ({status}) sharpe={sharpe:.3f} → {ckpt.name}"
         )
-        if not threshold_met:
-            logger.warning(f"[curriculum] phase {n} hit max_steps without meeting threshold")
+        return ckpt
+
+    def _advance_phase(self, threshold_met: bool, sharpe: float, steps_in_phase: int) -> None:
+        self._record_phase_result(threshold_met, sharpe, steps_in_phase)
 
         if self.phase_idx < len(self.phases) - 1:
             self.phase_idx += 1
