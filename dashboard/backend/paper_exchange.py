@@ -79,10 +79,18 @@ def init() -> bool:
                 "enableRateLimit": True,
                 "options": {"defaultType": "spot"},
             })
-            ex.urls["api"] = {
-                k: v.replace("api.binance.com", "testnet.binance.vision")
-                for k, v in ex.urls.get("api", {}).items()
-            }
+            # Use ccxt's built-in sandbox mode rather than a manual string-replace
+            # across every URL namespace. Binance spot testnet only implements the
+            # public/private (api/v3) endpoints, not sapi (wallet/account management)
+            # — a blanket replace() previously pointed sapi at testnet.binance.vision
+            # too, and ccxt's fetch_currencies() (auto-triggered by load_markets()
+            # inside fetch_balance() since binance defaults options.fetchCurrencies
+            # to True whenever API keys are set) called sapiGetCapitalConfigGetall,
+            # 404ing and silently dropping the connection to local paper_db fallback.
+            # set_sandbox_mode(True) only remaps the endpoints binance's own 'test'
+            # URL block defines (public/private), and sets urls['apiBackup'], which
+            # fetch_currencies() checks to skip the unsupported sapi call entirely.
+            ex.set_sandbox_mode(True)
 
         # Verify credentials by fetching balance
         bal = ex.fetch_balance()

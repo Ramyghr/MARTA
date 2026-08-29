@@ -1,0 +1,19 @@
+{
+  "sharpe": -1.1011728921565263,
+  "sortino": -1.3066220895679743,
+  "max_drawdown": 0.7135165371837989,
+  "calmar": -0.929607270335106,
+  "total_return": -0.5716136705449091,
+  "n_trades": 0,
+  "n_meaningful_trades": 0,
+  "mean_turnover": 0.0,
+  "hold_ratio": 0.0,
+  "mean_trade_duration_hours": 0.0,
+  "median_trade_duration_hours": 0.0,
+  "mean_turnover_cost_fraction": 0.00015267294227995875,
+  "mean_cash_weight": 0.0015614587706925637,
+  "n_steps": 8783,
+  "wall_clock_seconds": 1204.4552001953125,
+  "timesteps": 200000,
+  "obs_dim": 6688
+}

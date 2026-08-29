@@ -17,6 +17,13 @@ langchain-community>=0.3.0
 # Quant / stats
 arch>=7.0.0
 hmmlearn>=0.3.0
+# hmmlearn pulls scikit-learn in transitively, unpinned -> picks up whatever is latest
+# at image build time. Pinned to match the conda env `marta` that actually pickled
+# regime/checkpoints/pca_model.pkl (1.8.0), else unpickling logs sklearn's
+# InconsistentVersionWarning on every backend start ("might lead to breaking code or
+# invalid results"). Bump this together with re-pickling the PCA checkpoints if the
+# host env's scikit-learn version ever changes.
+scikit-learn==1.8.0
 # CLI / logging (used by utils/logger.py which is imported by every agent)
 rich>=13.0.0
 # Autonomous signal scheduler

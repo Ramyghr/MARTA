@@ -301,8 +301,18 @@ def main() -> None:
     logger.info("=== equal-weight buy-and-hold baseline ===")
     results["buy_hold_equal_weight"] = compute_equal_weight_buy_hold(aligned_dfs)
 
+    # Merge with any existing summary.json rather than overwrite — running a subset of
+    # variants (e.g. just a new one after baseline/regime already ran) must not wipe out
+    # previously-completed variants' rows just because this invocation didn't re-run them.
     out_path = Path(args.output_dir) / "summary.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.exists():
+        try:
+            existing = json.loads(out_path.read_text())
+            existing.update(results)
+            results = existing
+        except (json.JSONDecodeError, OSError):
+            pass
     out_path.write_text(json.dumps(results, indent=2, default=float))
 
     print("\n=== SUMMARY ===")
