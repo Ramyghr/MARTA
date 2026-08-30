@@ -1,10 +1,23 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
-import { MessageCircle, X, Send, Trash2, Lightbulb } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { MessageCircle, X, Send, Trash2, Lightbulb, History, Plus } from 'lucide-react'
 import { useMARTAStore } from '@/lib/store'
 
-// Generated once per page load — good enough for a single-user local dashboard.
-const SESSION_ID = `marta_${Math.random().toString(36).slice(2)}`
+const SESSION_STORAGE_KEY = 'marta_chat_session_id'
+
+function newSessionId(): string {
+  return `marta_${crypto.randomUUID()}`
+}
+
+function timeAgo(ts: string): string {
+  const diffMs = Date.now() - new Date(ts).getTime()
+  const mins = Math.floor(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -12,36 +25,100 @@ interface Message {
   timestamp: Date
 }
 
+interface ConversationSummary {
+  id: string
+  title: string
+  asset: string
+  updated_at: string
+  message_count: number
+}
+
+const GREETING: Message = {
+  role: 'assistant',
+  content: "Hi! I'm MARTA's AI assistant. Ask me anything about the current market regime, trading decisions, or how MARTA works.",
+  timestamp: new Date(),
+}
+
 export function MARTAChat() {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: "Hi! I'm MARTA's AI assistant. Ask me anything about the current market regime, trading decisions, or how MARTA works.",
-      timestamp: new Date(),
-    },
-  ])
+  const [sessionId, setSessionId] = useState('')
+  const [messages, setMessages] = useState<Message[]>([GREETING])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedAsset = useMARTAStore((s) => s.selectedAsset)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+
+  // Resolve (or create) the current session on first mount — reusing a stored id
+  // means a page reload continues the same conversation instead of losing it.
+  useEffect(() => {
+    const stored = localStorage.getItem(SESSION_STORAGE_KEY)
+    const id = stored || newSessionId()
+    if (!stored) localStorage.setItem(SESSION_STORAGE_KEY, id)
+    setSessionId(id)
+  }, [])
+
+  // Rehydrate messages for the current session whenever it changes.
+  useEffect(() => {
+    if (!sessionId) return
+    fetch(`${apiUrl}/api/chat/conversations/${sessionId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const stored = (d.messages || []) as { role: 'user' | 'assistant'; content: string; created_at: string }[]
+        if (stored.length > 0) {
+          setMessages(stored.map((m) => ({ role: m.role, content: m.content, timestamp: new Date(m.created_at) })))
+        } else {
+          setMessages([GREETING])
+        }
+      })
+      .catch(() => setMessages([GREETING]))
+  }, [sessionId, apiUrl])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/suggestions/${selectedAsset}`)
+    fetch(`${apiUrl}/api/chat/suggestions/${selectedAsset}`)
       .then((r) => r.json())
       .then((d) => setSuggestions(d.suggestions || []))
       .catch(() => {})
-  }, [selectedAsset])
+  }, [selectedAsset, apiUrl])
+
+  const loadConversations = useCallback(() => {
+    fetch(`${apiUrl}/api/chat/conversations`)
+      .then((r) => r.json())
+      .then((d) => setConversations(d.conversations || []))
+      .catch(() => {})
+  }, [apiUrl])
+
+  const toggleHistory = () => {
+    if (!showHistory) loadConversations()
+    setShowHistory(!showHistory)
+    setShowSuggestions(false)
+  }
+
+  const openConversation = (id: string) => {
+    localStorage.setItem(SESSION_STORAGE_KEY, id)
+    setSessionId(id)
+    setShowHistory(false)
+  }
+
+  const newChat = () => {
+    const id = newSessionId()
+    localStorage.setItem(SESSION_STORAGE_KEY, id)
+    setSessionId(id)
+    setMessages([GREETING])
+    setShowHistory(false)
+  }
 
   const sendMessage = async (text?: string) => {
     const message = text || input.trim()
-    if (!message || loading) return
+    if (!message || loading || !sessionId) return
 
     setInput('')
     setShowSuggestions(false)
@@ -49,10 +126,10 @@ export function MARTAChat() {
     setLoading(true)
 
     try {
-      const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat`, {
+      const resp = await fetch(`${apiUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, session_id: SESSION_ID, asset: selectedAsset }),
+        body: JSON.stringify({ message, session_id: sessionId, asset: selectedAsset }),
       })
       const data = await resp.json()
       setMessages((prev) => [...prev, { role: 'assistant', content: data.response, timestamp: new Date() }])
@@ -67,8 +144,8 @@ export function MARTAChat() {
   }
 
   const clearChat = async () => {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/${SESSION_ID}`, { method: 'DELETE' })
-    setMessages([{ role: 'assistant', content: 'Chat cleared. What would you like to know about MARTA?', timestamp: new Date() }])
+    if (sessionId) await fetch(`${apiUrl}/api/chat/${sessionId}`, { method: 'DELETE' })
+    newChat()
   }
 
   return (
@@ -101,14 +178,45 @@ export function MARTAChat() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowSuggestions(!showSuggestions)} title="Suggested questions" style={{ color: 'var(--dim)' }}>
+              <button onClick={newChat} title="New chat" style={{ color: 'var(--dim)' }}>
+                <Plus size={14} />
+              </button>
+              <button onClick={toggleHistory} title="Chat history" style={{ color: showHistory ? 'var(--green)' : 'var(--dim)' }}>
+                <History size={14} />
+              </button>
+              <button onClick={() => { setShowSuggestions(!showSuggestions); setShowHistory(false) }} title="Suggested questions" style={{ color: 'var(--dim)' }}>
                 <Lightbulb size={14} />
               </button>
-              <button onClick={clearChat} title="Clear chat" style={{ color: 'var(--dim)' }}>
+              <button onClick={clearChat} title="Delete this conversation" style={{ color: 'var(--dim)' }}>
                 <Trash2 size={14} />
               </button>
             </div>
           </div>
+
+          {showHistory && (
+            <div className="p-2 overflow-y-auto" style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', maxHeight: '200px' }}>
+              {conversations.length === 0 && (
+                <div className="text-xs p-1" style={{ color: 'var(--dim)' }}>No past conversations yet.</div>
+              )}
+              {conversations.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => openConversation(c.id)}
+                  className="w-full text-left text-xs p-2 rounded mb-1 hover:opacity-80 transition-opacity"
+                  style={{
+                    background: c.id === sessionId ? 'rgba(0,255,127,0.12)' : 'var(--surface-3)',
+                    border: c.id === sessionId ? '1px solid rgba(0,255,127,0.3)' : '1px solid var(--border)',
+                  }}
+                >
+                  <div style={{ color: 'var(--text)' }}>{c.title}</div>
+                  <div className="flex justify-between mt-0.5" style={{ color: 'var(--dim)', fontSize: '10px' }}>
+                    <span>{c.asset} · {c.message_count} messages</span>
+                    <span>{timeAgo(c.updated_at)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
 
           {showSuggestions && (
             <div className="p-2 overflow-y-auto" style={{ background: 'var(--surface-2)', borderBottom: '1px solid var(--border)', maxHeight: '140px' }}>

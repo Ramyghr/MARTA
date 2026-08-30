@@ -15,15 +15,13 @@ from pathlib import Path
 
 import httpx
 
+import chat_db
 import regime_service
 
 logger = logging.getLogger(__name__)
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 MARTA_ROOT = Path(os.getenv("MARTA_ROOT", "/app"))
-
-# Chat history per session (in-memory, resets on restart)
-_chat_histories: dict[str, list[dict]] = {}
 
 
 def _build_system_prompt(context: dict) -> str:
@@ -124,14 +122,16 @@ async def _get_live_context(asset: str) -> dict:
 
 
 async def chat(session_id: str, user_message: str, asset: str = "BTC_USDT") -> str:
-    """Process a chat message and return MARTA's response, maintaining per-session history."""
-    history = _chat_histories.setdefault(session_id, [])
+    """Process a chat message and return MARTA's response, maintaining per-session
+    history — persisted to chat_db (SQLite) so a conversation survives a backend
+    restart and can be listed/reloaded from the dashboard's chat history panel."""
+    history = chat_db.get_conversation(session_id)
 
     context = await _get_live_context(asset)
     system_prompt = _build_system_prompt(context)
 
     messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(history[-10:])
+    messages.extend({"role": m["role"], "content": m["content"]} for m in history[-10:])
     messages.append({"role": "user", "content": user_message})
 
     try:
@@ -152,10 +152,8 @@ async def chat(session_id: str, user_message: str, asset: str = "BTC_USDT") -> s
             data = resp.json()
             assistant_message = data.get("message", {}).get("content", "")
 
-            history.append({"role": "user", "content": user_message})
-            history.append({"role": "assistant", "content": assistant_message})
-            if len(history) > 20:
-                _chat_histories[session_id] = history[-20:]
+            chat_db.append_message(session_id, "user", user_message, asset=asset)
+            chat_db.append_message(session_id, "assistant", assistant_message, asset=asset)
 
             return assistant_message
 
@@ -167,4 +165,4 @@ async def chat(session_id: str, user_message: str, asset: str = "BTC_USDT") -> s
 
 
 def clear_history(session_id: str) -> None:
-    _chat_histories.pop(session_id, None)
+    chat_db.delete_conversation(session_id)

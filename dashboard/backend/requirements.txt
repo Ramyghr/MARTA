@@ -64,3 +64,9 @@ mlflow-skinny==3.14.0
 # Found missing 2026-08-07 — the live bridge had never actually run inside the deployed
 # container (ImportError, silently caught by signal_scheduler's per-asset try/except).
 ta==0.11.0
+# Interactive Telegram bot (telegram_bot.py) — slash commands + inline-button trade
+# approval. telegram_service.py's outbound alerts are raw httpx (fine for one-way
+# sendMessage calls), but an inbound listener needs update long-polling, command
+# routing, and inline-keyboard callback handling; PTB is the standard library for
+# that rather than hand-rolling getUpdates offset tracking.
+python-telegram-bot>=21.0

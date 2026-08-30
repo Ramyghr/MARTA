@@ -28,7 +28,7 @@ const SOURCE_COLORS: Record<string, string> = {
   static: "#666666",
 };
 
-const FEAR_GREED_ASSETS = new Set(["BTC_USDT", "ETH_USDT"]);
+const FEAR_GREED_ASSETS = new Set(["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]);
 
 function fearGreedColor(value: number): string {
   if (value >= 55) return "#00ff7f";

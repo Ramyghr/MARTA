@@ -24,6 +24,9 @@ TWELVEDATA_SYMBOLS = live_feed.FOREX_SYMBOLS  # {"EURUSD": "EUR/USD", "GOLD": "X
 YFINANCE_SYMBOLS = {
     "BTC_USDT": "BTC-USD",
     "ETH_USDT": "ETH-USD",
+    "BNB_USDT": "BNB-USD",
+    "LTC_USDT": "LTC-USD",
+    "XRP_USDT": "XRP-USD",
     "EURUSD":   "EURUSD=X",
     "GOLD":     "GC=F",
 }

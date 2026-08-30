@@ -107,8 +107,12 @@ async def lifespan(app: FastAPI):
     import telegram_service
     asyncio.create_task(telegram_service.notify_system_startup())
 
+    import telegram_bot
+    telegram_bot.start(app)
+
     yield
     signal_scheduler.stop()
+    await telegram_bot.stop()
 
 
 app = FastAPI(title="MARTA Dashboard API", lifespan=lifespan)
@@ -427,6 +431,23 @@ async def clear_chat(session_id: str):
     from chat_service import clear_history
     clear_history(session_id)
     return {"cleared": True}
+
+
+@app.get("/api/chat/conversations")
+def list_chat_conversations(limit: int = Query(50)):
+    """Past conversations for the history panel — title, asset, message count,
+    most-recently-updated first. Empty conversations (created but never messaged)
+    are excluded by chat_db.list_conversations itself."""
+    import chat_db
+    return {"conversations": chat_db.list_conversations(limit)}
+
+
+@app.get("/api/chat/conversations/{session_id}")
+def get_chat_conversation(session_id: str):
+    """Full message history for one conversation — used to reload it into the chat
+    widget when the user picks it from the history panel."""
+    import chat_db
+    return {"session_id": session_id, "messages": chat_db.get_conversation(session_id)}
 
 
 @app.get("/api/chat/suggestions/{asset}")

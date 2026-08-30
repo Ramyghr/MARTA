@@ -280,6 +280,11 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
             asset, action, size, price, regime_label=regime_at_decision, source=source,
             reasoning=pending_reasoning,
         )
+        import telegram_service
+        telegram_service.fire_and_forget(telegram_service.notify_pending_trade(
+            pending_id=pending["id"], asset=asset, action=action, position_size=size,
+            price=price, regime_label=regime_at_decision, source=source,
+        ))
         current = paper_db.get_portfolio(asset)
         return {
             "asset": asset,

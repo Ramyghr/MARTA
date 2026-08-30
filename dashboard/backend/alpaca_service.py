@@ -71,6 +71,23 @@ def place_order(asset: str, action: str, position_size: float, current_price: fl
     if action == "hold" or current_price <= 0:
         return {"source": "alpaca", "action": "hold", "order_id": None}
 
+    if action == "short":
+        # Alpaca's crypto trading is spot-only — no margin/borrow — so an actual short
+        # position is impossible; a SELL for more than what's currently held always
+        # 404s as "insufficient balance" (verified in practice, not hypothetical).
+        # paper_db's local ledger is the dashboard's real source of truth and does
+        # model signed short positions correctly (see signal_scheduler.py's comment on
+        # this call site) — this is only the best-effort mirror to the real practice
+        # account, which structurally cannot represent a short at all. Still worth
+        # flattening any existing Alpaca-side long so that account doesn't sit stale
+        # relative to paper_db's short.
+        try:
+            client.close_position(alpaca_symbol)
+        except Exception:
+            pass
+        logger.info(f"Alpaca order skipped ({asset}, short): crypto shorting isn't supported on Alpaca — flattened any existing long instead")
+        return {"source": "unsupported", "action": "short"}
+
     try:
         from alpaca.trading.enums import OrderSide, TimeInForce
         from alpaca.trading.requests import MarketOrderRequest
@@ -78,16 +95,10 @@ def place_order(asset: str, action: str, position_size: float, current_price: fl
         account = client.get_account()
         notional = round(float(account.portfolio_value) * position_size, 2)
 
-        if action == "short":
-            try:
-                client.close_position(alpaca_symbol)
-            except Exception:
-                pass
-
         order = client.submit_order(MarketOrderRequest(
             symbol=alpaca_symbol,
             notional=notional,
-            side=OrderSide.BUY if action == "long" else OrderSide.SELL,
+            side=OrderSide.BUY,
             time_in_force=TimeInForce.GTC,
         ))
 

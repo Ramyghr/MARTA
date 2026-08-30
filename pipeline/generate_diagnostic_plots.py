@@ -3,8 +3,12 @@
 
 Generates, under pipeline/plots/:
   1. raw_data_availability_heatmap.png     — weekly row-coverage %, per asset, from RAW
-     (pre-pipeline) parquet — shows XRP's later start (2018-05-04) and any exchange-
-     downtime gaps.
+     (pre-pipeline) parquet UNIONED with the hourly-refreshed live-bridge parquet
+     (data/processed/{asset}_raw_live.parquet) where present — shows XRP's later
+     start (2018-05-04) and any exchange-downtime gaps, without falsely showing a
+     coverage gap for however long it's been since fetch_crypto5.py last ran (the
+     static raw file alone is 240 days stale for BNB/LTC/XRP as of the 2026-08
+     audit; the live bridge is not). Grid extends to today, not a hardcoded date.
   2. raw_price_volume_overlay.png          — close price (log) + volume, per asset,
      full raw history — first-look sanity check that the ingested data looks right.
   3. feature_distributions_before_normalization.png
@@ -13,7 +17,10 @@ Generates, under pipeline/plots/:
      rolling-z-scored indicators, pooled across all 5 assets, raw vs after
      normalize_features().
   4. feature_correlation_matrix.png        — Pearson correlation heatmap of the 14
-     final (aligned, normalized) feature columns, pooled across all 5 assets.
+     final (aligned, normalized) feature columns, pooled across all 5 assets,
+     TRAIN split only (< configs/splits.py TRAIN_END_EXCLUSIVE) — pooling in val/test
+     rows here would leak those splits into any feature-selection decision this
+     plot informs.
   5. rolling_zscore_stationarity_check.png — realized_vol z-scored at the production
      720h(30d) horizon vs the Phase 2 90d/180d extensions, BTC_USDT full history —
      visual check for whether any horizon shows residual long-run drift away from 0
@@ -39,18 +46,32 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from configs.splits import TRAIN_END_EXCLUSIVE
 from pipeline.normalize import FEATURE_COLS, NORMALIZE_COLS, normalize_features
 from utils.logger import logger
 
 PLOTS_DIR = ROOT / "pipeline" / "plots"
 RAW_DIR = ROOT / "data" / "raw"
 PROCESSED_DIR = ROOT / "data" / "processed"
+TRAIN_END = pd.Timestamp(TRAIN_END_EXCLUSIVE, tz="UTC")
 ASSETS = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 _PALETTE = ["#2196F3", "#F44336", "#4CAF50", "#FF9800", "#9C27B0"]
 
 
 def _load_raw(asset: str) -> pd.DataFrame:
     return pd.read_parquet(RAW_DIR / f"{asset}_1h_raw.parquet", engine="pyarrow")
+
+
+def _load_raw_live(asset: str) -> pd.DataFrame | None:
+    """The hourly-refreshed live-bridge OHLCV accumulator (signal_scheduler.py),
+    which reaches the current hour — unlike the static raw parquet above, which is
+    frozen at whatever date fetch_crypto5.py last ran. Returns None if this asset
+    has no live bridge file yet."""
+    path = PROCESSED_DIR / f"{asset}_raw_live.parquet"
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path, engine="pyarrow")
+    return df if not df.empty else None
 
 
 def _load_features(asset: str) -> pd.DataFrame:
@@ -63,10 +84,25 @@ def plot_availability_heatmap() -> None:
     # different hours and combining the resulting Series into one DataFrame (which
     # aligns by the union of indices) produces spurious near-miss NaN cells that read
     # as fake "gaps" striping every asset at once. A shared reference grid fixes it.
-    bin_edges = pd.date_range("2018-01-01", "2026-02-01", freq="7D", tz="UTC")
+    #
+    # End edge is "now" (+1 week), not a hardcoded date — the static raw parquet
+    # this plot reads stops advancing the moment fetch_crypto5.py last ran (240 days
+    # stale for BNB/LTC/XRP as of the 2026-08 audit), so a fixed end date silently
+    # under-reports coverage more and more with every day that passes. Combining raw
+    # with the live-bridge file below closes the actual data gap; extending the grid
+    # to "now" is what makes that visible on the plot instead of just cropped off.
+    now = pd.Timestamp.now(tz="UTC")
+    start = pd.Timestamp("2018-01-01", tz="UTC")
+    bin_edges = pd.date_range(start, now + pd.Timedelta(days=7), freq="7D")
     weekly = {}
     for asset in ASSETS:
         df = _load_raw(asset)
+        live = _load_raw_live(asset)
+        if live is not None:
+            # Union, not replace — the live bridge only starts partway through the
+            # static raw file's history, so it must extend coverage, not overwrite it.
+            # Static raw wins on any overlapping timestamp (both sources agree there).
+            df = pd.concat([df, live[~live.index.isin(df.index)]]).sort_index()
         counts = df["close"].groupby(pd.cut(df.index, bin_edges, right=False)).count()
         coverage = (counts / (7 * 24)).clip(upper=1.0)
         coverage.index = bin_edges[:-1]
@@ -141,10 +177,15 @@ def plot_feature_distributions() -> None:
 
 
 def plot_correlation_matrix() -> None:
+    # TRAIN split only (< TRAIN_END_EXCLUSIVE) — pooling val/test rows into a
+    # correlation matrix used to inform feature-selection decisions leaks those
+    # splits into the design process, the same leakage risk normalize.py's rolling
+    # z-score is already careful about elsewhere in this pipeline.
     frames = []
     for asset in ASSETS:
         path = PROCESSED_DIR / "crypto5" / f"{asset}_aligned.parquet"
-        frames.append(pd.read_parquet(path, engine="pyarrow"))
+        df = pd.read_parquet(path, engine="pyarrow")
+        frames.append(df[df.index < TRAIN_END])
     pooled = pd.concat(frames, axis=0)
     corr = pooled[FEATURE_COLS].corr()
 
@@ -153,7 +194,10 @@ def plot_correlation_matrix() -> None:
         corr, cmap="coolwarm", vmin=-1, vmax=1, annot=True, fmt=".2f", ax=ax,
         annot_kws={"size": 7},
     )
-    ax.set_title("Feature correlation matrix — 14 final columns, pooled across 5 crypto assets")
+    ax.set_title(
+        f"Feature correlation matrix — 14 final columns, pooled across 5 crypto assets "
+        f"(TRAIN only, <{TRAIN_END_EXCLUSIVE})"
+    )
     fig.tight_layout()
     fig.savefig(PLOTS_DIR / "feature_correlation_matrix.png", dpi=120)
     plt.close(fig)

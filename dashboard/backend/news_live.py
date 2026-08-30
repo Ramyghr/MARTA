@@ -34,6 +34,9 @@ _STOCKTWITS_USER_AGENT = (
 STOCKTWITS_SYMBOLS: dict[str, str] = {
     "BTC_USDT": "BTC.X",
     "ETH_USDT": "ETH.X",
+    "BNB_USDT": "BNB.X",
+    "LTC_USDT": "LTC.X",
+    "XRP_USDT": "XRP.X",
     "GOLD":     "GC_F",
     "EURUSD":   "EURUSD",
 }
@@ -182,6 +185,9 @@ _FEEDS: list[dict] = [
 _ASSET_KEYWORDS: dict[str, list[str]] = {
     "BTC_USDT": ["bitcoin", "btc", "satoshi", "lightning network", "spot etf"],
     "ETH_USDT": ["ethereum", "eth", "ether", "defi", "erc-20", "polygon", "layer 2"],
+    "BNB_USDT": ["binance coin", "bnb", "binance smart chain", "bsc", "opbnb"],
+    "LTC_USDT": ["litecoin", "ltc"],
+    "XRP_USDT": ["ripple", "xrp", "odl"],
     "GOLD": ["gold", "xau", "precious metal", "bullion"],
     "EURUSD": ["euro", "eur/usd", "ecb", "eurozone"],
 }
