@@ -55,6 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from configs.splits import TEST_END_EXCLUSIVE, TEST_START, TRAIN_END_EXCLUSIVE, VAL_END_EXCLUSIVE, VAL_START
+from utils.freshness import resolve_regime_stream_path
 from utils.logger import logger
 
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -107,7 +108,11 @@ def _bootstrap_sharpe_delta(
 
 def _load_asset(panel_dir: Path, asset: str) -> pd.DataFrame:
     aligned = pd.read_parquet(panel_dir / f"{asset}_aligned.parquet", engine="pyarrow")
-    rs = pd.read_parquet(panel_dir / "regime_stream.parquet", engine="pyarrow")
+    # Causal, not the leaky forward-backward-smoothed stream — this backtest's whole
+    # purpose is measuring whether regime conditioning helps, so a lookahead-contaminated
+    # regime_label makes the result uninterpretable in either direction. See
+    # utils.freshness.resolve_regime_stream_path / regime/causal_regime_stream.py.
+    rs = pd.read_parquet(resolve_regime_stream_path(panel_dir), engine="pyarrow")
     rs_asset = rs[rs["asset"] == asset].set_index("timestamp")[["regime_label"]]
     rs_asset.index = pd.to_datetime(rs_asset.index, utc=True)
     df = aligned[["close_return", "realized_vol_raw"]].join(rs_asset, how="inner")

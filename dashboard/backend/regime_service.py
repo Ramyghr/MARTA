@@ -276,7 +276,14 @@ def load_regime_stream() -> None:
     # HMM's regime labels mean different things at the same integer index, and this
     # stream has 5 assets _df has never heard of (BNB/LTC/XRP). get_regime()/get_regime_
     # series() dispatch to whichever table actually matches the requested asset.
-    crypto5_path = _CRYPTO5_PROCESSED / "regime_stream.parquet"
+    #
+    # Causal, not the leaky forward-backward-smoothed stream — even a "genuinely
+    # historical" lookup here is used as evaluation-relevant context (the debate layer's
+    # ContrarianAgent historical-analogue retrieval, backtests reading get_regime_series)
+    # and must not be informed by data after its own timestamp. See
+    # utils.freshness.resolve_regime_stream_path / regime/causal_regime_stream.py.
+    from utils.freshness import resolve_regime_stream_path
+    crypto5_path = resolve_regime_stream_path(_CRYPTO5_PROCESSED)
     if crypto5_path.exists():
         _crypto5_df = pd.read_parquet(crypto5_path, engine="pyarrow")
         if "timestamp" in _crypto5_df.columns and not isinstance(_crypto5_df.index, pd.DatetimeIndex):

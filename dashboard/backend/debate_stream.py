@@ -220,15 +220,23 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         from agents.sentiment_agent import SentimentAgent
         from agents.contrarian_agent import ContrarianAgent
         from utils.assets import aligned_path
-        from utils.freshness import CRYPTO5_DEBATE_ASSETS, CRYPTO5_PROCESSED, CRYPTO5_SEMANTICS_PATH
+        from utils.freshness import (
+            CRYPTO5_DEBATE_ASSETS,
+            CRYPTO5_PROCESSED,
+            CRYPTO5_SEMANTICS_PATH,
+            resolve_regime_stream_path,
+        )
         import pandas as pd
 
         await websocket.send_json({"type": "debate_start", "asset": asset, "timestamp": timestamp, "mode": "live"})
 
         ts = pd.Timestamp(timestamp, tz="UTC")
 
+        # Causal stream (regime_t = f(x_<=t)) — a live agent debate must never reason
+        # about a regime label that was silently informed by data from after `timestamp`.
+        # See utils.freshness.resolve_regime_stream_path / regime/causal_regime_stream.py.
         regime_stream_df = pd.read_parquet(
-            CRYPTO5_PROCESSED / "regime_stream.parquet", engine="pyarrow"
+            resolve_regime_stream_path(CRYPTO5_PROCESSED), engine="pyarrow"
         )
         # Crypto-only panel (2026-08-23 migration) — CRYPTO5_PROCESSED holds one
         # {asset}_aligned.parquet per asset, not a combined MultiIndex file like the old

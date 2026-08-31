@@ -1,0 +1,398 @@
+{
+  "crypto5_multihorizon": {
+    "per_asset": {
+      "BTC_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 1.506317897412399,
+            "max_drawdown": -0.36002616266506154,
+            "total_return": 0.9262132202392539,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": 1.1746746910199763,
+            "max_drawdown": -0.4846415472864584,
+            "total_return": 0.7097650733645369,
+            "mean_weight": 1.3317826680537552,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": 1.0391850697512537,
+            "max_drawdown": -0.39005418274621545,
+            "total_return": 0.4988179597108724,
+            "mean_weight": 1.1301592588621487,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": -0.14721237010597715,
+            "max_drawdown": -0.3569720103805565,
+            "total_return": -0.15155157535985908,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.5504384204602798,
+            "max_drawdown": -0.5018409346977389,
+            "total_return": -0.3921184003795697,
+            "mean_weight": 1.5330225329300131,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": -0.3027946842996307,
+            "max_drawdown": -0.42691852989356305,
+            "total_return": -0.21817088311228017,
+            "mean_weight": 1.206453701854429,
+            "n_steps": 8760
+          }
+        }
+      },
+      "ETH_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 0.5920177388737784,
+            "max_drawdown": -0.5223550296030656,
+            "total_return": 0.19027801077083306,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.06950200092304597,
+            "max_drawdown": -0.731419545330739,
+            "total_return": -0.31612770114570743,
+            "mean_weight": 1.4163128673776144,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": 0.16727850069253816,
+            "max_drawdown": -0.5137249732919396,
+            "total_return": -0.0914233136623408,
+            "mean_weight": 1.1324485566379303,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": -0.1602675857043436,
+            "max_drawdown": -0.6533988280740649,
+            "total_return": -0.31613967343158955,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.24769479419539164,
+            "max_drawdown": -0.7185309277980646,
+            "total_return": -0.42614410771902356,
+            "mean_weight": 1.287020782218481,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": -0.08063528761436436,
+            "max_drawdown": -0.6554172470804056,
+            "total_return": -0.2953615649375012,
+            "mean_weight": 1.1704776408518238,
+            "n_steps": 8760
+          }
+        }
+      },
+      "BNB_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 1.3000162614989716,
+            "max_drawdown": -0.4433429659840789,
+            "total_return": 0.8536912438812012,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": 0.7017890763382123,
+            "max_drawdown": -0.5894352544972532,
+            "total_return": 0.2747027126852397,
+            "mean_weight": 1.5149746187177113,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": 0.6861080530230854,
+            "max_drawdown": -0.4277558577436637,
+            "total_return": 0.2602030642468922,
+            "mean_weight": 1.1562187290918629,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": 0.3788494236894098,
+            "max_drawdown": -0.42725270428869405,
+            "total_return": 0.0584540849101165,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": 0.45937291825590293,
+            "max_drawdown": -0.5606267289044337,
+            "total_return": 0.06671997523109052,
+            "mean_weight": 1.6179019982910876,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": 0.2984234860352082,
+            "max_drawdown": -0.4326580229321247,
+            "total_return": 0.015517169141952003,
+            "mean_weight": 1.2236645104600505,
+            "n_steps": 8760
+          }
+        }
+      },
+      "LTC_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 0.43103463310237133,
+            "max_drawdown": -0.5776884641438832,
+            "total_return": 0.02164874393147076,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.1620425095556589,
+            "max_drawdown": -0.672712126621476,
+            "total_return": -0.4264457326391118,
+            "mean_weight": 1.4603378104787776,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": -0.016300776637698328,
+            "max_drawdown": -0.5334796945832038,
+            "total_return": -0.2318355698387945,
+            "mean_weight": 1.1485030718593587,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": -0.3426994027281046,
+            "max_drawdown": -0.6348708260542029,
+            "total_return": -0.48877111786462957,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.42865768958909484,
+            "max_drawdown": -0.6610634368794345,
+            "total_return": -0.5646559800325847,
+            "mean_weight": 1.3177334048498484,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": -0.66484011850491,
+            "max_drawdown": -0.705647124589346,
+            "total_return": -0.621825252052675,
+            "mean_weight": 1.2222482328824704,
+            "n_steps": 8760
+          }
+        }
+      },
+      "XRP_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 1.34719500375905,
+            "max_drawdown": -0.4979778219215908,
+            "total_return": 1.2496195510356927,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": 0.13064330954182463,
+            "max_drawdown": -0.6754982192201419,
+            "total_return": -0.2526430020577498,
+            "mean_weight": 1.4546380326931088,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": -0.001218532488283015,
+            "max_drawdown": -0.564112178315425,
+            "total_return": -0.24310121242510208,
+            "mean_weight": 1.196770652936087,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": -0.14627800330096855,
+            "max_drawdown": -0.6209780132947381,
+            "total_return": -0.37920864034041346,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.6623551888957047,
+            "max_drawdown": -0.7579766129123902,
+            "total_return": -0.6531662755563427,
+            "mean_weight": 1.3674589842420226,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": -0.5602917521873706,
+            "max_drawdown": -0.7158341052173552,
+            "total_return": -0.5894683304455524,
+            "mean_weight": 1.2731048338524622,
+            "n_steps": 8760
+          }
+        }
+      }
+    },
+    "portfolio": {
+      "val": {
+        "buy_hold": {
+          "sharpe": 1.203060858312912,
+          "max_drawdown": -0.43063018229715416,
+          "total_return": 0.7093874425089435
+        },
+        "vol_target_continuous": {
+          "sharpe": 0.35280355835033905,
+          "max_drawdown": -0.5630530924270303,
+          "total_return": 0.009057137092867595
+        },
+        "regime_conditioned": {
+          "sharpe": 0.38621453186358173,
+          "max_drawdown": -0.4150633698225189,
+          "total_return": 0.06505918801414667
+        },
+        "bootstrap_regime_vs_voltarget": {
+          "delta_sharpe": 0.032533150352628507,
+          "ci_95": [
+            -0.33345166771797863,
+            0.42502672592386953
+          ]
+        }
+      },
+      "test": {
+        "buy_hold": {
+          "sharpe": -0.1312873589142259,
+          "max_drawdown": -0.4880148275159597,
+          "total_return": -0.22760346558454925
+        },
+        "vol_target_continuous": {
+          "sharpe": -0.34282050139831405,
+          "max_drawdown": -0.5875755398486503,
+          "total_return": -0.38824405270714035
+        },
+        "regime_conditioned": {
+          "sharpe": -0.3639065780626757,
+          "max_drawdown": -0.5540463611381511,
+          "total_return": -0.3398254432887079
+        },
+        "bootstrap_regime_vs_voltarget": {
+          "delta_sharpe": -0.023349627941466874,
+          "ci_95": [
+            -0.3590532521459141,
+            0.2760938554210509
+          ]
+        }
+      }
+    }
+  },
+  "btc_only_multihorizon": {
+    "per_asset": {
+      "BTC_USDT": {
+        "val": {
+          "buy_hold": {
+            "sharpe": 1.506317897412399,
+            "max_drawdown": -0.36002616266506154,
+            "total_return": 0.9262132202392539,
+            "mean_weight": 1.0,
+            "n_steps": 8784
+          },
+          "vol_target_continuous": {
+            "sharpe": 1.1759936775055488,
+            "max_drawdown": -0.5059200707511295,
+            "total_return": 0.7385844798617887,
+            "mean_weight": 1.3893717150754517,
+            "n_steps": 8784
+          },
+          "regime_conditioned": {
+            "sharpe": 1.1113310419929643,
+            "max_drawdown": -0.37584183851450803,
+            "total_return": 0.554893205122651,
+            "mean_weight": 1.1258354320216224,
+            "n_steps": 8784
+          }
+        },
+        "test": {
+          "buy_hold": {
+            "sharpe": -0.14721237010597715,
+            "max_drawdown": -0.3569720103805565,
+            "total_return": -0.15155157535985908,
+            "mean_weight": 1.0,
+            "n_steps": 8760
+          },
+          "vol_target_continuous": {
+            "sharpe": -0.5540905387665668,
+            "max_drawdown": -0.5183072628684164,
+            "total_return": -0.40900488532498225,
+            "mean_weight": 1.5822784703377544,
+            "n_steps": 8760
+          },
+          "regime_conditioned": {
+            "sharpe": -0.32078993929308774,
+            "max_drawdown": -0.4448521411081856,
+            "total_return": -0.2205739834984396,
+            "mean_weight": 1.1891485096417032,
+            "n_steps": 8760
+          }
+        }
+      }
+    },
+    "portfolio": {
+      "val": {
+        "buy_hold": {
+          "sharpe": 1.506317897412399,
+          "max_drawdown": -0.36002616266506154,
+          "total_return": 0.9262132202392539
+        },
+        "vol_target_continuous": {
+          "sharpe": 1.1759936775055488,
+          "max_drawdown": -0.5059200707511295,
+          "total_return": 0.7385844798617887
+        },
+        "regime_conditioned": {
+          "sharpe": 1.1113310419929643,
+          "max_drawdown": -0.37584183851450803,
+          "total_return": 0.554893205122651
+        },
+        "bootstrap_regime_vs_voltarget": {
+          "delta_sharpe": -0.05119995087044464,
+          "ci_95": [
+            -0.4532664016224973,
+            0.3540303833101655
+          ]
+        }
+      },
+      "test": {
+        "buy_hold": {
+          "sharpe": -0.14721237010597715,
+          "max_drawdown": -0.3569720103805565,
+          "total_return": -0.15155157535985908
+        },
+        "vol_target_continuous": {
+          "sharpe": -0.5540905387665668,
+          "max_drawdown": -0.5183072628684164,
+          "total_return": -0.40900488532498225
+        },
+        "regime_conditioned": {
+          "sharpe": -0.32078993929308774,
+          "max_drawdown": -0.4448521411081856,
+          "total_return": -0.2205739834984396
+        },
+        "bootstrap_regime_vs_voltarget": {
+          "delta_sharpe": 0.2384341689690486,
+          "ci_95": [
+            -0.13783344903662204,
+            0.6531625815110571
+          ]
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Optional
@@ -19,10 +20,19 @@ from typing import Optional
 import numpy as np
 
 MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.parent)))
+if str(MARTA_ROOT) not in sys.path:
+    sys.path.insert(0, str(MARTA_ROOT))
+
+from utils.freshness import resolve_regime_stream_path  # noqa: E402
 
 _CHECKPOINT = MARTA_ROOT / "rl" / "checkpoints" / "ppo_best.zip"
 _ENCODER_CKPT = MARTA_ROOT / "encoder" / "checkpoints" / "best_encoder.pt"
-_REGIME_STREAM_PATH = MARTA_ROOT / "data" / "processed" / "regime_stream.parquet"
+# ppo_best.zip serves the production 4-asset (BTC/ETH/EURUSD/GOLD) encoder-based model —
+# NOT the crypto5 raw-feature panel. No causal stream exists for this panel yet (only
+# crypto5_multihorizon has one), so this resolves to the leaky stream today; kept
+# causal-preferring so it picks up a fix automatically if one is ever built here too.
+# See utils.freshness.resolve_regime_stream_path / regime/causal_regime_stream.py.
+_REGIME_STREAM_PATH = resolve_regime_stream_path(MARTA_ROOT / "data" / "processed")
 _ALIGNED_PATTERN = str(MARTA_ROOT / "data" / "processed" / "{asset}_normalized.parquet")
 # Live-extended file (see live_feature_bridge.py) — a superset of the training-time file,
 # kept current for all 4 assets via the hourly scheduler tick (Twelve Data for EURUSD/GOLD,

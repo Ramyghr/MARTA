@@ -7,6 +7,11 @@ an EARLIER row's computed regime probability. That's the entire bug this module 
 fix (predict_proba's forward-backward smoothing lets future rows leak backward), so it's
 the one test that would fail against the old regime/hmm.py:generate_regime_stream()
 approach and must pass here.
+
+Also covers utils.freshness.resolve_regime_stream_path() (added alongside the consumer
+audit that wired every real reader of regime_stream.parquet over to the causal file where
+one exists) — the generation-side invariance above says nothing about whether a given
+consumer actually *picks* the causal file, which is a separate, easy-to-regress property.
 """
 from __future__ import annotations
 
@@ -21,6 +26,7 @@ from hmmlearn.hmm import GaussianHMM
 
 from regime.causal_regime_stream import generate_causal_regime_stream
 from regime.hmm import generate_regime_stream as leaky_generate_regime_stream
+from utils.freshness import resolve_regime_stream_path
 
 N_STATES = 3
 N_FEATURES = 4
@@ -160,3 +166,62 @@ def test_leaky_baseline_actually_violates_causality(processed_dir: Path, hmm_che
         "Expected the leaky generator to be affected by a future perturbation "
         "(that's the bug being fixed) — got no measurable difference."
     )
+
+
+# ---------------------------------------------------------------------------
+# resolve_regime_stream_path() — the consumer-side resolver, separate from the
+# generation-side invariance tested above. A panel dir with a real causal stream
+# generated correctly is useless if every consumer still hardcodes the leaky filename
+# (that was the actual bug in dashboard/backend/debate_stream.py and friends).
+# ---------------------------------------------------------------------------
+
+def test_resolver_prefers_causal_when_present(tmp_path: Path):
+    panel = tmp_path / "some_panel"
+    panel.mkdir()
+    (panel / "regime_stream.parquet").write_bytes(b"leaky")
+    (panel / "regime_stream_causal.parquet").write_bytes(b"causal")
+    assert resolve_regime_stream_path(panel) == panel / "regime_stream_causal.parquet"
+
+
+def test_resolver_falls_back_to_leaky_when_no_causal_file(tmp_path: Path, capsys):
+    panel = tmp_path / "some_panel"
+    panel.mkdir()
+    (panel / "regime_stream.parquet").write_bytes(b"leaky")
+    result = resolve_regime_stream_path(panel)
+    assert result == panel / "regime_stream.parquet"
+    # The fallback must be loud, not silent — a consumer reading the leaky stream
+    # without realizing it is exactly how this bug went undetected the first time.
+    assert "WARNING" in capsys.readouterr().out
+
+
+def test_resolver_prefer_causal_false_always_returns_leaky(tmp_path: Path):
+    panel = tmp_path / "some_panel"
+    panel.mkdir()
+    (panel / "regime_stream.parquet").write_bytes(b"leaky")
+    (panel / "regime_stream_causal.parquet").write_bytes(b"causal")
+    assert resolve_regime_stream_path(panel, prefer_causal=False) == panel / "regime_stream.parquet"
+
+
+def test_resolver_fix_hint_is_actionable_for_a_tagged_panel(tmp_path: Path, capsys):
+    """The --tag hint in the fallback warning must name a --tag that would actually
+    work against regime/causal_regime_stream.py — this regressed once already (the
+    hint used `processed_dir.name`, which is correct for a tagged subdirectory like
+    crypto5_multihorizon/ but was wrongly printed even for the bare production
+    data/processed/, which isn't --tag-structured and has no causal generator path)."""
+    panel = tmp_path / "btc_only"
+    panel.mkdir()
+    (panel / "regime_stream.parquet").write_bytes(b"leaky")
+    resolve_regime_stream_path(panel)
+    assert "--tag btc_only" in capsys.readouterr().out
+
+
+def test_resolver_fix_hint_for_bare_production_dir_does_not_suggest_a_broken_command(
+    tmp_path: Path, capsys,
+):
+    panel = tmp_path / "processed"
+    panel.mkdir()
+    (panel / "regime_stream.parquet").write_bytes(b"leaky")
+    resolve_regime_stream_path(panel)
+    out = capsys.readouterr().out
+    assert "--tag processed" not in out
+    assert "No causal generator exists yet" in out

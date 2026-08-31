@@ -32,10 +32,16 @@ candidate model's regime stream (raw-feature baselines, crypto-only panels, etc.
 without copy-pasting the script. Running with no args reproduces the original
 production audit exactly (same defaults).
 
+--regime-stream default (no flag given): resolved via utils.freshness.resolve_regime_
+stream_path(--processed-dir), which prefers regime_stream_causal.parquet
+(regime/causal_regime_stream.py's walk-forward, non-leaky replacement) when one exists
+in that directory, falling back to the plain (forward-backward smoothed) regime_stream.
+parquet otherwise. Pass --regime-stream explicitly to force a specific file, e.g. for a
+deliberate causal-vs-leaky comparison run.
+
 Run:
   python regime/regime_quality_audit.py
   python regime/regime_quality_audit.py \
-      --regime-stream data/processed/crypto5_multihorizon/regime_stream.parquet \
       --processed-dir data/processed/crypto5_multihorizon \
       --assets BTC_USDT,ETH_USDT,BNB_USDT,LTC_USDT,XRP_USDT \
       --tag crypto5_multihorizon --sections 1,4
@@ -67,6 +73,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from utils.assets import aligned_path  # noqa: E402
+from utils.freshness import resolve_regime_stream_path  # noqa: E402
 from utils.logger import logger  # noqa: E402
 
 _PLOTS_DIR = Path("regime/plots")
@@ -79,7 +86,10 @@ _FEATURE_COLS = [
 
 # Set by main() from CLI args before any section function runs.
 _PROCESSED = Path("data/processed")
-_REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
+# Causal-preferring: resolve_regime_stream_path() falls back to the leaky stream if
+# _PROCESSED has no regime_stream_causal.parquet (true for the production 4-asset panel
+# today) — see utils.freshness.resolve_regime_stream_path / regime/causal_regime_stream.py.
+_REGIME_STREAM_PATH = resolve_regime_stream_path(_PROCESSED)
 _RESULTS_PATH = Path("data/results/regime_quality_audit.json")
 _ASSETS = list(_DEFAULT_ASSETS)
 
@@ -421,7 +431,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--regime-stream", type=str, default=None,
-        help="Path to regime_stream.parquet (default: data/processed/regime_stream.parquet, production)",
+        help="Path to a regime stream parquet. Default: auto-resolved from --processed-dir "
+             "via resolve_regime_stream_path() (prefers regime_stream_causal.parquet, falls "
+             "back to the leaky regime_stream.parquet if no causal version exists there).",
     )
     parser.add_argument(
         "--processed-dir", type=str, default=None,
@@ -451,9 +463,11 @@ def main() -> None:
     if args.processed_dir:
         _PROCESSED = Path(args.processed_dir)
     if args.regime_stream:
+        # Explicit override — respected exactly as given, including a deliberate
+        # request for the leaky stream (e.g. a causal-vs-leaky comparison run).
         _REGIME_STREAM_PATH = Path(args.regime_stream)
     elif args.processed_dir:
-        _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
+        _REGIME_STREAM_PATH = resolve_regime_stream_path(_PROCESSED)
     if args.assets:
         _ASSETS = args.assets.split(",")
     if args.tag:

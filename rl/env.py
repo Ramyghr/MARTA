@@ -198,6 +198,38 @@ def precompute_vol_forecast(
     return vol
 
 
+# obs_mode="raw_vol" (RL experiment Condition B — does exposing continuous volatility
+# help, isolated from regime discretization). The GARCH vol_forecast is already present
+# in every obs_mode's portfolio block (_portfolio_vec's vec[base+3]) but as a RAW,
+# unnormalized decimal (~0.01-0.05) sitting alongside everything else in the observation,
+# which is z-scored/ratio-scaled — effectively drowned out, not a fair "continuous
+# volatility" condition. This is a second, properly-scaled copy of the same underlying
+# signal, added as its own dimension, so raw_vol tests whether a *prominent* volatility
+# signal helps beyond what's already technically-present-but-negligible in "raw" — it
+# does not change what obs_mode="raw" or "raw_regime" (real or placebo) see.
+_VOL_ZSCORE_WINDOW = 720   # matches pipeline/normalize.py's rolling z-score convention
+_VOL_ZSCORE_MIN_PERIODS = 168
+
+
+def zscore_vol_forecast(
+    vol: np.ndarray, window: int = _VOL_ZSCORE_WINDOW, min_periods: int = _VOL_ZSCORE_MIN_PERIODS
+) -> np.ndarray:
+    """Rolling z-score of a precomputed vol_forecast array, same window/min_periods
+    convention as pipeline/normalize.py. Below min_periods of history, falls back to an
+    EXPANDING-window z-score (mean/std over all available history so far) instead of
+    NaN — this array is read directly by index during training/eval, so a NaN would
+    propagate straight into the observation vector."""
+    s = pd.Series(vol)
+    rolling_mean = s.rolling(window=window, min_periods=min_periods).mean()
+    rolling_std = s.rolling(window=window, min_periods=min_periods).std()
+    expanding_mean = s.expanding(min_periods=1).mean()
+    expanding_std = s.expanding(min_periods=1).std()
+    mean = rolling_mean.fillna(expanding_mean)
+    std = rolling_std.fillna(expanding_std)
+    z = (s - mean) / (std + 1e-8)
+    return z.fillna(0.0).to_numpy(dtype=np.float32)
+
+
 def cvar_from_vol(vol: float) -> float:
     """95% normal CVaR from a volatility forecast (negative, same as RiskAgent.cvar_95)."""
     return _CVAR_MULT * vol
@@ -246,7 +278,12 @@ class MARTATradingEnv(gym.Env):
         #   "raw_regime"  - "raw" plus the regime probability vector (dim = however many
         #                   regime_prob_* columns `regime_stream_df` has) appended after
         #                   the raw window. `encoder` may be None in this mode too.
-        obs_mode: Literal["encoder", "raw", "raw_regime"] = "encoder",
+        #   "raw_vol"     - RL experiment Condition B: "raw" plus ONE extra dim, a
+        #                   rolling-z-scored GARCH vol_forecast (see zscore_vol_forecast
+        #                   above) — a prominent, properly-scaled volatility signal,
+        #                   distinct from the same forecast already sitting unnormalized
+        #                   in the portfolio block. `encoder` may be None in this mode too.
+        obs_mode: Literal["encoder", "raw", "raw_regime", "raw_vol"] = "encoder",
         sequential: bool = False,
         max_steps: int = 2000,
         zero_regime: bool = False,
@@ -358,6 +395,7 @@ class MARTATradingEnv(gym.Env):
         self._arrays: dict[str, np.ndarray] = {}
         self._returns: dict[str, np.ndarray] = {}
         self._vol: dict[str, np.ndarray] = {}
+        self._vol_zscore: dict[str, np.ndarray] = {}  # obs_mode="raw_vol" only
         self._index: dict[str, pd.DatetimeIndex] = {}
         self._valid_starts: dict[str, np.ndarray] = {}
         self._regime_labels: dict[str, np.ndarray] = {}
@@ -378,11 +416,16 @@ class MARTATradingEnv(gym.Env):
         # obs_mode in ("raw", "raw_regime"); "encoder" mode never reads this.
         self.n_raw_features = next(iter(self._arrays.values())).shape[1] if self._arrays else 14
 
-        # Observation dim depends on obs_mode — see module docstring for the three modes.
+        # Observation dim depends on obs_mode — see module docstring for the four modes.
         if self.obs_mode == "encoder":
             obs_dim = REGIME_DIM + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
         elif self.obs_mode == "raw":
             obs_dim = self.window_size * self.n_raw_features + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
+        elif self.obs_mode == "raw_vol":
+            obs_dim = (
+                self.window_size * self.n_raw_features + 1
+                + CONSENSUS_DIM + self.portfolio_dim + self.asset_id_dim
+            )
         else:  # "raw_regime"
             obs_dim = (
                 self.window_size * self.n_raw_features + self._n_regime_prob_dims
@@ -437,6 +480,8 @@ class MARTATradingEnv(gym.Env):
         self._returns[asset] = df["close_return"].to_numpy(dtype=np.float64)
         self._index[asset] = df.index
         self._vol[asset] = precompute_vol_forecast(df, asset)
+        if self.obs_mode == "raw_vol":
+            self._vol_zscore[asset] = zscore_vol_forecast(self._vol[asset])
         self._regime_labels[asset] = self._build_regime_label_series(asset, df.index)
         if self.obs_mode == "raw_regime":
             self._regime_probs[asset] = self._build_regime_prob_series(asset, df.index)
@@ -517,6 +562,14 @@ class MARTATradingEnv(gym.Env):
             return np.zeros(self._n_regime_prob_dims, dtype=np.float32)
         return obs_builder.regime_prob_vec(self._regime_probs[asset], t)
 
+    def _vol_zscore_vec(self, asset: str, t: int) -> np.ndarray:
+        """1-dim rolling-z-scored GARCH vol_forecast — obs_mode='raw_vol' only. Not
+        gated by zero_regime: that flag is about zeroing regime-derived signals
+        (encoder embedding / regime_prob tail), and this is a volatility signal, not a
+        regime one — Condition B (raw_vol) and the zero_regime ablation are orthogonal
+        axes and should stay that way."""
+        return obs_builder.vol_scalar_vec(self._vol_zscore[asset], t)
+
     def _consensus_vec(self, asset: str, t: int) -> np.ndarray:
         if self.zero_consensus:
             return np.zeros(CONSENSUS_DIM, dtype=np.float32)
@@ -549,6 +602,11 @@ class MARTATradingEnv(gym.Env):
             regime_block = [self._encode_window(self._asset, self._t)]
         elif self.obs_mode == "raw":
             regime_block = [self._raw_window_vec(self._asset, self._t)]
+        elif self.obs_mode == "raw_vol":
+            regime_block = [
+                self._raw_window_vec(self._asset, self._t),
+                self._vol_zscore_vec(self._asset, self._t),
+            ]
         else:  # "raw_regime"
             regime_block = [
                 self._raw_window_vec(self._asset, self._t),

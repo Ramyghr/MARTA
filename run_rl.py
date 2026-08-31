@@ -589,15 +589,18 @@ def main() -> None:
     )
     parser.add_argument(
         "--obs-mode",
-        choices=["encoder", "raw", "raw_regime"],
+        choices=["encoder", "raw", "raw_regime", "raw_vol"],
         default="encoder",
         help=(
             "observation source (rl/env.py's obs_mode, added 2026-08-12 raw-feature-"
             "baseline pivot). 'encoder' (default) is unchanged prior behavior. 'raw' "
             "replaces the 128-dim encoder embedding with the flattened 60x14 raw "
             "feature window (840-dim), no encoder loaded. 'raw_regime' adds the regime "
-            "probability vector on top (see --regime-stream-path). Checkpoints get a "
-            "'_<obs_mode>' suffix so they never collide with the default encoder-mode run."
+            "probability vector on top (see --regime-stream-path). 'raw_vol' (RL "
+            "experiment Condition B, added 2026-08-30) adds one dim instead: a "
+            "rolling-z-scored GARCH vol_forecast, isolating continuous volatility from "
+            "regime discretization. Checkpoints get a '_<obs_mode>' suffix so they "
+            "never collide with the default encoder-mode run."
         ),
     )
     parser.add_argument(
@@ -609,6 +612,21 @@ def main() -> None:
             "meaningful with --obs-mode raw_regime — e.g. "
             "data/processed/raw_baseline/regime_stream.parquet for the raw-feature "
             "HMM (n_states=6) validated in Step 1 of the raw-feature-baseline pivot."
+        ),
+    )
+    parser.add_argument(
+        "--extra-tag",
+        default=None,
+        metavar="TAG",
+        help=(
+            "append an arbitrary '_<TAG>' marker to checkpoint_suffix, on top of "
+            "whatever obs_mode/crypto5/seed markers already apply. Needed when two runs "
+            "would otherwise share an identical auto-generated suffix and silently "
+            "overwrite each other's checkpoint/results — e.g. RL experiment Condition C "
+            "(--obs-mode raw_regime, real causal stream) vs Condition D (--obs-mode "
+            "raw_regime --regime-stream-path <placebo file>) both produce "
+            "'_raw_regime_seed{N}' without this, since --regime-stream-path itself "
+            "carries no suffix marker."
         ),
     )
     parser.add_argument(
@@ -828,6 +846,8 @@ def main() -> None:
         config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_{args.obs_mode}"
         if args.regime_stream_path:
             config["regime_stream_path"] = args.regime_stream_path
+    if args.extra_tag:
+        config["checkpoint_suffix"] = config.get("checkpoint_suffix", "") + f"_{args.extra_tag}"
     logger.info(
         f"Device: {config['device']} | quick={args.quick} | eval_only={args.eval_only or False} "
         f"| benchmark_relative={config['benchmark_relative']} | obs_mode={args.obs_mode}"

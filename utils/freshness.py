@@ -48,6 +48,48 @@ class StaleRegimeStreamError(RuntimeError):
     """regime_stream.parquet predates the deployed encoder checkpoint."""
 
 
+def resolve_regime_stream_path(processed_dir: Path, prefer_causal: bool = True) -> Path:
+    """Return the CAUSAL regime stream under `processed_dir` if one exists, else fall
+    back to the leaky (forward-backward smoothed) one — logging a warning on fallback
+    so a silent leak is at least visible.
+
+    The canonical single interface every consumer should route through instead of
+    hardcoding "regime_stream.parquet" itself (regime-layer audit, 2026-08-26+): plain
+    regime_stream.parquet is built by regime/hmm.py's generate_regime_stream(), which
+    calls hmmlearn's predict_proba() on an asset's ENTIRE history in one shot —
+    forward-BACKWARD smoothed, so a 2019 row's probability is measurably influenced by
+    2025 data (confirmed CRITICAL finding; documented root cause of obs_mode="raw_regime"
+    underperforming obs_mode="raw" in the crypto5 RL ablation, docs/RESULTS_AND_METHODOLOGY.md
+    Section 9). regime/causal_regime_stream.py's regime_stream_causal.parquet is the
+    walk-forward, forward-filtering-only replacement — provably regime_t = f(x_{<=t}),
+    never f(x_{<=T}). Not every processed_dir has a causal stream yet (built so far only
+    for crypto5_multihorizon) — the fallback keeps this a safe drop-in for panels that
+    don't, rather than a hard failure.
+    """
+    causal_path = processed_dir / "regime_stream_causal.parquet"
+    if prefer_causal and causal_path.exists():
+        return causal_path
+    leaky_path = processed_dir / "regime_stream.parquet"
+    if prefer_causal:
+        # The --tag hint only makes sense for a tagged panel subdirectory (crypto5,
+        # crypto5_multihorizon, btc_only, ...); the bare production data/processed/ isn't
+        # structured as a --tag panel, so don't print a command that wouldn't actually work.
+        # Compare by name, not the full path, so this is correct whether the caller passes
+        # a relative Path("data/processed") or an absolute MARTA_ROOT/"data"/"processed".
+        fix_hint = (
+            "No causal generator exists yet for the production 4-asset panel."
+            if processed_dir.name == "processed"
+            else f"Run `regime/causal_regime_stream.py --tag {processed_dir.name}` to fix."
+        )
+        print(
+            f"[freshness] WARNING: no causal regime stream at {causal_path} — falling back "
+            f"to the leaky (forward-backward smoothed) {leaky_path}. Historical regime "
+            f"labels read from this file may be influenced by future data relative to "
+            f"their own timestamp. {fix_hint}"
+        )
+    return leaky_path
+
+
 def check_encoder_regime_stream_freshness(
     encoder_path: Path = _ENCODER_PATH,
     regime_stream_path: Path = _REGIME_STREAM_PATH,
@@ -93,7 +135,7 @@ def load_debate_data(
     """
     if processed_dir == _PROCESSED:
         check_encoder_regime_stream_freshness()
-    regime_stream = pd.read_parquet(processed_dir / "regime_stream.parquet", engine="pyarrow")
+    regime_stream = pd.read_parquet(resolve_regime_stream_path(processed_dir), engine="pyarrow")
     aligned_dfs: dict[str, pd.DataFrame] = {}
     for asset in assets:
         path = aligned_path(asset, processed_dir)

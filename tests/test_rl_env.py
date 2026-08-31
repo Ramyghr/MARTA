@@ -157,6 +157,73 @@ def test_raw_obs_mode_uses_actual_feature_count(regime_stream):
     assert obs.shape == (expected_obs_dim,)
 
 
+def test_raw_vol_obs_mode_adds_exactly_one_dim(regime_stream):
+    """RL experiment Condition B: obs_mode='raw_vol' must be raw's obs_dim + 1, not +
+    n_regime_prob_dims or anything else — it's a single scalar (the rolling-z-scored
+    GARCH vol_forecast), not a vector."""
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2018-06-01", periods=N_ROWS, freq="1h", tz="UTC")
+    cols_14 = [
+        "atr", "adx", "rsi", "bb_width", "macd_histogram",
+        "obv_raw", "vol_zscore", "realized_vol", "vol_ratio",
+        "return_skew", "return_kurtosis", "autocorr_lag1",
+        "realized_vol_raw", "close_return",
+    ]
+    df_14 = pd.DataFrame(rng.standard_normal((N_ROWS, 14)).astype(np.float32), index=idx, columns=cols_14)
+    vol_array = np.full(N_ROWS, 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df_14}, regime_stream_df=regime_stream,
+            encoder=None, debate_results=None, split="all", max_steps=50, obs_mode="raw_vol",
+        )
+    expected_obs_dim = 60 * 14 + 1 + CONSENSUS_DIM + PORTFOLIO_DIM + ASSET_ID_DIM
+    assert e.observation_space.shape == (expected_obs_dim,)
+    obs, _ = e.reset(seed=0)
+    assert obs.shape == (expected_obs_dim,)
+    assert np.isfinite(obs).all()
+
+
+def test_raw_vol_dimension_actually_varies_with_real_vol_signal(regime_stream):
+    """The vol dimension must reflect a genuinely varying, non-degenerate signal — not
+    silently read a constant or the wrong array. Uses a real (non-constant) synthetic
+    vol_forecast so the rolling z-score has real variance to expose, unlike the fixture's
+    default flat-0.02 mock (a legitimate test for shape, not for 'does this carry
+    information')."""
+    n_rows = 500  # generous headroom so 100 sequential steps can't run past the data end
+    rng = np.random.default_rng(1)
+    idx = pd.date_range("2018-06-01", periods=n_rows, freq="1h", tz="UTC")
+    cols_14 = [
+        "atr", "adx", "rsi", "bb_width", "macd_histogram",
+        "obv_raw", "vol_zscore", "realized_vol", "vol_ratio",
+        "return_skew", "return_kurtosis", "autocorr_lag1",
+        "realized_vol_raw", "close_return",
+    ]
+    df_14 = pd.DataFrame(rng.standard_normal((n_rows, 14)).astype(np.float32), index=idx, columns=cols_14)
+    regime_stream_big = pd.DataFrame({
+        "timestamp": idx, "asset": "BTC_USDT", "regime_label": 1,
+        **{f"regime_prob_{k}": 1.0 / 7 for k in range(7)},
+    })
+    # Real vol-like signal: slow sinusoidal drift + noise, strictly positive.
+    t = np.arange(n_rows)
+    varying_vol = (0.02 + 0.015 * np.sin(t / 20.0) + rng.normal(0, 0.002, n_rows)).clip(0.001, None)
+    with patch("rl.env.precompute_vol_forecast", return_value=varying_vol):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df_14}, regime_stream_df=regime_stream_big,
+            encoder=None, debate_results=None, split="all", sequential=True, max_steps=10_000,
+            obs_mode="raw_vol",
+        )
+    e.reset(seed=0)
+    vol_dim_values = []
+    for _ in range(100):
+        obs, _, terminated, truncated, _ = e.step(np.array([2, 0.5], dtype=np.float32))  # hold
+        vol_dim_values.append(obs[-1 - ASSET_ID_DIM - PORTFOLIO_DIM - CONSENSUS_DIM])
+        if terminated or truncated:
+            break
+    vol_dim_values = np.array(vol_dim_values)
+    assert np.isfinite(vol_dim_values).all()
+    assert vol_dim_values.std() > 0.01, "vol dimension is degenerate (near-constant) despite a varying input signal"
+
+
 def test_action_space_shape(env):
     assert env.action_space.shape == (2,)
 

@@ -118,6 +118,14 @@ def regime_prob_vec(regime_probs_arr: np.ndarray, t: int) -> np.ndarray:
     return regime_probs_arr[idx]
 
 
+def vol_scalar_vec(vol_zscore_arr: np.ndarray, t: int) -> np.ndarray:
+    """1-dim (t,) slice of a precomputed rolling-z-scored vol_forecast array — obs_mode
+    ='raw_vol' (RL experiment Condition B). Same clamp-to-last-row convention as
+    regime_prob_vec, for the same reason (t can run past array bounds in edge cases)."""
+    idx = min(t, len(vol_zscore_arr) - 1)
+    return vol_zscore_arr[idx : idx + 1].astype(np.float32)
+
+
 def consensus_vec(
     consensus_lookup: dict[tuple[str, pd.Timestamp], np.ndarray],
     asset: str,
@@ -135,17 +143,21 @@ def market_block(
     device: str = "cpu",
     regime_probs_arr: Optional[np.ndarray] = None,
     zero_regime: bool = False,
+    vol_zscore_arr: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """The per-asset 'what does the market look like' block that varies by obs_mode —
-    encoder embedding, raw window, or raw window + regime probs. This is the single piece
-    both MARTATradingEnv (one asset/episode) and a future portfolio env (all assets/
-    episode, one market_block() call per asset) need identically per asset.
+    encoder embedding, raw window, raw window + regime probs, or raw window + a
+    volatility scalar. This is the single piece both MARTATradingEnv (one asset/episode)
+    and a future portfolio env (all assets/episode, one market_block() call per asset)
+    need identically per asset.
 
     zero_regime replicates an existing, deliberate asymmetry from rl/env.py's original
     per-mode methods: it zeroes the encoder embedding (obs_mode="encoder") or the
     regime-probability tail (obs_mode="raw_regime"), but the raw feature window itself is
     NEVER zeroed in any mode — the original _raw_window_vec never checked zero_regime at
     all. Preserved exactly, not "fixed", since this extraction must not change behavior.
+    obs_mode="raw_vol" is NOT gated by zero_regime — see rl/env.py's _vol_zscore_vec for
+    why (volatility and regime are orthogonal ablation axes).
     """
     if obs_mode == "encoder":
         if zero_regime:
@@ -155,6 +167,11 @@ def market_block(
         return encode_window(encoder, arr, t, window_size, device)
     if obs_mode == "raw":
         return raw_window_vec(arr, t, window_size)
+    if obs_mode == "raw_vol":
+        raw = raw_window_vec(arr, t, window_size)
+        if vol_zscore_arr is None:
+            raise ValueError("obs_mode='raw_vol' requires vol_zscore_arr")
+        return np.concatenate([raw, vol_scalar_vec(vol_zscore_arr, t)])
     if obs_mode == "raw_regime":
         raw = raw_window_vec(arr, t, window_size)
         if zero_regime:
