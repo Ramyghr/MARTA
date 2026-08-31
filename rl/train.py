@@ -270,6 +270,9 @@ def build_env_factory(
             # class selected in train_ppo() (MARTADiscretePolicy needs action_mode=
             # "discrete", or action_space/policy output head shapes disagree).
             action_mode=config.get("action_mode", "hybrid"),
+            # 1 (default) preserves exact prior behavior — see MARTATradingEnv's
+            # decision_interval docstring (2026-08-31 native-weekly-cadence experiment).
+            decision_interval=config.get("decision_interval", 1),
         )
 
     return factory

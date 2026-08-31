@@ -1,7 +1,7 @@
 \chapter{Results}
 \label{chap:results}
 
-This chapter reports the outcomes of the evaluation protocol described in Section~\ref{sec:evaluation-methodology-full}, following the same order as the methodology chapter. Section~\ref{sec:regime-results} reports the regime-detection layer's validation results in full, since that layer's methodology (Sections~\ref{subsec:regime-engine-audit}--\ref{subsec:regime-synthetic-validation}) was substantially revised over the course of this project and its results directly informed how the layers built on top of it are interpreted.
+This chapter reports the outcomes of the evaluation protocol described in Section~\ref{sec:evaluation-methodology-full}, following the same order as the methodology chapter. Section~\ref{sec:regime-results} reports the regime-detection layer's validation results in full, since that layer's methodology (Sections~\ref{subsec:regime-engine-audit}--\ref{subsec:regime-synthetic-validation}) was substantially revised over the course of this project and its results directly informed how the layers built on top of it are interpreted. Section~\ref{sec:agent-results} reports a dedicated audit of the multi-agent deliberation layer (Section~\ref{sec:multi-agent-methodology}), tracing every agent from prompt to final action rather than assuming the architecture description implies the behavior. Section~\ref{sec:rl-results} reports the RL execution layer's results (Section~\ref{sec:rl-execution-methodology}): a controlled ablation on the crypto-only panel that produced this project's final decision on that layer, and a subsequent follow-up experiment that reopened, without resolving, part of that question.
 
 \section{Regime Detection Results}
 \label{sec:regime-results}
@@ -138,3 +138,157 @@ Bayes-optimal classifier, true parameters, no estimation & \textbf{0.047} \\
 \end{table}
 
 No mechanism tested moved recovery accuracy outside a narrow 0.15--0.20 band, including the configuration built to match production's real data scale and asset count directly, and the Bayes-optimal ceiling computed from the true generating parameters sits below every empirically achieved value in the table --- confirming, as discussed in Section~\ref{subsec:regime-synthetic-validation}, that recovery accuracy at this task is bounded by genuine overlap between the six states' return distributions rather than by anything the estimation pipeline could be expected to improve with more data.
+
+\section{Multi-Agent Deliberation Results}
+\label{sec:agent-results}
+
+The multi-agent layer (Section~\ref{sec:multi-agent-methodology}) was audited end to end --- prompt to final action, twenty real Mistral~7B calls, \texttt{BTC\_USDT} at 2024-03-01, five purpose-built validation tests --- rather than assumed to behave as its architecture description implies. The audit's central finding reframes the system's own description: it is not ``multi-agent debate decides trades.'' Three agents (Macro, Technical, Sentiment) supply LLM-sourced directional opinions; one agent's dissenting direction is forced in code, not decided by its own model call; one agent (Risk) never calls an LLM at all; and the Fund Manager's actual decision --- action, position size, conviction, dissent list --- is deterministic arithmetic over the other agents' outputs, with its one LLM call producing only the rationale sentence, never the decision itself. The system is better described as a deterministic, risk-weighted consensus engine with LLM-assisted directional inputs.
+
+\subsection{Validation Battery: What the System Actually Does}
+\label{subsec:agent-validation-battery}
+
+\begin{table}[h]
+\centering
+\small
+\caption{Multi-agent layer validation battery (20 real Mistral 7B calls, \texttt{BTC\_USDT} 2024-03-01).}
+\label{tab:agent-validation-battery}
+\begin{tabular}{|p{4.3cm}|p{6.8cm}|c|}
+\hline
+\textbf{Test} & \textbf{What it checks} & \textbf{Result} \\
+\hline
+Schema & Every call returns a valid, non-fallback response & 6/6 agents pass \\
+\hline
+Null-regime & Swapping the real regime for a random one measurably changes output & 3/3 directional agents pass \\
+\hline
+Aggregator-usage & Flipping one agent's thesis (no new LLM call) changes the Fund Manager's conviction and dissent list & Pass (0.81 $\to$ 0.51 conviction shift observed) \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+The null-regime test confirms regime context is not silently discarded by the directional agents, and the aggregator-usage test confirms the deterministic vote genuinely reads every agent's output rather than hardcoding an answer --- both properties that the architecture description alone would not establish.
+
+\subsection{Failure Modes Found, and Their Resolution}
+\label{subsec:agent-failure-modes}
+
+\textbf{TechnicalAgent ignored obvious bearish price action; fixed and verified.} On an adversarial case (RSI 12, strongly negative MACD, $-6\%$ return), the agent reported ``bullish, confidence 0.65,'' reasoning that the regime's qualitative description text (``high-volatility bull regime'') supported a rebound. An ablation isolating the cause --- rather than assuming weak reasoning in general --- found the loaded ``bull''/``bear'' wording in the regime description text acting as a dominant lexical anchor for the 7B model: with that text present, 0/3 repeated runs on the adversarial case got the direction right; neutralizing the regime description entirely reached 1/3; stripping only the loaded wording while keeping the real regime label and probability vector (already confirmed informative by the null-regime test) reached 4/5. The fix builds the Technical agent's prompt from a context copy with the regime description replaced by a neutral placeholder, adds explicit ADX-conditioned interpretation rules for extreme RSI/MACD readings, and exposes \texttt{close\_return} explicitly (previously silently truncated from the shared price-features block). Verified 5/5 correct on both bearish and bullish extremes post-fix, with the real, unmodified 2024-03-01 context re-checked to confirm normal-case output is unchanged.
+
+\textbf{Regime sensitivity is real but was initially not cleanly directional; this did not reproduce on the crypto-only panel.} Forcing the Macro agent's regime block to the single best-Sharpe regime in the original four-asset dataset did not make it more bullish --- output collapsed to neutral/0.50, the same response every synthetic regime (bull, bear, sideways, random) produced; only the \emph{actual} regime, which happened to agree with the agent's own correlation data, produced a confident call. Re-running the identical synthetic-regime methodology after the migration to the five-asset crypto-only panel (Section~\ref{subsec:regime-asset-panel-revision}) did not reproduce this collapse: the Macro agent scored 2/2 bullish on the bull variant, 2/2 bearish on the bear variant, and 2/2 neutral on the sideways variant. The Sentiment agent showed a milder version of the original inconsistency (1/2 bearish on the bear variant). Why the original finding no longer holds is not established --- plausibly the crypto-only panel's regime descriptions carry more distinguishing information, plausibly the effect was always closer to the edge of reproducibility than the original characterization implied.
+
+\textbf{ContrarianAgent's dissent is intentionally not LLM-generated.} Its \texttt{directional\_bias} is forced to the opposite of consensus in code regardless of the model's own output; only confidence, reasoning, and key factors come from the model. This is a deliberate design choice --- guaranteeing opposition for the Fund Manager to weigh --- not a discovered defect, and is stated here so the system is not described as ``a debating agent'' without the caveat.
+
+\textbf{RiskAgent instantiates an LLM client it never calls.} Harmless in practice (its GARCH-based volatility forecast and CVaR position caps are pure computation, Section~\ref{subsec:risk-agent-detail}), but worth correcting in any architecture diagram that implies otherwise.
+
+\textbf{Regime staleness could silently reach the prompt; fixed.} The regime-context builder could serve a regime row up to twenty hours old on a data gap with no signal to the agent or the prompt. Fixed with an explicit staleness flag and gap-hours field, surfaced in the prompt when triggered; verified against both an exact-match timestamp (not flagged) and a known 20-hour gap (correctly flagged).
+
+\textbf{ContrarianAgent JSON parse failures had the wrong root cause identified initially.} A prior hypothesis attributed roughly 40\% of parse failures to output truncation at the token generation cap. A controlled repro found instead that all three test calls produced complete, well-formed JSON, and the actual failure was schema validation rejecting a reasoning field that exceeded its maximum length --- the one prompt among the five agents' that never instructed the model to keep its answer short. Fixed by adding an explicit length instruction to the prompt and adding a schema-generic recovery stage that clips any oversized field to its declared constraint via the schema's own field metadata, covering the same failure class for any other agent's field, not only this one.
+
+\subsection{Relationship to the Reported RL Policy}
+\label{subsec:agent-rl-disconnect}
+
+A direct search of the RL codebase for LLM usage returns exactly one substantive reference, which states outright that the debate system is never invoked during training or evaluation (Section~\ref{sec:rl-execution-methodology}). The checkpoint behind the RL results in Section~\ref{sec:rl-results} uses the raw-feature observation mode: none of its input dimensions are regime- or consensus-derived, and the debate cache's coverage of the RL validation window is on the order of one percent of validation steps even in observation modes that do carry a consensus slot. The multi-agent layer and the reported RL policy are two separately validated components, evaluated independently, not one integrated system, and are reported as such rather than implying the debate layer influenced the traded policy.
+
+\textbf{Migration and regression verification.} Following the panel migration (Section~\ref{subsec:regime-asset-panel-revision}), five real end-to-end debates (unmocked LLM calls) were run, one per crypto-panel asset, including three assets with no prior debate coverage. All five completed successfully; the Contrarian agent returned real historical-analogue evidence (31--66\% historical loss rates) for every asset rather than the silent empty result it previously returned for the three newly added assets; the Risk agent produced five distinct real GARCH volatility forecasts; and the Macro agent's correlation matrix covered all ten asset pairs. Full regression after this and the parsing fix above: 83 of 83 tests passing in the affected suites, with four pre-existing failures elsewhere in the repository (dashboard API and RL-environment dimension drift) confirmed present before this work began and unrelated to it.
+
+\section{RL Execution Results}
+\label{sec:rl-results}
+
+\subsection{Controlled Ablation on the Crypto-Only Panel}
+\label{subsec:rl-ablation-results}
+
+Following the panel migration of the RL environment itself (asset sizing and portfolio/asset-identity state converted to instance-level parameters, Section~\ref{subsec:rl-mdp}), every lever proposed as a plausible fix for the policy's persistent failure to beat buy-and-hold was tested in isolation, one variable at a time, against the same BTC(+ETH) validation window. The buy-and-hold reference on this window has Sharpe \textbf{1.498} (91.8\% total return).
+
+\begin{table}[h]
+\centering
+\scriptsize
+\caption{Controlled ablation, crypto-only panel, BTC(+ETH) validation window. $\Delta$ vs.\ buy-hold with 95\% block-bootstrap CI (Section~\ref{subsec:eval-bootstrap}).}
+\label{tab:rl-ablation-crypto5}
+\begin{tabular}{|c|p{3.4cm}|c|p{2.5cm}|p{1.5cm}|c|}
+\hline
+\textbf{\#} & \textbf{Configuration} & \textbf{Sharpe} & \textbf{$\Delta$ (95\% CI)} & \textbf{Sig.} & \textbf{Trades} \\
+\hline
+1 & \texttt{raw\_regime}, no fixes & --2.717 & --4.300 $[-7.103,-1.329]$ & worse & 4{,}032 \\
+\hline
+2 & \texttt{raw}, no fixes & --1.211 & --2.680 $[-5.351,-0.044]$ & worse & 6{,}019 \\
+\hline
+3 & \texttt{raw} + benchmark-relative reward + \texttt{min\_hold\_bars=24} & --0.515 & --2.076 $[-4.099,-0.048]$ & worse & 5{,}991 \\
+\hline
+4 & (3) + behavior-cloning warm-start from a buy-hold teacher & \textbf{+1.461} & --0.035 $[-0.140,0.070]$ & no & 181 (10 mean.) \\
+\hline
+5 & \texttt{raw} + discrete 5-action space, \texttt{min\_hold\_bars=168} & --0.034 & --1.643 $[-3.714,0.548]$ & incon- clusive & 1{,}028 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Rows 1--2 isolate observation mode: dropping the regime-probability block improved Sharpe by roughly 1.5 points, consistent with a lookahead-bias defect identified independently (the HMM decode smooths over the entire concatenated sequence, so a regime probability at any training-split timestamp is influenced by data after it) --- but both configurations remained significantly worse than buy-and-hold, so removing the leaky feature alone was not sufficient. Row 3 isolates reward shaping: benchmark-relative reward plus a longer minimum hold narrowed the gap further without resolving it, and the policy was still trading almost as often (5{,}991 trades). Row 4, behavior-cloning warm-start from a buy-hold teacher, is the only configuration not significantly different from buy-and-hold --- but at only ten meaningful trades over a full year, and given a per-feature predictability check (Section~\ref{subsec:rl-ceiling-check}) finding only a modest directional edge exists at all, this result cannot be confirmed as a genuine edge over its own teacher rather than a faithful reproduction of it; both readings are consistent with the data at this sample size. Row 5 tested whether the continuous Beta position head itself was driving excess trading; it was not --- with a minimum hold seven times longer than row 3's, the discrete policy still traded roughly once every 8.5 days, almost exactly at the minimum-hold floor, and did not clear the pre-registered zero-Sharpe gate.
+
+\subsection{Predictability Ceiling Check}
+\label{subsec:rl-ceiling-check}
+
+Before concluding the negative result reflects a structural limit rather than an unfound architecture, each of the crypto-panel's 22 features was tested alone (20 lags, ridge regression for magnitude $R^2$, logistic regression for direction, trained on data before 2024 and evaluated out-of-sample on 2024) against next-bar direction. Four of twenty-two features clear 52\% directional accuracy (\texttt{rsi} 54.3\%, \texttt{close\_return} 53.4\%, \texttt{obv\_raw} and \texttt{macd\_histogram} $\approx$53.1\%); $R^2$ for return magnitude is approximately zero or negative for every feature tested. This rules out ``there is genuinely nothing to find'' as a complete explanation --- row 4's behavior-cloning-preserved edge is not obviously impossible given a real, if weak, 54\% directional signal --- without confirming that the RL formulation is leaving value on the table either: the edge is real but small, and every architectural lever tested against it either made results worse or reproduced its teacher without demonstrably exceeding it.
+
+\subsection{Final Decision on the RL Layer}
+\label{subsec:rl-final-decision}
+
+Following a stopping rule set before the final ablation row ran, specifically to avoid open-ended iteration against a fixed project timeline: rows 1, 2, 3, and 5 are each either significantly worse than buy-and-hold or statistically inconclusive, and row 4 cannot be confirmed as a genuine edge over its own teacher at ten trades. Four independent architectural levers --- regime conditioning, reward formulation, imitation warm-start, and action-space parameterization --- were each tested in isolation, and none produced a confirmed, statistically defensible improvement over buy-and-hold. This was adopted as the RL layer's result for the project, not a configuration still being searched over, with three consequences: the dashboard (Section~\ref{sec:dashboard-methodology}) ships with the multi-agent consensus and static execution path as its default signal source; RL execution remains available as an explicit, opt-in toggle carrying a warning about this section's finding; and this ablation table is reported as the project's controlled negative result on RL execution, evidenced end to end rather than asserted.
+
+\subsection{Native Weekly-Decision-Cadence Follow-Up (2026-08-31)}
+\label{subsec:rl-weekly-cadence}
+
+The results above train the policy to re-decide every hour. A follow-up experiment tested whether forcing a full week's commitment per decision --- aggregating 168 hourly bars into a single decision, with the CVaR risk term scaled by $\sqrt{168}$ to remain comparable across horizons --- changed the outcome, motivated by the ceiling check above finding only a weak \emph{directional} edge that hourly rebalancing may be too fine-grained a horizon to extract.
+
+Two engineering defects were found and corrected before any result from this experiment could be trusted: an annualization factor hardcoded for hourly returns, silently inflating an early result to an implausible Sharpe of 6.84 (a factor of $\sqrt{168}\approx13\times$, traced and fixed by threading the evaluation horizon explicitly through every metrics call site); and an evaluation script that reloaded the in-memory end-of-training model rather than the best-by-validation-Sharpe checkpoint every other evaluation path in the project uses, which for one configuration alone produced a fourfold difference in reported Sharpe. Both fixes were verified by independent hand reconciliation before any number from this experiment was trusted further.
+
+With both fixes in place, a smoke test (two configurations, one seed each) cleared pre-registered thresholds set before the test ran (Sharpe 2.198 and 2.209 respectively), triggering a full grid of twelve independently trained runs: four observation conditions (raw features; raw features plus realized volatility; raw features plus regime probability; raw features plus a placebo-regime noise control) $\times$ three seeds each.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Native weekly-cadence grid, BTC-only, validation year 2024. Sharpe recomputed with buy-and-hold aggregated to the identical weekly cadence (52 weekly observations); $\Delta$ from a block bootstrap (block size 4 weeks, 1000 resamples). Recomputed buy-hold reference: Sharpe 1.571. Full detail: \texttt{data/results/weekly\_grid\_reconciled.json}.}
+\label{tab:rl-weekly-grid}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Seed} & \textbf{A (raw)} & \textbf{B (raw+vol)} & \textbf{C (raw+regime)} & \textbf{D (raw+placebo)} \\
+\hline
+0 & 1.677 ($\Delta$+0.26) & 1.686 ($\Delta$+0.20) & 1.755 ($\Delta$+0.43) & 2.723 ($\Delta$+1.50) \\
+\hline
+1 & 1.688 ($\Delta$+0.31) & 1.883 ($\Delta$+0.45) & 1.665 ($\Delta$+0.40) & 1.764 ($\Delta$+0.57) \\
+\hline
+2 & 1.736 ($\Delta$+0.10) & 2.706 ($\Delta$+1.42) & 2.173 ($\Delta$+0.84) & 1.670 ($\Delta$+0.01) \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+None of the twelve 95\% confidence intervals excludes zero (widest, $[-1.93, 3.10]$; the narrowest still crosses it). Two things are simultaneously true and neither cancels the other: twelve of twelve independently trained runs beat buy-and-hold at the point estimate, which has not occurred for any prior configuration across this project's history; and zero of twelve individually reach significance, with confidence intervals this wide at only 52 weekly observations per validation pass. A naive sign-test argument over twelve independent trials does not apply here, because the trials are not independent in the sense that argument requires: all twelve runs are evaluated against the identical single 2024 market window, so consistent point-estimate wins are equally consistent with ``2024 favored a weekly-committed directional strategy generally'' as with any genuine, architecture-specific skill. Condition D, an explicit noise control carrying no real regime information, performs in the same range as condition C, the real regime condition --- consistent with every other regime-conditioning test in this chapter (Section~\ref{subsec:regime-downstream-value}) finding no measurable, noise-control-surviving value from regime conditioning.
+
+At this point the result was a directionally consistent but statistically unconfirmed lead, pending out-of-window confirmation --- resolved below.
+
+\subsubsection{2025 Test-Set Confirmation: the Lead Does Not Replicate}
+\label{subsubsec:rl-weekly-2025}
+
+Following this project's established test-set discipline, one checkpoint per condition was selected \emph{before} touching 2025 data, by median 2024 validation Sharpe among that condition's three seeds --- not best-of-three, which would already be a mild form of cherry-picking on the validation set (A$\to$seed~1, B$\to$seed~1, C$\to$seed~0, D$\to$seed~1). This selection was fixed in the evaluation script before it was ever run against 2025, and the script was run exactly once.
+
+\begin{table}[h]
+\centering
+\small
+\caption{2025 test-set pass, pre-registered checkpoints, one per condition. $\Delta$ vs.\ buy-hold; recomputed buy-hold weekly Sharpe on 2025 is $-0.291$ ($-15.9\%$ return), against $+1.571$ on 2024 --- a materially different market year.}
+\label{tab:rl-weekly-2025}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+ & \textbf{A (raw)} & \textbf{B (raw+vol)} & \textbf{C (raw+regime)} & \textbf{D (raw+placebo)} \\
+\hline
+2024 val $\Delta$ & +0.31 & +0.45 & +0.43 & +0.57 \\
+\hline
+\textbf{2025 test $\Delta$} & \textbf{--0.31} & \textbf{--1.19} & +1.29 & +0.18 \\
+\hline
+Significant? & no & no & no & no \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Conditions A and B flipped sign entirely --- profitable relative to buy-hold in 2024, unprofitable relative to it in 2025 --- consistent with the 2024 result reflecting conditions favorable to any weekly-committed directional strategy that particular year, rather than a robust cadence-specific edge, exactly the risk raised when the validation grid was first reported (Section~\ref{subsec:rl-weekly-cadence}). Condition C is the one positive point estimate, and the largest delta of the four, but its 95\% CI is wide and crosses zero $[-1.709, 4.311]$, and a single pre-registered checkpoint on test cannot separate a genuine regime-conditioning benefit from that particular seed's idiosyncrasy. Condition D, the noise control, sits close to buy-hold and is not clearly separated from C either.
+
+\textbf{This closes the investigation as not confirmed.} It does not overturn Section~\ref{subsec:rl-final-decision}'s final decision on the RL layer; it adds one further out-of-window data point consistent with it.

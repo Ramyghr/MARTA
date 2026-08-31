@@ -345,6 +345,22 @@ class MARTATradingEnv(gym.Env):
         # (rl/crypto5_feature_predictability.py found ~zero R² on next-bar return
         # magnitude, only a small directional edge) and micro-jitters as a result.
         action_mode: Literal["hybrid", "discrete"] = "hybrid",
+        # Native decision cadence, in hours (2026-08-31, RL health-diagnostic follow-up).
+        # 1 (default) preserves exact prior behavior — one decision per hourly bar. >1
+        # makes ONE step() call span that many hourly bars internally: the policy commits
+        # to a position once, that position is held (and its PnL/cost/drawdown accrued)
+        # across every intervening hour, and a single aggregated reward is returned at
+        # the end. Built after an eval-time patch (forcing an already-trained hourly
+        # checkpoint into a weekly trading cadence via action overrides) turned a -1.9
+        # mean Sharpe into +0.28 across all 12 grid checkpoints — this is the native-
+        # training version of that same idea, since patching a policy trained for hourly
+        # credit assignment isn't the same as training one for weekly credit assignment
+        # to begin with. CVaR is scaled by sqrt(decision_interval) (see step()) — using
+        # the raw hourly CVaR to risk-adjust a multi-hour aggregated return would blow
+        # the reward scale up by ~sqrt(decision_interval), reintroducing the same class of
+        # units bug already found once in this project's reward logging (see rl/callbacks.
+        # py's train/sharpe_ratio note).
+        decision_interval: int = 1,
     ) -> None:
         super().__init__()
         self.action_mode = action_mode
@@ -371,6 +387,9 @@ class MARTATradingEnv(gym.Env):
         self.min_hold_bars = int(min_hold_bars)
         self.min_hold_stop_loss_dd = float(min_hold_stop_loss_dd)
         self.max_drawdown_termination = float(max_drawdown_termination)
+        self.decision_interval = int(decision_interval)
+        if self.decision_interval < 1:
+            raise ValueError(f"decision_interval must be >= 1, got {decision_interval}")
         self.benchmark_relative = bool(benchmark_relative)
 
         # Instance-level asset-ID/portfolio sizing (2026-08-24) — derived from
@@ -733,31 +752,62 @@ class MARTATradingEnv(gym.Env):
             target_signed = prev_signed
 
         prev_value = self._portfolio_value
-        # Transaction cost only on a change in position (hold → no cost).
+        # Transaction cost only on a change in position (hold → no cost). Charged ONCE
+        # per decision regardless of decision_interval — a week-long hold pays it once,
+        # not once per internal hour, which is what makes the cost-per-year drop from
+        # ~thousands of trades/year to ~52 the whole point of this mode.
         turnover = abs(target_signed - prev_signed)
         cost = self.transaction_cost * turnover * prev_value
         traded = turnover > 1e-9
         self._turnover_history.append(float(turnover))
 
-        # Advance one bar and realise the held position's return.
-        self._t += 1
-        ret = float(self._returns[asset][self._t])
-        if np.isnan(ret):
-            ret = 0.0
-        gross_pnl = target_signed * ret * prev_value
-        pnl_delta_cash = gross_pnl - cost
-        self._portfolio_value = prev_value + pnl_delta_cash
-        self._peak_value = max(self._peak_value, self._portfolio_value)
+        if self.decision_interval == 1:
+            # Exact prior behavior, byte-for-byte — advance one bar, realise the held
+            # position's return once. Kept as its own branch (not unified with the loop
+            # below at decision_interval=1) so this path can never regress.
+            self._t += 1
+            ret = float(self._returns[asset][self._t])
+            if np.isnan(ret):
+                ret = 0.0
+            gross_pnl = target_signed * ret * prev_value
+            pnl_delta_cash = gross_pnl - cost
+            self._portfolio_value = prev_value + pnl_delta_cash
+            self._peak_value = max(self._peak_value, self._portfolio_value)
+            benchmark_return = ret  # this bar's raw asset return, for the bonus/benchmark_relative terms
+        else:
+            # Multi-hour decision: hold target_signed across `decision_interval` hourly
+            # bars, compounding value hour-by-hour (not just summing simple returns) so
+            # intra-week drawdown is tracked accurately, not just at week boundaries.
+            # Transaction cost is deducted once, up front, at the decision's starting value.
+            self._portfolio_value = prev_value - cost
+            self._peak_value = max(self._peak_value, self._portfolio_value)
+            benchmark_growth = 1.0  # tracks the asset's own buy-and-hold growth over the interval
+            n = len(self._returns[asset])
+            for _ in range(self.decision_interval):
+                if self._t >= n - 1:
+                    break
+                self._t += 1
+                ret = float(self._returns[asset][self._t])
+                if np.isnan(ret):
+                    ret = 0.0
+                self._portfolio_value += target_signed * ret * self._portfolio_value
+                self._peak_value = max(self._peak_value, self._portfolio_value)
+                benchmark_growth *= (1.0 + ret)
+            pnl_delta_cash = self._portfolio_value - prev_value
+            benchmark_return = benchmark_growth - 1.0  # cumulative asset return over the whole interval
 
         self._signed_position = target_signed
         self._steps_since_trade = 0 if traded else self._steps_since_trade + 1
         self._step_count += 1
 
-        # Bars-in-position bookkeeping for the min-hold lock above.
+        # Bars-in-position bookkeeping for the min-hold lock above — counted in DECISION
+        # steps, not hours, so min_hold_bars keeps meaning "N decisions" regardless of
+        # decision_interval (e.g. min_hold_bars=4 at decision_interval=168 means a
+        # 4-week minimum hold, not a 4-hour one).
         if abs(target_signed) < 1e-9:
             self._bars_in_position = 0
         elif np.sign(target_signed) != np.sign(prev_signed):
-            self._bars_in_position = 1  # freshly opened (or reversed) this bar
+            self._bars_in_position = 1  # freshly opened (or reversed) this decision
         else:
             self._bars_in_position += 1
 
@@ -765,10 +815,16 @@ class MARTATradingEnv(gym.Env):
         self._returns_history.append(pnl_return)
 
         drawdown = self._current_drawdown()
-        # ret is the asset's own raw realised return this bar — exactly what a
-        # buy-and-hold position (always 100% long) would have earned. Only consulted
-        # when benchmark_relative=True.
-        reward = self._compute_reward(pnl_return, cvar_t, drawdown, benchmark_return=ret)
+        # cvar_t is scaled to the decision interval's horizon (sqrt-time scaling of
+        # volatility) so risk_adjusted = pnl_return / cvar_t stays on a comparable scale
+        # to the hourly case instead of being inflated by ~sqrt(decision_interval) — see
+        # __init__'s decision_interval docstring for why this matters.
+        cvar_t_scaled = cvar_t * np.sqrt(self.decision_interval)
+        # benchmark_return is this decision's realised asset return (one bar, or the
+        # compounded return over the whole interval) — exactly what a buy-and-hold
+        # position would have earned over the same horizon. Only consulted when
+        # benchmark_relative=True.
+        reward = self._compute_reward(pnl_return, cvar_t_scaled, drawdown, benchmark_return=benchmark_return)
 
         if self.sequential:
             # Eval walk-forward must cover the whole split for comparable metrics across
@@ -787,7 +843,12 @@ class MARTATradingEnv(gym.Env):
             truncated = self._step_count >= self.max_steps
 
         obs = self._build_observation()
-        info = self._info(pnl_delta=pnl_return, cvar_t=cvar_t)
+        # cvar_t_scaled (not the raw hourly cvar_t) — this is the value that actually
+        # drove the reward's risk-adjustment, so downstream consumers of info["cvar_t"]
+        # (e.g. rl/evaluate.py's max-drawdown/CVaR-context analysis) see the effective
+        # denominator, not a decision_interval-independent constant that would silently
+        # disagree with the reward that was actually computed.
+        info = self._info(pnl_delta=pnl_return, cvar_t=cvar_t_scaled)
         return obs, float(reward), bool(terminated), bool(truncated), info
 
     def _compute_reward(

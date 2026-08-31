@@ -349,3 +349,105 @@ def test_sequential_mode_deterministic(aligned_df, regime_stream, encoder):
     obs2, _ = e.reset()
     # Sequential always starts at the same index — observations must be identical.
     np.testing.assert_array_equal(obs1, obs2)
+
+
+# ---------------------------------------------------------------------------
+# decision_interval (native multi-hour decision cadence)
+# ---------------------------------------------------------------------------
+
+def _make_weekly_fixtures(n_rows: int = 3000, return_std: float = 0.005):
+    rng = np.random.default_rng(0)
+    idx = pd.date_range("2018-06-01", periods=n_rows, freq="1h", tz="UTC")
+    cols = ["atr", "adx", "rsi", "bb_width", "macd_histogram", "obv_raw", "vol_zscore",
+            "realized_vol", "vol_ratio", "return_skew", "return_kurtosis", "autocorr_lag1",
+            "realized_vol_raw", "close_return"]
+    df = pd.DataFrame(rng.standard_normal((n_rows, 14)).astype(np.float32), index=idx, columns=cols)
+    df["close_return"] = rng.normal(0.0, return_std, n_rows).astype(np.float32)
+    regime_stream_local = pd.DataFrame({
+        "timestamp": idx, "asset": "BTC_USDT", "regime_label": 1,
+        **{f"regime_prob_{k}": 1.0 / 7 for k in range(7)},
+    })
+    return df, regime_stream_local
+
+
+def test_decision_interval_default_is_backward_compatible(regime_stream):
+    """decision_interval defaults to 1 and must not change any existing behavior —
+    this is really just documenting the contract; the full existing suite passing
+    unmodified is the real regression guard."""
+    df, _ = _make_weekly_fixtures()
+    vol_array = np.full(len(df), 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df}, regime_stream_df=regime_stream,
+            encoder=None, debate_results=None, split="all", sequential=True, max_steps=100,
+            obs_mode="raw",
+        )
+    assert e.decision_interval == 1
+
+
+def test_decision_interval_advances_t_by_the_configured_amount():
+    df, rs = _make_weekly_fixtures()
+    vol_array = np.full(len(df), 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df}, regime_stream_df=rs,
+            encoder=None, debate_results=None, split="all", sequential=True, max_steps=10_000,
+            obs_mode="raw", decision_interval=168,
+        )
+    e.reset(seed=0)
+    t_before = e._t
+    for _ in range(5):
+        _, _, terminated, truncated, _ = e.step(np.array([0, 0.5], dtype=np.float32))
+        if terminated or truncated:
+            break
+        assert e._t - t_before == 168, "one step() at decision_interval=168 must advance _t by exactly 168"
+        t_before = e._t
+
+
+def test_decision_interval_reward_not_exploding_with_realistic_volatility():
+    """The CVaR sqrt(decision_interval) scaling exists specifically so reward magnitude
+    at decision_interval=168 stays comparable to decision_interval=1, not inflated by
+    ~sqrt(168)x. Regression guard for that scaling bug."""
+    df, rs = _make_weekly_fixtures()
+    vol_array = np.full(len(df), 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        e_weekly = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df}, regime_stream_df=rs,
+            encoder=None, debate_results=None, split="all", sequential=True, max_steps=10_000,
+            obs_mode="raw", decision_interval=168,
+        )
+        e_hourly = MARTATradingEnv(
+            assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df}, regime_stream_df=rs,
+            encoder=None, debate_results=None, split="all", sequential=True, max_steps=10_000,
+            obs_mode="raw", decision_interval=1,
+        )
+    e_weekly.reset(seed=0)
+    e_hourly.reset(seed=0)
+    weekly_rewards, hourly_rewards = [], []
+    for _ in range(4):
+        _, r, term, trunc, _ = e_weekly.step(np.array([0, 0.5], dtype=np.float32))
+        if term or trunc:
+            break
+        weekly_rewards.append(r)
+    for _ in range(4):
+        _, r, term, trunc, _ = e_hourly.step(np.array([0, 0.5], dtype=np.float32))
+        if term or trunc:
+            break
+        hourly_rewards.append(r)
+    # Not a tight bound (different realized paths), just a sanity range: weekly reward
+    # magnitude should be within an order of magnitude of hourly, never ~168x or ~13x
+    # (sqrt(168)) larger, which is what the unscaled-CVaR bug would produce.
+    assert max(abs(r) for r in weekly_rewards) < 5.0
+    assert max(abs(r) for r in hourly_rewards) < 5.0
+
+
+def test_decision_interval_rejects_invalid_values(regime_stream):
+    df, rs = _make_weekly_fixtures()
+    vol_array = np.full(len(df), 0.02, dtype=np.float64)
+    with patch("rl.env.precompute_vol_forecast", return_value=vol_array):
+        with pytest.raises(ValueError):
+            MARTATradingEnv(
+                assets=["BTC_USDT"], aligned_dfs={"BTC_USDT": df}, regime_stream_df=rs,
+                encoder=None, debate_results=None, split="all", obs_mode="raw",
+                decision_interval=0,
+            )

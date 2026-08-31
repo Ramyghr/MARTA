@@ -152,10 +152,21 @@ def compute_metrics(
     returns: np.ndarray,
     portfolio_values: np.ndarray,
     positions: np.ndarray | None = None,
+    periods_per_year: float = 24 * 365,
 ) -> dict[str, float]:
-    """Sharpe, Sortino, max drawdown, Calmar, total return, trade count."""
+    """Sharpe, Sortino, max drawdown, Calmar, total return, trade count.
+
+    periods_per_year: number of `returns` observations per year — 24*365 (default)
+    for hourly-cadence returns (env decision_interval=1). A caller using
+    MARTATradingEnv's decision_interval=N mode (N hourly bars aggregated per env.step)
+    must pass (24*365)/N here, e.g. ~52 for decision_interval=168 (weekly) — using the
+    hourly default on weekly-aggregated returns overstates Sharpe/Sortino/Calmar by
+    ~sqrt(N) (confirmed: inflated a real Sharpe of ~0.5-1.9 up to 6.8-24.2 on the first
+    native-weekly-cadence training run this was caught on, 2026-08-31).
+    """
     returns = np.asarray(returns, dtype=np.float64)
     portfolio_values = np.asarray(portfolio_values, dtype=np.float64)
+    annualize = float(np.sqrt(periods_per_year))
 
     if len(returns) == 0:
         return {
@@ -166,14 +177,14 @@ def compute_metrics(
             "median_trade_duration_hours": 0.0,
         }
 
-    sharpe = float(returns.mean() / (returns.std() + 1e-8) * _ANNUALIZE)
+    sharpe = float(returns.mean() / (returns.std() + 1e-8) * annualize)
 
     downside = returns[returns < 0]
     sortino_denom = (downside.std() + 1e-8) if len(downside) > 0 else 1e-8
-    sortino = float(returns.mean() / sortino_denom * _ANNUALIZE)
+    sortino = float(returns.mean() / sortino_denom * annualize)
 
     max_dd = compute_max_drawdown(portfolio_values)
-    calmar = float(returns.mean() * 24 * 365 / (max_dd + 1e-8))
+    calmar = float(returns.mean() * periods_per_year / (max_dd + 1e-8))
     total_return = float(portfolio_values[-1] / portfolio_values[0] - 1.0)
     if positions is not None:
         n_trades = count_position_changes(positions)
@@ -265,13 +276,22 @@ def run_walk_forward(
     }
 
 
+def _periods_per_year_for_env(env: MARTATradingEnv) -> float:
+    """(24*365) hourly periods/year, divided by decision_interval — the correct
+    annualization base for an env whose each step already aggregates decision_interval
+    hourly bars (see MARTATradingEnv's decision_interval docstring). 1 (default) gives
+    back exactly 24*365, preserving prior behavior for every existing hourly-cadence env."""
+    return (24 * 365) / getattr(env, "decision_interval", 1)
+
+
 def validation_sharpe(model: BaseAlgorithm, val_env: MARTATradingEnv) -> float:
     """Annualised Sharpe of the agent over a single sequential validation pass."""
     traj = run_walk_forward(model, val_env, deterministic=True)
     if len(traj["returns"]) < 2:
         return 0.0
     r = traj["returns"]
-    return float(r.mean() / (r.std() + 1e-8) * _ANNUALIZE)
+    annualize = float(np.sqrt(_periods_per_year_for_env(val_env)))
+    return float(r.mean() / (r.std() + 1e-8) * annualize)
 
 
 def validation_sharpe_and_trades(
@@ -289,19 +309,27 @@ def validation_sharpe_and_trades(
     if len(traj["returns"]) < 2:
         return 0.0, 0
     r = traj["returns"]
-    sharpe = float(r.mean() / (r.std() + 1e-8) * _ANNUALIZE)
+    annualize = float(np.sqrt(_periods_per_year_for_env(val_env)))
+    sharpe = float(r.mean() / (r.std() + 1e-8) * annualize)
     n_trades = count_position_changes(traj["positions"], _MEANINGFUL_TRADE_THRESHOLD)
     return sharpe, n_trades
 
 
-def per_regime_breakdown(traj: dict[str, np.ndarray]) -> dict[str, dict[str, float]]:
+def per_regime_breakdown(
+    traj: dict[str, np.ndarray], periods_per_year: float = 24 * 365
+) -> dict[str, dict[str, float]]:
     """Per-regime Sharpe and average position size — the key conditioning result.
 
     Positions are credited to the *decision-time* regime (the one that drove the position
     scaling), not the post-step regime. These differ when regime labels interleave
     bar-to-bar (e.g. BTC R1/R4 in the 2021 val window); attributing to the post-step regime
     would invert the per-regime position sizes relative to what the policy actually did.
+
+    periods_per_year: see compute_metrics — pass (24*365)/decision_interval for a
+    multi-hour-decision env's trajectory, or this understates per-regime Sharpe variance
+    at the wrong (hourly) timescale.
     """
+    annualize = float(np.sqrt(periods_per_year))
     # decision_regimes / positions / returns index from step 1 (step-aligned).
     regimes = traj.get("decision_regimes", traj["regimes"])[1:]
     returns = traj["returns"]
@@ -315,7 +343,7 @@ def per_regime_breakdown(traj: dict[str, np.ndarray]) -> dict[str, dict[str, flo
         if n == 0:
             continue
         r = returns[mask]
-        sharpe = float(r.mean() / (r.std() + 1e-8) * _ANNUALIZE) if n > 1 else 0.0
+        sharpe = float(r.mean() / (r.std() + 1e-8) * annualize) if n > 1 else 0.0
         out[f"regime_{regime}"] = {
             "n_steps": n,
             "n_meaningful_trades": int(trade_flags[mask].sum()),
@@ -484,6 +512,10 @@ def _buy_and_hold(
     r = np.nan_to_num(returns[np.asarray(val_mask)])
     pv = env.initial_capital * np.cumprod(1.0 + r)
     pv = np.concatenate([[env.initial_capital], pv])
+    # Always the hourly default (not _periods_per_year_for_env(env)): buy-and-hold is
+    # built directly from env._returns[asset], the raw hourly series, regardless of
+    # what decision_interval the POLICY being compared against uses — being in the
+    # market every hour isn't affected by how often an agent chooses to re-decide.
     metrics = compute_metrics(r, pv, positions=np.ones(len(pv)))
     return metrics
 
@@ -541,9 +573,10 @@ def evaluate_ppo(
     logger.info(f"Evaluating PPO on validation set ({start_label} .. {end_label})")
 
     val_env = _make_val_env(env_factory, val_end, zero_regime=False)
+    ppy = _periods_per_year_for_env(val_env)
     traj = run_walk_forward(model, val_env, deterministic=True)
-    metrics = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"])
-    regime_breakdown = per_regime_breakdown(traj)
+    metrics = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"], periods_per_year=ppy)
+    regime_breakdown = per_regime_breakdown(traj, periods_per_year=ppy)
     trade_log = extract_trade_log(traj)
 
     bh = _buy_and_hold(val_env, asset="BTC_USDT", val_end=val_end)
@@ -551,7 +584,8 @@ def evaluate_ppo(
     no_regime_env = _make_val_env(env_factory, val_end, zero_regime=True)
     traj_nr = run_walk_forward(model, no_regime_env, deterministic=True)
     metrics_nr = compute_metrics(
-        traj_nr["returns"], traj_nr["portfolio_values"], traj_nr["positions"]
+        traj_nr["returns"], traj_nr["portfolio_values"], traj_nr["positions"],
+        periods_per_year=_periods_per_year_for_env(no_regime_env),
     )
 
     result = {
@@ -623,8 +657,9 @@ def evaluate_multi_asset(
                 continue
 
             traj = run_walk_forward(model, env, deterministic=True)
-            m = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"])
-            regime_bd = per_regime_breakdown(traj)
+            ppy = _periods_per_year_for_env(env)
+            m = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"], periods_per_year=ppy)
+            regime_bd = per_regime_breakdown(traj, periods_per_year=ppy)
             bh = _buy_and_hold(env, asset=asset, val_end=val_end)
 
             path_result = {

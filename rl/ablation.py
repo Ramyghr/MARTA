@@ -16,7 +16,7 @@ import pandas as pd
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from rl.env import MARTATradingEnv
-from rl.evaluate import compute_metrics, run_walk_forward
+from rl.evaluate import _periods_per_year_for_env, compute_metrics, run_walk_forward
 from utils.logger import logger
 
 _RESULTS_PATH = Path("data/results/ablation_results.json")
@@ -424,7 +424,10 @@ def run_variant(
         traj = run_walk_forward(model, env, deterministic=True)
         method = "trained PPO policy — full regime embedding + agent-consensus conditioning"
 
-    metrics = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"])
+    metrics = compute_metrics(
+        traj["returns"], traj["portfolio_values"], traj["positions"],
+        periods_per_year=_periods_per_year_for_env(env),
+    )
     metrics["method"] = method
     return {"metrics": metrics, "returns": traj["returns"]}
 

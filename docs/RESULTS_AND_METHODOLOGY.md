@@ -36,6 +36,17 @@ unresolved. Read this one first if you need to decide what to ask your advisor.*
   project's controlled negative result on RL execution.
 - This document exists to help you (1) decide what to ask your advisor, and (2) have a
   15-minute-ready narrative that shows the rigor even though the number at the end is negative.
+- **Update (2026-08-31, Section 10, closed, not confirmed).** A follow-up experiment at native
+  weekly decision cadence (one trade decision per week instead of per hour) initially looked
+  like the most consistent positive result found anywhere in this project — 12 of 12
+  independently trained runs (4 conditions × 3 seeds) beat buy-and-hold on 2024 validation at
+  the point estimate, though none reached significance individually. A single, pre-registered
+  2025 test-set pass (one checkpoint per condition, selected by median validation Sharpe before
+  touching test data) did not replicate this: two of four conditions (raw, raw+realized-vol)
+  flipped to *underperforming* buy-and-hold on 2025, consistent with the 2024 pattern reflecting
+  favorable market conditions that year rather than a robust weekly-cadence edge. This closes the
+  investigation as not-confirmed — it does not overturn Section 9's final decision, it reinforces
+  it with an additional out-of-window data point. See Section 10a.
 
 ---
 
@@ -665,3 +676,127 @@ project**, not a configuration still being searched over.
 Neither the dashboard default-path change nor the warning-banner UI work has been implemented
 yet as of this entry — this section records the decision and its evidence; the dashboard code
 change is separate, explicit follow-up work.
+
+**Update (2026-08-31): the dashboard default-path change described above has since been
+implemented** (`dashboard/backend/app_settings.py`, `main.py`'s `/api/settings/rl-execution`
+endpoint) — LLM consensus + static rule-based sizing is now the default signal source; RL
+execution is an explicit opt-in toggle, off by default, with a warning banner string describing
+this section's ablation result. Confirmed by direct code inspection, not re-derived from this
+document.
+
+---
+
+## 10. Native weekly-decision-cadence experiment — a promising, not-yet-confirmed lead (2026-08-31)
+
+Everything in Section 9 trained the policy to re-decide every hour. A follow-up question: does
+forcing the policy to commit to a position for a full week (`decision_interval=168` in
+`rl/env.py`, aggregating 168 hourly bars into one decision with CVaR scaled by
+$\sqrt{168}$) change the picture, given the per-feature predictability ceiling check
+(Section 9) found only a weak *directional* edge (~54% accuracy) that hourly rebalancing may be
+too noisy a horizon to extract?
+
+### Two engineering bugs found and fixed before any result could be trusted
+
+1. **Annualization mismatch.** `compute_metrics()` and three other functions in `rl/evaluate.py`
+   hardcoded $\sqrt{24\times365}$ (the correct annualization factor for *hourly* returns) — wrong
+   by a factor of $\sqrt{168}\approx13\times$ once returns are weekly-aggregated. An initial smoke
+   test reported Sharpe **6.84**, implausible on its face, which is precisely what caught this
+   before it went further. Fixed by threading `periods_per_year` through every caller in
+   `rl/evaluate.py` and `rl/ablation.py`, keyed off a new `_periods_per_year_for_env()` helper
+   that divides $(24\times365)$ by the env's `decision_interval`.
+2. **Wrong checkpoint reloaded.** The first smoke-test script evaluated `train_ppo()`'s returned
+   in-memory model (the *final* end-of-training state) instead of reloading `ppo_best` from disk,
+   inconsistent with every other evaluation script in this project (`run_rl.py` always reloads
+   best-by-validation-Sharpe). Final vs. best turned out to be genuinely different checkpoints —
+   a 4$\times$ Sharpe difference for the regime condition alone. Fixed in
+   `rl/train_weekly_smoketest.py` to always reload `best_path`.
+
+Both fixes were verified by reconciling the corrected numbers against an independent hand
+calculation before trusting either — the same discipline as the reliability audits earlier in
+this document (idle_penalty leakage, GPU nondeterminism).
+
+### Smoke test (2 runs, BTC-only, seed 0) and the decision to scale up
+
+With both fixes in place: raw-features Sharpe **2.198** (+68.4% return), raw+regime Sharpe
+**2.209** (+62.1% return) — both clearing the pre-registered thresholds (A $\geq$ +1.0,
+C $\geq$ +0.5) set before the test ran. This triggered the pre-committed next step: a full
+$4\times3$ grid (conditions A=raw, B=raw+realized-vol, C=raw+regime, D=raw+placebo-regime
+noise-control, $\times$ seeds 0/1/2), 12 independently trained runs, ~29 minutes wall-clock at
+6-way CPU parallelism.
+
+### Full grid results, properly reconciled
+
+Point estimates alone are not enough given this project's history of numbers that looked real
+and later didn't survive scrutiny (Sharpe 1.809 $\to$ 0.449 $\to$ 1.370 $\to$ 1.1825 $\to$ -2.115
+across successive audits). Before citing any of these 12 numbers, buy-and-hold was recomputed
+*at the same weekly aggregation* as the policy (not the standard hourly-return buy-hold baseline,
+which lives on a different frequency and isn't a valid comparator for a block-bootstrap CI), and
+a block bootstrap (block size = 4 weekly observations $\approx$ one month, 1000 resamples) was
+run on the Sharpe delta for every one of the 12 runs individually.
+
+| | A (raw) | B (raw+realized-vol) | C (raw+regime) | D (raw+placebo-regime) |
+|---|---|---|---|---|
+| seed 0 | 1.677 ($\Delta$+0.26, n.s.) | 1.686 ($\Delta$+0.20, n.s.) | 1.755 ($\Delta$+0.43, n.s.) | 2.723 ($\Delta$+1.50, n.s.) |
+| seed 1 | 1.688 ($\Delta$+0.31, n.s.) | 1.883 ($\Delta$+0.45, n.s.) | 1.665 ($\Delta$+0.40, n.s.) | 1.764 ($\Delta$+0.57, n.s.) |
+| seed 2 | 1.736 ($\Delta$+0.10, n.s.) | 2.706 ($\Delta$+1.42, n.s.) | 2.173 ($\Delta$+0.84, n.s.) | 1.670 ($\Delta$+0.01, n.s.) |
+
+Recomputed buy-hold reference (same weekly aggregation, 52 observations, BTC, val=2024):
+Sharpe **1.571**. Full numbers: `data/results/weekly_grid_reconciled.json`.
+
+**Two things are true simultaneously, and neither cancels the other.** Twelve of twelve
+independently trained runs — four different observation conditions, three seeds each — beat
+buy-and-hold at the point estimate. That has not happened before in this project across any
+prior configuration or checkpoint. But zero of twelve individually clear 95% significance: with
+only 52 weekly observations per validation pass (13 non-overlapping four-week bootstrap blocks),
+the confidence intervals are wide enough that none can rule out noise (widest interval
+$[-1.93, 3.10]$; even the narrowest still crosses zero).
+
+**Why this is reported as a lead, not a result.** All 12 runs are evaluated on the *identical*
+2024 BTC window — this is not 12 independent tests of the strategy against 12 different markets,
+it is 12 policies facing one shared market realization. A naive sign-test argument (12/12 same
+sign would be $p\approx0.0002$ under independence) does not apply cleanly here, because the
+trials are not independent in the way that argument requires — if 2024 was simply a favorable
+year for committing to a weekly directional bet, consistent point-estimate wins across seeds
+would look exactly like this with no underlying skill required.
+
+**Condition D (placebo/noise-control regime) performs in the same range as C (real regime)** —
+consistent with every regime-conditioning test elsewhere in this document (Section 2's downstream
+propagation audit, the rapport's regime-layer conclusion): regime conditioning has not
+distinguished itself from a noise control in any test run so far, including this one.
+
+### Verdict (validation-only, superseded by Section 10a below)
+
+At this point in the investigation, the result was a directionally consistent but statistically
+unconfirmed signal specific to weekly-decision-cadence, single-asset (BTC) trading, pending
+out-of-window confirmation.
+
+### 10a. 2025 test-set pass — the lead does not replicate (2026-08-31)
+
+Following this project's established test-set discipline, one checkpoint per condition was
+selected *before* touching 2025 data, by median 2024 validation Sharpe among that condition's
+three seeds (not best-of-three, which would already be a mild form of cherry-picking on the
+validation set): A$\to$seed 1, B$\to$seed 1, C$\to$seed 0, D$\to$seed 1. This selection is
+recorded in `rl/weekly_grid_test2025.py`'s module docstring, fixed before the script was ever
+run against 2025, and the script was run exactly once.
+
+| | A (raw) | B (raw+realized-vol) | C (raw+regime) | D (raw+placebo-regime) |
+|---|---|---|---|---|
+| 2024 validation ($\Delta$ vs. buy-hold, selected seed) | +0.31 | +0.45 | +0.43 | +0.57 |
+| **2025 test** ($\Delta$ vs. buy-hold) | **$-0.31$** | **$-1.19$** | +1.29 | +0.18 |
+| 2025 significant? | no | no | no | no |
+
+2024's buy-hold weekly Sharpe was 1.571 (a bull year); 2025's recomputed buy-hold weekly Sharpe
+is $-0.291$ ($-15.9\%$ total return) — a genuinely different market regime, which is exactly what
+an out-of-window test is meant to expose. Conditions A and B **flipped sign**: profitable
+relative to buy-hold in 2024, unprofitable relative to it in 2025 — the signature of the 2024
+result reflecting favorable conditions specific to that year rather than a robust weekly-cadence
+edge, exactly the risk flagged when the validation grid was first reported. Condition C is the
+one positive point estimate (largest delta of the four), but its 95% CI is wide and crosses zero
+($[-1.709, 4.311]$), and with a single pre-registered checkpoint on test there is no way to
+separate "genuine regime-conditioning benefit" from "this particular seed's idiosyncrasy" — one
+data point is not a discovery. Condition D (placebo-regime noise control) sits close to buy-hold,
+not clearly separated from C either.
+
+**Final verdict: this investigation is closed as not-confirmed.** It does not overturn Section 9's
+final decision on the RL layer; it adds one more out-of-window data point consistent with it.
+Full detail: `data/results/weekly_grid_test2025.json`.
