@@ -572,16 +572,27 @@ def evaluate_ppo(
     start_label = str(VAL_START)[:10]
     logger.info(f"Evaluating PPO on validation set ({start_label} .. {end_label})")
 
-    val_env = _make_val_env(env_factory, val_end, zero_regime=False)
+    # assets=config.get("all_assets") -- without this, _make_val_env falls through to
+    # build_env_factory's factory() default of assets or ["BTC_USDT"]. That default was
+    # never wrong before because every prior caller's config["all_assets"] either was
+    # ["BTC_USDT"] or included it (the 4-asset curriculum always starts with BTC). The
+    # crypto5 weekly grid (rl/train_weekly_crypto5_grid.py) is the first caller to set
+    # all_assets to a single non-BTC asset (ETH/BNB/LTC/XRP) -- without this fix, this
+    # env would be built with assets=["BTC_USDT"] while aligned_dfs only contains the
+    # configured asset's data, and reset() would raise "No active asset has valid start
+    # timestamps" for every one of those four assets.
+    eval_assets = config.get("all_assets")
+    val_env = _make_val_env(env_factory, val_end, assets=eval_assets, zero_regime=False)
     ppy = _periods_per_year_for_env(val_env)
     traj = run_walk_forward(model, val_env, deterministic=True)
     metrics = compute_metrics(traj["returns"], traj["portfolio_values"], traj["positions"], periods_per_year=ppy)
     regime_breakdown = per_regime_breakdown(traj, periods_per_year=ppy)
     trade_log = extract_trade_log(traj)
 
-    bh = _buy_and_hold(val_env, asset="BTC_USDT", val_end=val_end)
+    bh_asset = eval_assets[0] if eval_assets else "BTC_USDT"
+    bh = _buy_and_hold(val_env, asset=bh_asset, val_end=val_end)
 
-    no_regime_env = _make_val_env(env_factory, val_end, zero_regime=True)
+    no_regime_env = _make_val_env(env_factory, val_end, assets=eval_assets, zero_regime=True)
     traj_nr = run_walk_forward(model, no_regime_env, deterministic=True)
     metrics_nr = compute_metrics(
         traj_nr["returns"], traj_nr["portfolio_values"], traj_nr["positions"],
@@ -596,7 +607,7 @@ def evaluate_ppo(
         # what should be read alongside it, not the bare number on its own.
         "trade_log": trade_log,
         "baselines": {
-            "buy_and_hold_btc": bh,
+            f"buy_and_hold_{bh_asset}": bh,
             "ppo_no_regime": metrics_nr,
         },
         "n_val_steps": int(len(traj["returns"])),

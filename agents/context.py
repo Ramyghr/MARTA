@@ -32,9 +32,10 @@ def _load_regime_stats(semantics_path: Path | None = None) -> dict[int, dict]:
     data/validated/regime_semantics.json, preserving exact prior behavior for every
     existing caller. Pass an explicit path (e.g. data/validated/btc_only_v3_regime_
     semantics.json) to classify regimes from a different HMM's stream — see
-    classify_regime_kind, shared by this module's descriptions AND
-    agents/fund_manager.py's conviction/override logic, so both always agree with
-    whatever regime_semantics.json actually says instead of a hardcoded per-index table.
+    classify_regime_volatility_level and classify_regime_volatility_trend, shared by
+    this module's descriptions AND agents/fund_manager.py's conviction logic, so both
+    always agree with whatever regime_semantics.json actually says instead of a
+    hardcoded per-index table.
     Cached per (resolved path); call invalidate_regime_descriptions_cache() after
     regenerating a semantics file within a running process.
     """
@@ -57,35 +58,67 @@ def _load_regime_stats(semantics_path: Path | None = None) -> dict[int, dict]:
     return stats
 
 
-def classify_regime_kind(stats: dict) -> str:
-    """Bucket a regime's raw stats into a semantic category, derived from sharpe/
-    realized_vol thresholds — NOT a hardcoded per-regime-index table. A per-index table
-    silently goes stale every time run_regime.py refits the HMM (label semantics are not
-    stable across refits) or a different regime stream is used entirely (e.g. the
-    BTC-only-v3 encoder's n=2 HMM vs production's n=4) — this generalizes to any stream
-    by construction, since it only ever looks at the regime's own financial character.
+def classify_regime_volatility_level(stats: dict) -> str:
+    """Bucket a regime's raw stats into a volatility-magnitude category for conviction
+    sizing — replaces the former sharpe-sign-based classify_regime_kind() (removed
+    2026-09-01). That function bucketed regimes as bull/bear/crash from sharpe sign and
+    fed agents/fund_manager.py's conviction multipliers and directional override sets.
+    An objective zigzag trend-leg test (regime/validate_regime_trend_alignment.py, 111
+    legs across all 5 crypto5 assets, 2021) found only 49% of legs had a dominant regime
+    whose historical sharpe sign matched the leg's actual price direction — statistically
+    a coin flip — and the regime nominally labeled "strong bull" (crypto5's R4) was
+    dominant on MORE down-legs than up-legs (40.6% up). Sharpe sign is a population
+    average over the regime's full history, not a reliable per-instance directional
+    signal, so it cannot honestly drive a directional trading override.
 
-    Returns one of: "bear_crash", "high_vol_bear", "mild_negative", "extreme_bull",
-    "high_vol_bull", "mild_positive", "neutral" (near-zero sharpe and vol, or missing data).
+    realized_vol_mean is direction-agnostic by construction and is the dimension that
+    actually held up under validation (this project's regime-distinctness testing
+    consistently finds volatility clusters, not directional ones). Using it for
+    conviction sizing only (scale confidence down when volatility/uncertainty is
+    elevated, symmetrically for bullish and bearish calls) is a defensible risk-
+    management principle that does not require — and does not claim — knowledge of
+    which direction the regime favors.
+
+    Returns one of: "extreme_vol", "elevated_vol", "normal_vol" (also the fallback for
+    missing data, since "assume normal" is the safe default when nothing is known).
     """
     if not stats:
-        return "neutral"
+        return "normal_vol"
     rvol = float(stats.get("realized_vol_mean", 0.0))
-    sharpe = float(stats.get("sharpe", 0.0))
-    if sharpe <= -1.0:
-        return "bear_crash"
-    elif sharpe < 0 and rvol > 0.5:
-        return "high_vol_bear"
-    elif sharpe < 0:
-        return "mild_negative"
-    elif sharpe >= 1.5:
-        return "extreme_bull"
+    if rvol > 1.5:
+        return "extreme_vol"
     elif rvol > 0.5:
-        return "high_vol_bull"
-    elif sharpe > 0:
-        return "mild_positive"
+        return "elevated_vol"
     else:
-        return "neutral"
+        return "normal_vol"
+
+
+def classify_regime_volatility_trend(stats: dict) -> str:
+    """Bucket a regime's raw stats into a volatility/trend-strength descriptor —
+    deliberately NOT a bull/bear label. Unlike sharpe, realized_vol_mean and adx_mean
+    don't encode a direction claim at all (ADX is trend STRENGTH regardless of sign in
+    classic TA), and this is the dimension that actually held up under validation — see
+    classify_regime_volatility_level's docstring for the zigzag test that found
+    sharpe-derived direction labels wrong more often than not at the per-instance level.
+    """
+    if not stats:
+        return "unknown"
+    rvol = float(stats.get("realized_vol_mean", 0.0))
+    adx = float(stats.get("adx_mean", 0.0))
+
+    if rvol > 1.5:
+        vol = "extreme volatility"
+    elif rvol > 0.5:
+        vol = "elevated volatility"
+    elif rvol > -0.3:
+        vol = "moderate volatility"
+    elif rvol > -0.9:
+        vol = "low volatility"
+    else:
+        vol = "very low volatility"
+
+    trend = "trending" if adx >= 0 else "range-bound"
+    return f"{vol}, {trend}"
 
 
 def _load_regime_descriptions(semantics_path: Path | None = None) -> dict[int, str]:
@@ -99,16 +132,6 @@ def _load_regime_descriptions(semantics_path: Path | None = None) -> dict[int, s
         _descriptions_cache[key] = {}
         return {}
 
-    _KIND_LABEL = {
-        "bear_crash": "Bear/crash regime",
-        "high_vol_bear": "High-volatility bear regime",
-        "mild_negative": "Neutral volatility / negative regime",
-        "extreme_bull": "Extreme bull / high-volatility regime",
-        "high_vol_bull": "High-volatility bull regime",
-        "mild_positive": "Neutral volatility / positive regime",
-        "neutral": "Low volatility regime",
-    }
-
     descriptions: dict[int, str] = {}
     for label, stats in stats_by_label.items():
         ann_return = float(stats.get("annualized_return", 0.0))
@@ -116,11 +139,13 @@ def _load_regime_descriptions(semantics_path: Path | None = None) -> dict[int, s
         sharpe = float(stats.get("sharpe", 0.0))
         time_pct = float(stats.get("time_pct", 0.0))
         dom = str(stats.get("dominant_asset", ""))
-        kind = classify_regime_kind(stats)
+        vol_trend = classify_regime_volatility_trend(stats)
 
         descriptions[label] = (
-            f"{_KIND_LABEL[kind]} — {dom}-dominant, ann. return {ann_return:+.1%}, "
-            f"ann. vol {ann_vol:.1%}, Sharpe {sharpe:.2f}, {time_pct:.1%} of time"
+            f"{vol_trend.capitalize()} — {dom}-dominant, {time_pct:.1%} of time. "
+            f"Historical ann. return {ann_return:+.1%}, ann. vol {ann_vol:.1%}, Sharpe "
+            f"{sharpe:.2f} (population average, not a reliable per-instance directional "
+            f"signal — see classify_regime_volatility_trend)"
         )
 
     _descriptions_cache[key] = descriptions
@@ -217,7 +242,7 @@ def build_regime_context(
     of silently describing a different HMM's regimes. Found 2026-08-14: without this,
     a BTC-only regime stream's context showed production's "ETH_USDT-dominant" text for
     a regime that, for BTC-only-v3, is 100% BTC_USDT by construction — same staleness
-    class as FundManagerAgent's now-fixed regime_kind lookup (agents/fund_manager.py)."""
+    class as FundManagerAgent's now-fixed regime-stats lookup (agents/fund_manager.py)."""
     ts_utc = pd.Timestamp(timestamp).tz_convert("UTC") if pd.Timestamp(timestamp).tzinfo else pd.Timestamp(timestamp).tz_localize("UTC")
 
     # Resolve aligned index timezone

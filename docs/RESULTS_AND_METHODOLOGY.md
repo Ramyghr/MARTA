@@ -46,7 +46,13 @@ unresolved. Read this one first if you need to decide what to ask your advisor.*
   flipped to *underperforming* buy-and-hold on 2025, consistent with the 2024 pattern reflecting
   favorable market conditions that year rather than a robust weekly-cadence edge. This closes the
   investigation as not-confirmed — it does not overturn Section 9's final decision, it reinforces
-  it with an additional out-of-window data point. See Section 10a.
+  it with an additional out-of-window data point. See Section 10a. **Extended to the full
+  crypto5 panel (Section 10b, 2026-09-01)**: the same null pattern replicates independently on
+  4 more assets — 2024 validation looks mostly positive (18/20 cells) but only 1/20 reaches
+  significance (and it's the placebo condition, not real regime); the 2025 out-of-window check
+  weakens to a near coin-flip (11/20 positive) with ETH reversing completely across all 4
+  conditions. Closed as consistent with, not contradicting, every other result on regime
+  conditioning in this project.
 
 ---
 
@@ -800,3 +806,59 @@ not clearly separated from C either.
 **Final verdict: this investigation is closed as not-confirmed.** It does not overturn Section 9's
 final decision on the RL layer; it adds one more out-of-window data point consistent with it.
 Full detail: `data/results/weekly_grid_test2025.json`.
+
+### 10b. Crypto5 panel extension — the same null result, now across 5 assets (2026-09-01)
+
+Motivated by a real methodological concern raised mid-investigation: 2024 was not equally
+favorable across assets (BTC bull, ETH mostly consolidating, BNB up on low volatility, LTC
+sideways-then-up, XRP up late) — benchmarking the weekly-cadence result on BTC alone risks
+mistaking "the model rode BTC's tailwind" for "the model performs well." The BTC-only
+investigation (10/10a) was extended to the full crypto5 panel to check whether the pattern was
+asset-specific or general.
+
+**Setup.** A pilot grid (`rl/train_weekly_crypto5_grid.py --pilot`, 5 assets × the same 4
+conditions, 1 seed) trained 20 independent policies. Two real bugs were found and fixed before
+any result could be trusted, one of them consequential: `evaluate_ppo()`'s validation-env builder
+silently defaulted to `assets=["BTC_USDT"]` whenever a caller didn't pass an explicit asset list
+— dormant until now because every prior caller's asset list either was `["BTC_USDT"]` or included
+it. Uncaught, every one of the 16 non-BTC cells would have evaluated a correctly-trained ETH/BNB/
+LTC/XRP policy against BTC's own validation data, or crashed outright (as ETH/BNB/LTC/XRP training
+in fact did, until fixed) — exactly the class of silent asset-mismatch bug this project has hit
+more than once (see the GOLD/XAUUSD note earlier in this document). Fixed by threading
+`config["all_assets"]` through the validation-env builder and the buy-hold baseline call, both of
+which had the identical hardcoded default.
+
+**2024 validation (pilot, reconciled with the same weekly-aligned buy-hold + block-bootstrap
+method as 10/10a):** 18 of 20 cells positive at the point estimate, but only **1 of 20 reaches
+significance — and it is condition D (the placebo/noise-control regime), not C (real regime)**.
+If regime conditioning carried genuine value, C should be the one separating from noise; instead
+the opposite happened on the one cell that cleared significance at all.
+
+**Long-run diagnostic + 2025 out-of-window check (single pass per checkpoint, no re-runs):** each
+of the 20 pilot checkpoints was walked continuously from 2024-01-01 through the last available bar
+(crypto5's aligned data ends 2025-12-31 — "through today," 2026-09-01, is not reachable with this
+data). The 2025-only portion of that same trajectory was extracted (not re-run separately) as the
+directly comparable out-of-window check:
+
+| Asset | A | B | C | D |
+|---|---|---|---|---|
+| BTC | +1.27 | −0.46 | +0.15 | +0.60 |
+| ETH | **−0.39** | **−0.43** | **−1.68** | **−0.35** |
+| BNB | −0.89 | −1.18 | +0.65 | −1.30 |
+| LTC | +0.55 | +0.86 | +0.22 | +0.57 |
+| XRP | +2.41 | −0.08 | +0.01 | +1.18 |
+
+(2025-only $\Delta$ vs. buy-hold; 0 of 20 significant — every CI crosses zero.) The 2024 pattern
+(18/20 positive) weakens to 11/20 positive on 2025 — close to a coin flip — and **ETH reverses
+completely: all four conditions lose to buy-hold in 2025**, having looked positive in the 2024
+pilot. This is the identical "favorable-year artifact" signature already found for BTC alone
+(10a), now independently reproduced on a second asset. Condition C shows no separation from D in
+either the 2024 or 2025 view, on any asset.
+
+**Final verdict: this closes the crypto5 extension as consistent with, not contradicting, every
+prior result on regime conditioning in this project.** Across 40 total comparisons (20
+whole-period + 20 test-slice) none reach significance. Given the pattern has now replicated
+independently on BTC alone, on the full 5-asset panel's 2024 validation, and on the 2025
+out-of-window check, further seeds/grid expansion is not expected to change this conclusion and
+was not pursued. Full detail: `data/results/weekly_grid_crypto5_reconciled.json` and
+`data/results/weekly_grid_crypto5_longrun.json`.

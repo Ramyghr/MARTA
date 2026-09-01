@@ -2,12 +2,30 @@ import asyncio
 import itertools
 import json
 import os
+import socket
 import subprocess
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+# This container has no IPv6 route (confirmed 2026-09-01: AF_INET6 connect() raises
+# "Network is unreachable"), but several external hosts we poll in the background
+# (api.telegram.org, api.twelvedata.com) still publish AAAA records. httpx/httpcore
+# pick whichever address getaddrinfo returns first with no automatic IPv4 fallback,
+# so every outbound call had a ~50% chance of picking the dead IPv6 address —
+# surfacing as intermittent httpx.ConnectError in the Telegram poll loop and blank/
+# DNS-error lines in live_feed's Twelve Data loop. Forcing AF_INET here (before any
+# network client is constructed) makes resolution deterministic.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+
+socket.getaddrinfo = _ipv4_only_getaddrinfo
 
 # Load .env from the same directory as this file before anything else imports os.environ
 from dotenv import load_dotenv

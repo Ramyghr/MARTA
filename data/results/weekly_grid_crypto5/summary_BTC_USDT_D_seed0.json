@@ -1,0 +1,11 @@
+{
+  "asset": "BTC_USDT",
+  "label": "D",
+  "obs_mode": "raw_regime",
+  "seed": 0,
+  "sharpe": 2.2722240334238384,
+  "total_return": 0.7330865719865947,
+  "max_drawdown": 0.061949637919535006,
+  "n_meaningful_trades": 33,
+  "train_wall_seconds": 909.526379108429
+}

@@ -393,12 +393,18 @@ export interface PositionState {
   note?: string;
 }
 
+// Bootstrap default only — AppShell overwrites this from the live
+// /api/regime/semantics call on mount. Worded as volatility/trend, not bull/bear (see
+// dashboard/backend/regime_service.py's _load_crypto5_regime_descriptions docstring):
+// a 2026-09-01 validation found sharpe-derived bull/bear labels didn't reliably match
+// actual price direction per occurrence, so this bootstrap copy shouldn't claim it does
+// even for the brief window before the live fetch resolves.
 export const REGIME_NAMES: Record<number, string> = {
   0: "Mixed/Transitional",
-  1: "Calm Bull",
-  2: "Stress/Crisis",
-  3: "Bear Trend",
-  4: "Calm Bear",
+  1: "Low Volatility / Trending",
+  2: "Extreme Volatility / Shock",
+  3: "Elevated Volatility / Trending",
+  4: "Low Volatility / Range-bound",
   5: "Trending Forex A",
   6: "Trending Forex B",
 };
