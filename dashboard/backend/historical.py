@@ -70,7 +70,16 @@ def _fetch_extension_binance(symbol: str, since_ms: int, limit: int = 30_000) ->
         import ccxt
         ex = ccxt.binance({
             "enableRateLimit": True,
-            "options": {"defaultType": "spot"},
+            # ccxt's binance loadMarkets() fetches spot + margin + fapi (USD-M) + dapi
+            # (COIN-M) exchangeInfo regardless of defaultType unless fetchMarkets is
+            # restricted. Confirmed 2026-09-01: unrestricted load_markets() took ~8s
+            # from this network (dapi.binance.com is the slow/flaky leg) — over the
+            # 5s per-request timeout below, so every extension fetch failed with
+            # "binance GET https://dapi.binance.com/dapi/v1/exchangeInfo" (a
+            # RequestTimeout) even though the spot OHLCV call itself never ran. This
+            # code only ever fetches spot symbols (see _BINANCE_SYMBOLS), so skip the
+            # futures market types entirely — spot-only load_markets() took ~2s.
+            "options": {"defaultType": "spot", "fetchMarkets": ["spot"]},
             "timeout": _EXTENSION_FETCH_TIMEOUT_MS,
         })
         rows = []

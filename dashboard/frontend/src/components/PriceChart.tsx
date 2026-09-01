@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import type { Candle, DataRange } from "@/lib/types";
 import { REGIME_COLORS } from "@/lib/types";
+import { useMARTAStore } from "@/lib/store";
 import { ZoomIn, ZoomOut, ChevronUp, ChevronDown, Maximize2 } from "lucide-react";
 
 interface Props {
@@ -30,12 +31,17 @@ type RangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 
 const RANGES: RangeKey[] = ["1W", "1M", "3M", "6M", "1Y", "ALL"];
 
+// Fallback only, for the brief window before useMARTAStore's regimeNames is populated
+// from the live backend (or if that fetch fails) — see PriceChart's legend render,
+// which prefers regimeNames over this. Worded as volatility/trend, not bull/bear: a
+// 2026-09-01 validation (regime/validate_regime_trend_alignment.py) found sharpe-
+// derived bull/bear labels didn't reliably match actual price direction per occurrence.
 const REGIME_SHORT: Record<number, string> = {
   0: "Mixed",
-  1: "Calm Bull",
-  2: "Crisis",
-  3: "Bear",
-  4: "Calm Bear",
+  1: "Low Vol/Trending",
+  2: "Extreme Vol/Shock",
+  3: "Elevated Vol/Trending",
+  4: "Low Vol/Range-bound",
   5: "FX-A",
   6: "FX-B",
 };
@@ -123,6 +129,7 @@ const CustomTooltip = ({ active, payload, asset }: { active?: boolean; payload?:
 };
 
 export default function PriceChart({ candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false }: Props) {
+  const regimeNames = useMARTAStore((s) => s.regimeNames);
   const [activeRange, setActiveRange] = useState<RangeKey>("ALL");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
@@ -529,7 +536,7 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
         {Object.entries(REGIME_COLORS).map(([k, color]) => (
           <span key={k} className="flex items-center gap-1 text-[10px]" style={{ color: "#555" }}>
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
-            <span>R{k} <span style={{ color }}>{REGIME_SHORT[parseInt(k)]}</span></span>
+            <span>R{k} <span style={{ color }}>{regimeNames[parseInt(k)] ?? REGIME_SHORT[parseInt(k)]}</span></span>
           </span>
         ))}
         {displayCandles.length > 0 && (

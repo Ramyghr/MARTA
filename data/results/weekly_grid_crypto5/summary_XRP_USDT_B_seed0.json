@@ -1,0 +1,11 @@
+{
+  "asset": "XRP_USDT",
+  "label": "B",
+  "obs_mode": "raw_vol",
+  "seed": 0,
+  "sharpe": 2.4397936751921168,
+  "total_return": 1.3815241505800087,
+  "max_drawdown": 0.06943888905892256,
+  "n_meaningful_trades": 37,
+  "train_wall_seconds": 611.1505212783813
+}

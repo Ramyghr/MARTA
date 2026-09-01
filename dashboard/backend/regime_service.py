@@ -11,12 +11,15 @@ MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent.
 # Static fallback only — used if regime_semantics.json is missing (pipeline never run).
 # Whenever that file exists, _load_regime_descriptions() below is the source of truth:
 # regime semantics shift on every HMM refit and this dict has no way to track that itself.
+# Worded as volatility/trend, not bull/bear — see _load_crypto5_regime_descriptions()'s
+# docstring for why (2026-09-01 validation found sharpe-derived direction labels wrong
+# more than half the time at the per-instance level).
 _FALLBACK_DESCRIPTIONS = {
     0: "Mixed/Transitional",
-    1: "Calm Bull",
-    2: "Stress/Crisis",
-    3: "Bear Trend",
-    4: "Calm Bear",
+    1: "Low Volatility / Trending",
+    2: "Extreme Volatility / Shock",
+    3: "Elevated Volatility / Trending",
+    4: "Low Volatility / Range-bound",
     5: "Trending Forex A",
     6: "Trending Forex B",
 }
@@ -105,6 +108,17 @@ def load_regime_models() -> None:
 
 
 def _load_crypto5_regime_descriptions() -> dict[int, str]:
+    """Was `f"{vol_desc} / {perf_desc}"` with perf_desc a sharpe-derived "Strong Bull"/
+    "Bear" label. Removed 2026-09-01: an objective test (regime/validate_regime_trend_
+    alignment.py — zigzag-segmented price legs vs. dominant regime, 111 legs across all
+    5 crypto5 assets, 2021) found only 49% of legs had a dominant regime whose
+    *historical* Sharpe sign matched the leg's actual price direction. R4 (the state
+    with the highest historical Sharpe, so it read as "Strong Bull") was dominant on
+    MORE down-legs than up-legs (40.6% up) — i.e. the label was actively backwards more
+    than half the time it mattered. realized_vol_mean and adx_mean describe HOW MUCH a
+    regime moves and how persistently (ADX is trend strength regardless of sign in
+    classic TA) — that held up in validation; sharpe-derived direction did not.
+    """
     global _crypto5_descriptions_cache
     if _crypto5_descriptions_cache is not None:
         return _crypto5_descriptions_cache
@@ -120,11 +134,17 @@ def _load_crypto5_regime_descriptions() -> dict[int, str]:
     descriptions: dict[int, str] = {}
     for label, stats in sem.get("regimes", {}).items():
         rvol = float(stats.get("realized_vol_mean", 0.0))
-        sharpe = float(stats.get("sharpe", 0.0))
+        adx = float(stats.get("adx_mean", 0.0))
         dom = str(stats.get("dominant_asset", "")).replace("_USDT", "")
-        vol_desc = "High Volatility" if rvol > 0.8 else "Moderate Volatility" if rvol > 0.2 else "Low Volatility" if rvol < -0.2 else "Neutral Volatility"
-        perf_desc = "Strong Bull" if sharpe > 1.5 else "Positive" if sharpe > 0.5 else "Mildly Positive" if sharpe > 0 else "Mildly Negative" if sharpe > -0.5 else "Bear"
-        descriptions[int(label)] = f"{vol_desc} / {perf_desc}" + (f" ({dom}-dominant)" if dom else "")
+        vol_desc = (
+            "Extreme Volatility" if rvol > 1.5 else
+            "Elevated Volatility" if rvol > 0.5 else
+            "Moderate Volatility" if rvol > -0.3 else
+            "Low Volatility" if rvol > -0.9 else
+            "Very Low Volatility"
+        )
+        trend_desc = "Trending" if adx >= 0 else "Range-bound"
+        descriptions[int(label)] = f"{vol_desc} / {trend_desc}" + (f" ({dom}-dominant)" if dom else "")
     _crypto5_descriptions_cache = descriptions or dict(_FALLBACK_DESCRIPTIONS)
     return _crypto5_descriptions_cache
 
@@ -195,6 +215,15 @@ def _load_regime_descriptions() -> dict[int, str]:
     """Generate regime descriptions from the current HMM's actual validated statistics
     (data/validated/regime_semantics.json) instead of a hand-maintained label table that
     silently goes stale every time the HMM is refit. Cached for the process lifetime.
+
+    Worded as volatility/trend, not bull/bear (2026-09-01) — mirrors
+    _load_crypto5_regime_descriptions()'s fix, same anti-pattern (sharpe sign used as a
+    direction proxy). NOTE: the zigzag trend-leg validation that motivated this fix
+    (regime/validate_regime_trend_alignment.py) was run against the crypto5 panel only;
+    this legacy EURUSD/GOLD encoder+PCA+HMM path hasn't been independently re-checked on
+    forex data. Fixed on the strength of "same mechanism, same anti-pattern" rather than
+    a fresh direction-alignment test on this specific HMM — re-run the validation here
+    if this path becomes load-bearing again.
     """
     global _descriptions_cache
     if _descriptions_cache is not None:
@@ -214,30 +243,23 @@ def _load_regime_descriptions() -> dict[int, str]:
     descriptions: dict[int, str] = {}
     for label, stats in sem.get("regimes", {}).items():
         rvol = float(stats.get("realized_vol_mean", 0.0))
-        sharpe = float(stats.get("sharpe", 0.0))
+        adx = float(stats.get("adx_mean", 0.0))
         dom = str(stats.get("dominant_asset", "")).replace("_USDT", "")
 
-        if rvol > 0.8:
-            vol_desc = "High Volatility"
-        elif rvol > 0.2:
+        if rvol > 1.5:
+            vol_desc = "Extreme Volatility"
+        elif rvol > 0.5:
+            vol_desc = "Elevated Volatility"
+        elif rvol > -0.3:
             vol_desc = "Moderate Volatility"
-        elif rvol < -0.2:
+        elif rvol > -0.9:
             vol_desc = "Low Volatility"
         else:
-            vol_desc = "Neutral Volatility"
+            vol_desc = "Very Low Volatility"
 
-        if sharpe > 1.5:
-            perf_desc = "Strong Bull"
-        elif sharpe > 0.5:
-            perf_desc = "Positive"
-        elif sharpe > 0:
-            perf_desc = "Mildly Positive"
-        elif sharpe > -0.5:
-            perf_desc = "Mildly Negative"
-        else:
-            perf_desc = "Bear"
+        trend_desc = "Trending" if adx >= 0 else "Range-bound"
 
-        descriptions[int(label)] = f"{vol_desc} / {perf_desc}" + (f" ({dom}-dominant)" if dom else "")
+        descriptions[int(label)] = f"{vol_desc} / {trend_desc}" + (f" ({dom}-dominant)" if dom else "")
 
     _descriptions_cache = descriptions or dict(_FALLBACK_DESCRIPTIONS)
     return _descriptions_cache

@@ -106,6 +106,47 @@ A second design tested whether regime could instead gate \emph{when to trust} a 
 
 In 2024, the noise-gated control performed as well as, and by point estimate slightly better than, the real regime gate (regime-versus-noise 95\% CI $[-1.721, 0.984]$, not significant), while both were significantly better than no gating at all. The underlying momentum rule is deeply unprofitable on its own (Sharpe $-2.6$ to $-2.9$ in both periods), and any gate that reduces net exposure to a structurally losing strategy mechanically improves its Sharpe ratio whether or not the gate carries genuine information --- which is what the noise control demonstrates directly rather than leaving as a theoretical concern. 2025 shows a larger gap favoring the real regime gate (regime-versus-momentum CI $[-0.209, 2.162]$; noise-versus-momentum CI $[-1.134, 1.25]$), but neither period shows the real gate beating the noise control at conventional significance. Across all three backtest designs tested, standalone regime conditioning did not demonstrate a measurable, noise-control-surviving improvement in risk-adjusted return.
 
+\subsection{Regime Label Directional Fidelity: A Leg-Level Check}
+\label{subsec:regime-zigzag}
+
+The three backtests above ask whether regime conditioning adds measurable value to a trading rule. A more basic question, prior to any trading rule, is whether a regime's own name describes what it actually does: does a state labeled ``bull'' predominate during genuine price advances, and a state labeled ``bear''/``crisis'' during genuine declines? This was tested directly with a standard zigzag/peak-trough segmentation (a $\geq$15\% threshold move, an objective, data-determined criterion, not tuned to the outcome) applied to daily close price for all five crypto5-panel assets over 2021 --- a year containing both the panel's largest rally and one of its sharpest corrections. Each resulting leg (111 total across the five assets) was assigned the \emph{dominant} (mode) regime label over its duration, and that label's class (bull-labeled, bear-labeled, or crisis) was checked against the leg's actual direction.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Regime-label dominance by leg direction, five-asset panel, 2021 (111 legs total, zigzag threshold 15\%).}
+\label{tab:regime-zigzag}
+\begin{tabular}{|l|l|c|c|c|}
+\hline
+\textbf{Regime} & \textbf{Label} & \textbf{Up-legs} & \textbf{Down-legs} & \textbf{\% up} \\
+\hline
+R0 & bear / drawdown & 1 & 4 & 20\% \\
+\hline
+R1 & mild bull & 6 & 3 & 67\% \\
+\hline
+R2 & mild bear / chop & 21 & 17 & 55\% \\
+\hline
+R3 & low-vol bear & 7 & 8 & 47\% \\
+\hline
+R4 & strong bull & 13 & 19 & 41\% \\
+\hline
+R5 & crisis & 6 & 6 & 50\% \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Overall match rate: \textbf{54/111 (48.6\%)} --- statistically indistinguishable from a coin flip. R0 and R1 show a genuine directional lean; R2 through R5 do not, and R4 --- the state literally labeled \emph{strong bull} --- is dominant more often on down-legs than up-legs. This is not a rare miscall: two consecutive, unambiguous legs in the BTC series alone illustrate it directly. A $-25.2\%$ decline from 2021-01-08 to 2021-01-27 was dominated (52.5\% of its hours) by R4; the very next leg, an $+89.1\%$ advance from 2021-01-27 to 2021-02-21, was dominated (67.0\%) by R2, ``mild bear/chop.''
+
+The cause is visible directly in the regime's own fitted feature means (Section~\ref{subsec:regime-final-fit}): R4 has $\overline{\mathrm{rsi}} \approx -0.005$ (direction-neutral) but $\overline{\mathrm{realized\_vol}} = +0.74$ and $\overline{\mathrm{adx}} = +0.24$ (both clearly elevated) --- R4 is not a bullish cluster, it is a \emph{high-volatility, strongly-trending} cluster that fires on trend strength regardless of sign. Its historical Sharpe of $+1.39$, the statistic its name is derived from, is a population average over 2018--2025, a period in which crypto had more net-bullish high-volatility-trending hours than net-bearish ones; it describes the state's unconditional history, not a leg-by-leg predictive property, and is misleading if read as a forward-looking directional signal. This is consistent with, and considerably sharper than, every other finding in this section: the states are genuine volatility/trend-magnitude clusters (Section~\ref{subsec:regime-results-preview}'s distinctness result), not directional predictors, and their plain-language names should not be read as one.
+
+\subsection{Consequence: Removing Directional Language from Regime Descriptions (2026-09-01)}
+\label{subsec:regime-label-fix}
+
+The zigzag result above is not only descriptive: the same sharpe-derived bull/bear/crisis text it discredits was, until this point, the literal string shown in the dashboard's regime legend and injected into every LLM agent's prompt as the qualitative description of current market conditions --- exactly the kind of directional-sounding label the leg-level check just showed does not reliably correspond to actual price direction. This was corrected directly: a volatility/trend-strength classifier (built from $\overline{\mathrm{realized\_vol}}$ and $\overline{\mathrm{adx}}$, both direction-agnostic by construction --- ADX measures trend strength regardless of sign in standard technical analysis) replaced the sharpe-derived bucketing in four places: the crypto5 production description generator and the legacy EURUSD/GOLD description generator in the dashboard backend (the latter fixed for consistency with the same anti-pattern, though not independently re-validated with an equivalent forex zigzag test), the static fallback dictionary, and --- the change with actual behavioral reach --- the description builder in the multi-agent context module (Section~\ref{subsec:regime-context}), which supplies the text every LLM agent reads as market character. A previously disconnected, hardcoded legend in the dashboard frontend was also wired to the same live source instead of a stale duplicate. Post-fix, e.g., what previously read \emph{"Elevated Volatility / Strong Bull"} for R4 now reads \emph{"Elevated Volatility / Trending"}. The full regime-quality audit (Sections~\ref{subsec:regime-results-preview}, \ref{subsec:regime-synthetic-results}) was re-run afterward and confirmed byte-identical to its pre-fix output on every statistical section, since only description text was changed, not the underlying HMM decode.
+
+\textbf{A second, deferred issue was identified at the same time: the separate sharpe-bucketed classifier feeding \texttt{FundManagerAgent}'s conviction multipliers} (Section~\ref{subsec:fund-manager-synthesis}) encoded the same directional assumption the zigzag test discredited --- concretely, a bullish consensus occurring during R5 (crisis, empirically 50/50 directional) was unconditionally overridden to \texttt{hold} regardless of what the debate concluded, and R4 (empirically more down-legs than up-legs) carried a bullish-favoring conviction multiplier. Unlike the description fix above, this is trading logic rather than display text, so it was addressed as a separate, explicit change rather than folded into the same pass: the sharpe-sign classifier and its bullish/bearish penalty and override sets were removed, and conviction is now scaled by \texttt{classify\_regime\_volatility\_level} --- the same \texttt{realized\_vol\_mean}-derived, direction-agnostic dimension validated above --- symmetrically for bullish and bearish calls, with no action-forcing override tied to an assumed direction. Verified directly: a bullish consensus during R5, which previously forced \texttt{final\_action="hold"} irrespective of the debate's actual conclusion, now correctly returns \texttt{"long"} at reduced conviction (0.6$\times$, reflecting R5's genuinely elevated volatility, not an assumed direction); R4 now scales bullish and bearish conviction identically (0.8$\times$ each) rather than favoring bullish. The trade-off is explicit: R0 and R1, the two regimes the zigzag test found to carry a real (if modest) directional lean, no longer receive any directional weighting either, since \texttt{classify\_regime\_kind} could not distinguish their validated lean from R2/R3/R4's discredited one without reverting to a per-regime-index table (rejected earlier in this project for going stale on every HMM refit). Full regression suite (50 tests across the agent and observation-builder test modules) passes unchanged after this edit.
+
 \subsection{Synthetic Recovery Summary}
 \label{subsec:regime-synthetic-results}
 
@@ -292,3 +333,41 @@ Significant? & no & no & no & no \\
 Conditions A and B flipped sign entirely --- profitable relative to buy-hold in 2024, unprofitable relative to it in 2025 --- consistent with the 2024 result reflecting conditions favorable to any weekly-committed directional strategy that particular year, rather than a robust cadence-specific edge, exactly the risk raised when the validation grid was first reported (Section~\ref{subsec:rl-weekly-cadence}). Condition C is the one positive point estimate, and the largest delta of the four, but its 95\% CI is wide and crosses zero $[-1.709, 4.311]$, and a single pre-registered checkpoint on test cannot separate a genuine regime-conditioning benefit from that particular seed's idiosyncrasy. Condition D, the noise control, sits close to buy-hold and is not clearly separated from C either.
 
 \textbf{This closes the investigation as not confirmed.} It does not overturn Section~\ref{subsec:rl-final-decision}'s final decision on the RL layer; it adds one further out-of-window data point consistent with it.
+
+\subsubsection{Crypto5 Panel Extension: the Null Result Generalizes (2026-09-01)}
+\label{subsubsec:rl-weekly-crypto5}
+
+The BTC-only result above leaves one methodological concern unaddressed: 2024 was not equally favorable across assets (BTC bull, ETH mostly consolidating, BNB up on low volatility, LTC sideways-then-up, XRP up late), so a result benchmarked on BTC alone risks mistaking a favorable tailwind for genuine performance. This was tested directly by extending the same native-weekly-cadence design to the full crypto5 panel: a pilot grid (5 assets $\times$ the same 4 conditions, 1 seed each, 20 independently trained policies) reconciled with the identical weekly-aligned buy-hold and block-bootstrap methodology as the BTC-only result.
+
+One consequential defect was found and fixed before trusting any cross-asset result: \texttt{evaluate\_ppo()}'s validation-environment builder silently defaulted to a hardcoded BTC-only asset list whenever a caller omitted an explicit one --- dormant until this point because every prior caller's configuration either was BTC-only or included BTC. Left uncaught, every non-BTC cell would have either evaluated a correctly-trained policy against BTC's own validation data or crashed outright, exactly the class of silent asset-mismatch defect this project has encountered more than once. Fixed by threading the configured asset list through both the validation-environment builder and the buy-hold baseline call, which carried the identical hardcoded default.
+
+\textbf{2024 validation, reconciled:} 18 of 20 cells positive at the point estimate, but only \textbf{one of twenty reaches significance --- and it is condition D, the placebo/noise-control regime, not C, the real regime.} If regime conditioning carried genuine value, C should be the cell separating from noise; instead the opposite occurred on the one cell that cleared significance at all.
+
+\textbf{Long-run diagnostic and 2025 out-of-window check, single pass per checkpoint, no re-runs:} each of the 20 checkpoints was walked continuously from 2024-01-01 through the last available bar (the crypto5 panel's aligned data ends 2025-12-31; a longer horizon is not reachable with this data), and the 2025-only portion of that same trajectory --- not a separate re-run --- was extracted as the out-of-window check.
+
+\begin{table}[h]
+\centering
+\small
+\caption{2025-only $\Delta$ vs.\ buy-hold, extracted from a single continuous 2024--2025 walk-forward pass per checkpoint, crypto5 panel, 1 seed. 0 of 20 cells significant.}
+\label{tab:rl-weekly-crypto5-2025}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+ & \textbf{A (raw)} & \textbf{B (raw+vol)} & \textbf{C (raw+regime)} & \textbf{D (raw+placebo)} \\
+\hline
+BTC & +1.27 & --0.46 & +0.15 & +0.60 \\
+\hline
+\textbf{ETH} & \textbf{--0.39} & \textbf{--0.43} & \textbf{--1.68} & \textbf{--0.35} \\
+\hline
+BNB & --0.89 & --1.18 & +0.65 & --1.30 \\
+\hline
+LTC & +0.55 & +0.86 & +0.22 & +0.57 \\
+\hline
+XRP & +2.41 & --0.08 & +0.01 & +1.18 \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+The 2024 pattern (18/20 positive) weakens to 11/20 positive on the 2025 out-of-window check --- close to a coin flip --- and \textbf{ETH reverses completely: all four conditions lose to buy-hold in 2025}, having looked positive in the 2024 pilot. This is the identical favorable-year-artifact signature already found for BTC alone, now independently reproduced on a second asset. Condition C shows no separation from D on either split, on any asset.
+
+\textbf{Final verdict: this closes the crypto5 extension as consistent with, not contradicting, every prior result on regime conditioning in this project.} Across 40 total comparisons (20 whole-period, 20 test-slice) none reach significance. Having now replicated independently on BTC alone, on the full five-asset panel's 2024 validation, and on the 2025 out-of-window check, further seeds or grid expansion were judged unlikely to change this conclusion and were not pursued.
