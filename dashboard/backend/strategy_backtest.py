@@ -140,6 +140,45 @@ def _sig_mean_reversion(close: pd.Series, window: int = 20, z_entry: float = -2.
     return pd.Series(pos, index=close.index)
 
 
+def _sig_alpha_accelerator(
+    close: pd.Series,
+    trend_fast: int = 20, trend_slow: int = 50,
+    rsi_period: int = 14, rsi_bull: float = 55.0, rsi_bear: float = 45.0,
+    vol_window: int = 20, vol_lookback: int = 90, vol_percentile: float = 0.75,
+) -> pd.Series:
+    """Three independently-computed filters, AND-gated: trades only when trend, momentum,
+    and volatility all agree — long/short otherwise stays flat rather than acting on a
+    partial signal.
+
+    - Trend: fast/slow SMA alignment (same mechanic as ma_crossover/trend_following).
+    - Momentum: RSI confirming the same direction (>55 bull / <45 bear — a dead zone
+      around 50 avoids whipsawing on a trend-only signal with no momentum behind it).
+    - Volatility: realized vol (20h rolling std of returns) must sit at or below its own
+      trailing 90h percentile — mutes entries during vol spikes/crashes, where trend and
+      momentum are least reliable.
+
+    Re-evaluated fresh every bar (no sticky enter/exit state) — a filter dropping out
+    flattens the position immediately, which is the point of a risk-layered strategy.
+    """
+    fast_ma = close.rolling(trend_fast).mean()
+    slow_ma = close.rolling(trend_slow).mean()
+    trend_bull = fast_ma > slow_ma
+    trend_bear = fast_ma < slow_ma
+
+    rsi = _rsi(close, rsi_period)
+    momentum_bull = rsi > rsi_bull
+    momentum_bear = rsi < rsi_bear
+
+    realized_vol = close.pct_change().rolling(vol_window).std()
+    vol_threshold = realized_vol.rolling(vol_lookback).quantile(vol_percentile)
+    vol_ok = realized_vol <= vol_threshold
+
+    signal = pd.Series(0.0, index=close.index)
+    signal[(trend_bull & momentum_bull & vol_ok).to_numpy()] = 1.0
+    signal[(trend_bear & momentum_bear & vol_ok).to_numpy()] = -1.0
+    return signal
+
+
 _STRATEGIES: dict[str, dict[str, object]] = {
     "buy_hold": {
         "label": "Buy and hold", "category": "Strategies", "fn": _sig_buy_hold,
@@ -177,15 +216,19 @@ _STRATEGIES: dict[str, dict[str, object]] = {
         "label": "Donchian channel", "category": "Popular", "fn": _sig_donchian_channel,
         "description": "Enters when it breaks the N-day high, and exits when it breaks the N-day low.",
     },
-}
-
-# Not implemented — shown in the UI as disabled/"coming soon" cards, same roster the
-# competitor-analysis slide listed as locked/premium strategies.
-_LOCKED_STRATEGIES: list[dict[str, str]] = [
-    {
-        "id": "alpha_accelerator", "label": "Alpha Accelerator", "category": "Advanced",
+    "alpha_accelerator": {
+        "label": "Alpha Accelerator", "category": "Advanced", "fn": _sig_alpha_accelerator,
         "description": "Multi-layer setup combining trend, momentum, and volatility filters.",
     },
+}
+
+# Not implemented — shown in the UI as disabled/"coming soon" cards. Unlike
+# alpha_accelerator (built entirely from primitives already computed from `close`),
+# these two need data this pipeline doesn't have for an arbitrary backtest date range:
+# news_verified_trend needs a historical sentiment score (the news cache only covers
+# static 2018-2021 headlines — agents/sentiment_agent.py), and qqq_sharpe_core needs
+# US-equity price data entirely outside the crypto5-only pipeline.
+_LOCKED_STRATEGIES: list[dict[str, str]] = [
     {
         "id": "news_verified_trend", "label": "News-verified trend", "category": "Advanced",
         "description": "Verifies the technical signal against the news score; doesn't take unconfirmed signals.",
