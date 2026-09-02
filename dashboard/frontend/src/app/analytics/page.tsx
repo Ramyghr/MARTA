@@ -217,27 +217,14 @@ function AgentAgreementSection() {
 
   useEffect(() => {
     let cancelled = false;
-    api.getDebates().then(async (d) => {
-      const details = await Promise.all(d.debates.map((item) => api.getDebate(item.id).catch(() => null)));
+    // Server computes the tally over the full cached debate list in one pass (see
+    // GET /api/debates/agreement) instead of the frontend fetching every debate's full
+    // detail individually — with 384 real debates that used to mean 384 concurrent
+    // GET /api/debates/{id} requests per page load.
+    api.getDebatesAgreement().then((res) => {
       if (cancelled) return;
-      const tally: Record<string, { agree: number; total: number }> = {};
-      for (const detail of details) {
-        if (!detail) continue;
-        const action = detail.fund_manager_decision.final_action;
-        for (const thesis of detail.round1_theses) {
-          const name = thesis.agent_name;
-          const bias = thesis.directional_bias;
-          const agrees =
-            (bias === "bullish" && action === "long") ||
-            (bias === "bearish" && action === "short") ||
-            (bias === "neutral" && action === "hold");
-          const entry = (tally[name] ??= { agree: 0, total: 0 });
-          entry.total += 1;
-          if (agrees) entry.agree += 1;
-        }
-      }
-      const rows = Object.entries(tally)
-        .map(([agent, v]) => ({ agent, agreementPct: v.total ? (v.agree / v.total) * 100 : 0, total: v.total }))
+      const rows = res.agreement
+        .map((a) => ({ agent: a.agent, agreementPct: a.agreement_pct, total: a.total }))
         .sort((a, b) => AGENT_ORDER.indexOf(a.agent) - AGENT_ORDER.indexOf(b.agent));
       setData(rows);
     }).catch(() => setData([]));

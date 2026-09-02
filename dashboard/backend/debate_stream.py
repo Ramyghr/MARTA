@@ -373,3 +373,43 @@ def get_debate_detail(debate_id: int) -> dict | None:
     if debate_id < 0 or debate_id >= len(debates):
         return None
     return {"id": debate_id, **debates[debate_id]}
+
+
+def get_agent_agreement() -> list[dict]:
+    """Per-agent tally of how often each R1 agent's directional_bias matched the Fund
+    Manager's final_action, computed server-side over the whole cached debate list.
+
+    The frontend (analytics page's AgentAgreementSection) used to compute this itself by
+    calling GET /api/debates for the id list, then GET /api/debates/{id} once per id via
+    Promise.all — fine at ~39 debates, but the cache grew to 384 real entries (dense BTC
+    2024 debate-coverage pass, 2026-09-02) and that turned into 384 concurrent requests
+    per page load. _load_debates() already holds every full record in memory (it's the
+    same list get_debate_detail reads from), so doing the tally here avoids sending 384
+    full debate objects over the wire just to reduce them to a handful of percentages.
+    """
+    debates = _load_debates()
+    tally: dict[str, dict[str, int]] = {}
+    for d in debates:
+        action = d.get("fund_manager_decision", {}).get("final_action")
+        for thesis in d.get("round1_theses", []):
+            name = thesis.get("agent_name")
+            if not name:
+                continue
+            bias = thesis.get("directional_bias")
+            agrees = (
+                (bias == "bullish" and action == "long")
+                or (bias == "bearish" and action == "short")
+                or (bias == "neutral" and action == "hold")
+            )
+            entry = tally.setdefault(name, {"agree": 0, "total": 0})
+            entry["total"] += 1
+            if agrees:
+                entry["agree"] += 1
+    return [
+        {
+            "agent": name,
+            "agreement_pct": (v["agree"] / v["total"] * 100.0) if v["total"] else 0.0,
+            "total": v["total"],
+        }
+        for name, v in tally.items()
+    ]

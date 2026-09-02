@@ -323,6 +323,15 @@ def list_debates():
     return {"debates": debate_stream.get_debates_list()}
 
 
+# Must be registered before /api/debates/{debate_id} — that route's `debate_id: int`
+# would otherwise try (and fail) to parse the literal path segment "agreement" as an int,
+# since FastAPI/Starlette match routes in registration order and a bare {debate_id}
+# path converter matches any string at the routing layer before type validation runs.
+@app.get("/api/debates/agreement")
+def get_debates_agreement():
+    return {"agreement": debate_stream.get_agent_agreement()}
+
+
 @app.get("/api/debates/{debate_id}")
 def get_debate(debate_id: int):
     detail = debate_stream.get_debate_detail(debate_id)

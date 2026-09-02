@@ -831,3 +831,36 @@ the debate cache would need a fresh regeneration pass (`run_clean_ablation_debat
 similar) before the new Bull/Bear signal could be reflected in RL-side results.
 
 Deliberately not implemented this session — captured as a roadmap/future-work item only.
+
+## Regime trading-instructions A/B test (smoke test only, 2026-09-02)
+
+Added an opt-in, prescriptive alternative to the passive regime description agents get today.
+`agents/context.py`: new `RegimeContext.vol_level` field (computed once via
+`classify_regime_volatility_level()`, the same bucketing `FundManagerAgent`'s conviction
+multiplier already uses) and a new `_REGIME_TRADING_INSTRUCTIONS` dict (`normal_vol` /
+`elevated_vol` / `extreme_vol` → concrete position-sizing/confirmation rules).
+`serialize_context_for_prompt()` gained `include_instructions: bool = False` — default off, so
+every existing caller (production dashboard included) is byte-for-byte unchanged until this is
+validated.
+
+`run_regime_instructions_ablation.py` (new) A/B/C-tests `none` / `description_only` /
+`instructions` on the same (timestamp, asset) pairs, stratified by volatility bucket, pre-2025
+only (keeps the 2025 test split untouched). **Only run so far: `--n-per-bucket 1`, a 9-debate
+smoke test** — full detail and the honest "do not treat as a result" framing is
+`docs/RESULTS_AND_METHODOLOGY.md` Section 11. Headline of that smoke test: the `instructions`
+variant *increased* mean position size in `elevated_vol`/`extreme_vol` versus
+`description_only` (0.509 vs 0.352, 0.480 vs 0.279) — the opposite of what its own "reduce
+sizing" instruction text asks for — plus the highest mean conviction and the only non-zero
+Round-2 flip rate of the three variants. Hypothesis, not finding, at n=1/cell: a prescriptive
+prompt may read to the LLM as permission to be more confident rather than as an actual brake.
+Next step if pursued: the full 90-debate run (`--n-per-bucket 10`, default).
+
+**Also fixed this session, unrelated:** `dashboard/backend/debate_stream.py`'s analytics
+agent-agreement panel used to have the frontend fetch every debate's full detail individually
+(`Promise.all` over `GET /api/debates/{id}`) to compute a tally — fine at ~39 cached debates,
+384 concurrent requests per page load after the dense-coverage pass. Moved server-side:
+`debate_stream.get_agent_agreement()` + `GET /api/debates/agreement`
+(`dashboard/backend/main.py`, registered *before* `/api/debates/{debate_id}` — Starlette
+matches routes in registration order, so an untyped `{debate_id}` path segment would otherwise
+swallow the literal string `"agreement"` ahead of its own `int` validation). Frontend
+(`analytics/page.tsx`, `lib/api.ts`) now makes one request instead of N.

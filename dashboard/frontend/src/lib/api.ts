@@ -65,6 +65,12 @@ export interface DebateListItem {
   conviction: number;
 }
 
+export interface AgentAgreement {
+  agent: string;
+  agreement_pct: number;
+  total: number;
+}
+
 export interface RawAgentThesis {
   agent_name: string;
   directional_bias: "bullish" | "bearish" | "neutral";
@@ -213,6 +219,7 @@ export const api = {
   getPositions: () => fetchApi<PositionState>("/api/rl/positions"),
   getDebates: () => fetchApi<{ debates: DebateListItem[] }>("/api/debates"),
   getDebate: (id: string | number) => fetchApi<DebateDetail>(`/api/debates/${id}`),
+  getDebatesAgreement: () => fetchApi<{ agreement: AgentAgreement[] }>("/api/debates/agreement"),
   getDemoScenarios: () => fetchApi<{ scenarios: Scenario[] }>("/api/demo-scenarios"),
   getAblation: () => fetchApi<AblationResults>("/api/ablation"),
   getRegimeStream: (asset: string, limit = 500) =>

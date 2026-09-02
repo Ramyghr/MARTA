@@ -158,6 +158,38 @@ def invalidate_regime_descriptions_cache() -> None:
     _descriptions_cache = {}
     _stats_cache = {}
 
+# Active risk constraints, keyed by the same classify_regime_volatility_level() bucket
+# that already drives FundManagerAgent's conviction multiplier
+# (agents/fund_manager.py:_REGIME_VOL_CONVICTION_MULTIPLIER). Deliberately keyed by
+# vol_level, not regime_label, for the same staleness reason documented on that dict:
+# label semantics are not stable across HMM refits, but "what does elevated/extreme
+# volatility mean for risk-taking" is a fixed policy choice independent of which raw
+# label the HMM happens to assign it this refit. Only rendered into the prompt when
+# serialize_context_for_prompt(..., include_instructions=True) — opt-in, not the
+# production default, until the A/B comparison in run_regime_instructions_ablation.py
+# shows it actually changes debate quality rather than just prompt length.
+_REGIME_TRADING_INSTRUCTIONS: dict[str, str] = {
+    "extreme_vol": (
+        "EXTREME VOLATILITY ENVIRONMENT -- apply these constraints:\n"
+        "  1. Maximum position size: 30% of normal risk budget.\n"
+        "  2. Do not add to a losing position.\n"
+        "  3. A directional call (bullish/bearish) requires >80% confidence to be worth the risk.\n"
+        "  4. Favor mean-reversion reasoning over breakout/momentum chasing.\n"
+        "  5. If the picture is ambiguous, prefer neutral over a low-conviction directional call."
+    ),
+    "elevated_vol": (
+        "ELEVATED VOLATILITY -- apply these constraints:\n"
+        "  1. Reduce position sizing roughly 20% versus normal conditions.\n"
+        "  2. Require confirmation from more than one indicator before trusting a breakout.\n"
+        "  3. Treat momentum signals as reliable only when ADX > 25."
+    ),
+    "normal_vol": (
+        "Normal volatility environment -- standard risk management applies; full risk "
+        "budget may be used."
+    ),
+}
+
+
 _WINDOW_INDICATORS = ["realized_vol", "rsi", "adx", "close_return"]
 
 USE_PER_ASSET_REGIME: bool = False
@@ -224,6 +256,11 @@ class RegimeContext:
     # data gap) — surfaced as an explicit flag instead, both in the prompt text
     # (serialize_context_for_prompt) and in this dataclass for programmatic checks.
     regime_gap_hours: float = 0.0  # |requested timestamp - resolved regime row timestamp|
+    vol_level: str = "normal_vol"  # classify_regime_volatility_level() output for this
+    # regime_label, computed once here (same stats lookup that already backs
+    # regime_description) so serialize_context_for_prompt and any other consumer read a
+    # single value instead of each re-deriving it from a possibly-different
+    # semantics_path.
 
 
 def build_regime_context(
@@ -281,6 +318,7 @@ def build_regime_context(
     regime_probs = {col.replace("regime_prob_", "regime_"): float(row[col]) for col in prob_cols}
     dominant_regime = max(regime_probs, key=regime_probs.get)
     dominant_regime_int = int(dominant_regime.replace("regime_", ""))
+    vol_level = classify_regime_volatility_level(_load_regime_stats(semantics_path).get(regime_label, {}))
 
     # Extract 13 features at the timestamp
     if ts_aligned in aligned_df.index:
@@ -318,15 +356,28 @@ def build_regime_context(
         window_features=window_features,
         regime_stale=regime_stale,
         regime_gap_hours=round(regime_gap_hours, 2),
+        vol_level=vol_level,
     )
 
 
-def serialize_context_for_prompt(ctx: RegimeContext, include_regime: bool = True) -> str:
-    """Serialize RegimeContext into a compact prompt-ready string (<400 tokens).
+def serialize_context_for_prompt(
+    ctx: RegimeContext,
+    include_regime: bool = True,
+    include_instructions: bool = False,
+) -> str:
+    """Serialize RegimeContext into a compact prompt-ready string (<400 tokens when
+    include_instructions=False; the instructions block adds roughly 60-100 more).
 
     ``include_regime=False`` drops the regime label, regime description, and probability
     vector entirely — used to run "clean" no-regime-context ablation debates (see
     ``run_clean_ablation_debates.py``). Price features and window stats are unaffected.
+
+    ``include_instructions=True`` (only meaningful when include_regime=True) appends
+    _REGIME_TRADING_INSTRUCTIONS[ctx.vol_level] — concrete position-sizing/confirmation
+    rules instead of just a passive description. Defaults to False so every existing
+    caller (production dashboard debates included) is byte-for-byte unchanged; this is
+    an experimental variant to be A/B-tested via run_regime_instructions_ablation.py
+    before it becomes anyone's default.
     """
     price_lines = "\n".join(
         f"  {k}: {v:.4f}" for k, v in list(ctx.price_features.items())[:8]
@@ -356,12 +407,18 @@ def serialize_context_for_prompt(ctx: RegimeContext, include_regime: bool = True
         if ctx.regime_stale else ""
     )
 
+    instructions_block = ""
+    if include_instructions:
+        instruction = _REGIME_TRADING_INSTRUCTIONS.get(ctx.vol_level, "")
+        instructions_block = f"\n=== REGIME TRADING INSTRUCTIONS ===\n{instruction}\n"
+
     return (
         f"=== REGIME STATE ===\n"
         f"Asset: {ctx.asset} | Timestamp: {ctx.timestamp}\n"
         f"{staleness_line}"
         f"Regime: R{ctx.regime_label} — {ctx.regime_description}\n"
-        f"Regime probabilities: {probs_str}\n\n"
+        f"Regime probabilities: {probs_str}\n"
+        f"{instructions_block}\n"
         f"=== PRICE FEATURES (latest) ===\n{price_lines}\n\n"
         f"=== MARKET CHARACTER (60-candle window) ===\n{window_lines}\n"
         f"{events_block}"

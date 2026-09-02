@@ -53,6 +53,13 @@ unresolved. Read this one first if you need to decide what to ask your advisor.*
   weakens to a near coin-flip (11/20 positive) with ETH reversing completely across all 4
   conditions. Closed as consistent with, not contradicting, every other result on regime
   conditioning in this project.
+- **New (2026-09-02, Section 11): a first agent-layer experiment, smoke-test only.** An opt-in
+  "active regime instructions" prompt variant (explicit position-size caps/confirmation rules
+  instead of a passive description) was A/B tested against the current production prompt and a
+  no-regime baseline. Only a 9-debate smoke test has run so far (n=1 per variant/vol-bucket cell)
+  — not remotely enough to draw a conclusion — but it produced a counterintuitive early signal
+  worth a full run: the instructions variant increased mean position size in elevated/extreme
+  volatility rather than shrinking it as the instruction text explicitly asks for.
 
 ---
 
@@ -936,3 +943,83 @@ either way — some of the trained timing appears to add a little value beyond d
 some of it doesn't. **Consistent with, not overturning, Section 9's closed decision**: real but
 small and inconsistent structure, not a confirmed edge. Full detail:
 `data/results/weekly_reversed_signal_experiment.json`.
+
+## 11. Regime trading-instructions A/B test — smoke test only, not a result (2026-09-02)
+
+Section 9/10 both test the RL execution layer's use of regime context. This is the first test
+of the *agent* layer's use of it: does turning the regime block from a passive description into
+an active, prescriptive instruction set (explicit position-size caps, confirmation rules, a
+bias toward neutral under ambiguity — see `_REGIME_TRADING_INSTRUCTIONS` in
+`agents/context.py`) change what the debate actually decides? Motivated by the same observation
+as the Bull/Bear Researcher roadmap item (`CLAUDE.md`, 2026-09-02): the agent layer, not RL, is
+where this project's ablations have consistently found more signal, so it's the higher-leverage
+place to keep experimenting.
+
+`serialize_context_for_prompt` gained an opt-in `include_instructions` flag (default `False` —
+every existing caller, including the production dashboard, is byte-for-byte unchanged) that
+appends one of three fixed instruction blocks keyed by `classify_regime_volatility_level()`
+(`normal_vol` / `elevated_vol` / `extreme_vol`) — the same volatility bucketing that already
+drives `FundManagerAgent`'s conviction multiplier, reused here instead of introducing a second
+scheme. `run_regime_instructions_ablation.py` runs the same (timestamp, asset) pairs through
+three prompt variants — `none` (no regime context, the existing ablation baseline),
+`description_only` (current production default), `instructions` (the new block) — stratified by
+volatility bucket (a uniform random sample would be ~93% `normal_vol` on the crypto5 panel and
+starve the buckets the hypotheses actually care about), restricted to pre-2025 timestamps to
+keep the 2025 test split untouched. Hypotheses were pre-registered before any debate ran
+(`data/results/regime_instructions_ablation_hypotheses.json`).
+
+**This run used `--n-per-bucket 1` — 9 debates total (3 variants × 3 buckets, n=3 per
+variant).** That is a smoke test to confirm the harness works end-to-end, not a sample size
+either the pre-registered hypotheses or this project's own block-bootstrap convention (Section
+9/10) would treat as decisive — one debate per (variant, bucket) cell. Numbers below are recorded
+for completeness and because two of them are directionally interesting enough to flag, not
+because either instructions hypothesis is confirmed:
+
+| Variant | n | Dir. acc. (overall) | Mean position size | Mean conviction | R2 flip rate | Mean agent agreement |
+|---|---|---|---|---|---|---|
+| `none` | 3 | 0.333 (1/3) | 0.4706 | 0.588 | 0.00 | 0.694 |
+| `description_only` | 3 | 0.000 (0/3) | 0.4770 | 0.596 | 0.00 | 0.778 |
+| `instructions` | 3 | 0.000 (0/3) | 0.5962 | 0.745 | 0.25 | 0.889 |
+
+Mean position size by volatility bucket (this is what h2 predicted the instructions block would
+*shrink* in `elevated_vol`/`extreme_vol`, since the instruction text literally says "reduce
+position sizing ~20%" / "max 30% of normal risk budget"):
+
+| Variant | normal_vol | elevated_vol | extreme_vol |
+|---|---|---|---|
+| `none` | 0.4495 | 0.5384 | 0.4238 |
+| `description_only` | 0.8000 | 0.3522 | 0.2789 |
+| `instructions` | 0.8000 | 0.5085 | 0.4800 |
+
+**h2 pointed the wrong way at this sample size.** `instructions` produced a *larger* mean
+position size than `description_only` in both `elevated_vol` (0.509 vs 0.352) and `extreme_vol`
+(0.480 vs 0.279) — the opposite of what an explicit "reduce sizing" instruction would predict.
+`instructions` also had the highest mean conviction (0.745 vs 0.588–0.596) and the only non-zero
+Round-2 flip rate (0.25). One live hypothesis: telling the LLM agents a confident, structured
+rule set makes them argue more decisively even when instructed toward caution, rather than
+actually caution their output — a "prescriptive prompt reads as permission to be confident"
+effect rather than a risk-reduction one. That is a hypothesis a 9-debate smoke test cannot
+distinguish from noise; it is recorded here as the reason to prioritize a full run (10/bucket =
+90 debates, `python run_regime_instructions_ablation.py`) if this line of work continues, not as
+a finding. `h1` and `h3` are similarly untestable at n=1 per cell — every `by_vol_level` `n` is
+1, so any accuracy figure is either 0.0 or 1.0 with no way to distinguish signal from a coin
+flip.
+
+Full detail: `data/debates/regime_instructions_ablation.json` (9 raw debate records),
+`data/results/regime_instructions_ablation_summary.json`,
+`data/results/regime_instructions_ablation_hypotheses.json`. All three are gitignored
+(`data/results/*.json`, `data/debates/*.json` — regenerable artifacts, not committed) — this
+section is the durable record of what the smoke test found.
+
+### Unrelated fix landed alongside this experiment
+
+`dashboard/backend/debate_stream.py`'s analytics page agent-agreement panel used to fetch every
+debate's full detail client-side (`GET /api/debates/{id}` × N via `Promise.all`) to compute a
+simple tally. That was fine at the ~39-debate cache size this dashboard was built against, but
+the dense BTC debate-coverage pass (see "Dense BTC debate coverage" in `CLAUDE.md`, 2026-09-02)
+grew the cache to 384 real entries — 384 concurrent requests per analytics page load. Moved the
+tally server-side (`GET /api/debates/agreement`, `debate_stream.get_agent_agreement()`); the
+frontend now makes one request instead of N. Registered before the `/api/debates/{debate_id}`
+route in `main.py` — FastAPI/Starlette match routes in registration order, so an unqualified
+`{debate_id}` path parameter would otherwise capture the literal string `"agreement"` before its
+`int` type validation ever runs.
