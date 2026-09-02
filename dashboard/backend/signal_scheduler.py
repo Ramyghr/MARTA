@@ -100,11 +100,13 @@ async def _run_signal_tick() -> None:
         except Exception as exc:
             logger.warning(f"signal_scheduler: tick failed for {asset} — {exc}")
 
-    # EURUSD/GOLD (2026-08 crypto-only migration: no longer in _ACTIVE_ASSETS or the
-    # live-bridge refresh above) still get a best-effort regime log entry here so
-    # historical.py's chart tagging doesn't regress for anyone still viewing their
-    # (now static/frozen) historical charts. Not a trading loop — same as before.
-    await _log_nontrading_regimes()
+    # _log_nontrading_regimes() (EURUSD/GOLD hourly regime-only logging) — NOT called
+    # (2026-09-01). Confirmed no frontend path can reach these assets anymore
+    # (dropped from /api/assets by the crypto-only migration; PriceChart.tsx/
+    # dashboard/page.tsx's remaining EURUSD/GOLD references are inert formatting
+    # branches an unreachable asset id never triggers), so this was hourly compute
+    # spent updating regime_live_log.parquet rows nothing reads. Left defined below
+    # in case EURUSD/GOLD trading is ever reinstated.
 
 
 async def _refresh_live_bridges() -> None:

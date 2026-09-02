@@ -22,7 +22,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from agents.context import RegimeContext, build_regime_context, classify_regime_kind, _load_regime_stats
+from agents.context import RegimeContext, build_regime_context, classify_regime_volatility_level, _load_regime_stats
 from agents.contrarian_agent import ContrarianAgent
 from agents.fund_manager import FundManagerAgent
 from agents.macro_agent import MacroAgent
@@ -172,7 +172,7 @@ def _run() -> None:
     ctx_real = build_regime_context(T0, ASSET, regime_stream, aligned_df, semantics_path=SEMANTICS_PATH)
 
     stats_by_label = _load_regime_stats(SEMANTICS_PATH)
-    kinds = {label: classify_regime_kind(s) for label, s in stats_by_label.items()}
+    kinds = {label: classify_regime_volatility_level(s) for label, s in stats_by_label.items()}
     sharpes = {label: float(s.get("sharpe", 0.0)) for label, s in stats_by_label.items()}
     bull_label = max(sharpes, key=sharpes.get)
     bear_label = min(sharpes, key=sharpes.get)

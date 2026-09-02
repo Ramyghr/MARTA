@@ -111,6 +111,47 @@ export interface DebateDetail {
   scenario_description: string;
 }
 
+export interface BacktestStrategyInfo {
+  id: string;
+  label: string;
+  category: string;
+  description: string;
+  locked: boolean;
+}
+
+export interface BacktestTrade {
+  entry_time: string;
+  exit_time: string;
+  direction: "long" | "short";
+  pnl_pct: number;
+}
+
+export interface BacktestEquityPoint {
+  timestamp: string;
+  strategy: number;
+  buy_hold: number;
+}
+
+export interface BacktestResult {
+  asset: string;
+  strategy: string;
+  strategy_label: string;
+  start: string;
+  end: string;
+  n_bars: number;
+  metrics: {
+    total_return: number;
+    buy_hold_total_return: number;
+    vs_buy_hold: number;
+    sharpe: number;
+    max_drawdown: number;
+    win_rate: number;
+    n_trades: number;
+  };
+  equity_curve: BacktestEquityPoint[];
+  trades: BacktestTrade[];
+}
+
 export interface GpuStatus {
   available: boolean;
   reason?: string;
@@ -230,4 +271,11 @@ export const api = {
   getStockTwits: (asset: string) =>
     fetchApi<{ asset: string; messages: StockTwitsMessage[]; count: number }>(`/api/news/stocktwits/${asset}`),
   getFearGreed: () => fetchApi<FearGreedIndex>("/api/market/fear-greed"),
+  getBacktestStrategies: () => fetchApi<{ strategies: BacktestStrategyInfo[] }>("/api/backtest/strategies"),
+  runBacktest: (asset: string, strategy: string, start?: string, end?: string) => {
+    const params = new URLSearchParams({ asset, strategy });
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    return fetchApi<BacktestResult>(`/api/backtest/run?${params.toString()}`);
+  },
 };

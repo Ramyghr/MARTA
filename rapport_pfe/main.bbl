@@ -1,10 +1,16 @@
-\begin{thebibliography}{1}
+\begin{thebibliography}{10}
 
 \bibitem{hamilton1989}
 James~D. Hamilton.
 \newblock A new approach to the economic analysis of nonstationary time series
   and the business cycle.
 \newblock {\em Econometrica}, 57(2):357--384, 1989.
+
+\bibitem{tradinggpt2023}
+Yang Li, Yangyang Yu, Haohang Li, Zhi Chen, and Khaldoun Khashanah.
+\newblock Tradinggpt: Multi-agent system with layered memory and distinct
+  characters for enhanced financial trading performance.
+\newblock {\em arXiv preprint arXiv:2309.03736}, 2023.
 
 \bibitem{questdb-hmm}
 Market regime detection using hidden markov models.
@@ -19,9 +25,10 @@ Xiao-Yang Liu, Hongyang Yang, Qian Chen, Runjia Zhang, Liuqing Yang, Bowen
 \newblock {\em arXiv preprint arXiv:2011.09607}, 2020.
 
 \bibitem{hmm-finrl-2025}
-Hmm-based market regime detection with rl for portfolio management.
-\newblock {\em International Conference on Data Security and Privacy Protection
-  (DataSec)}, 2025.
+Jean Ndoutoumou, Zining Yin, and Xiaochang Cheng.
+\newblock Hmm-based market regime detection with rl for portfolio management.
+\newblock In {\em 2025 IEEE 11th International Conference on Intelligent Data
+  and Security (IDS)}, page~67, 2025.
 
 \bibitem{finagent2024}
 Wentao Zhang et~al.

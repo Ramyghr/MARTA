@@ -45,3 +45,10 @@ node_modules.tar.gz
 node_modules/
 dashboard/backend/pip-cache/
 dashboard/backend/pip-cache/
+dashboard/frontend/.next/
+
+# Kaggle upload packaging bundle — zip + a duplicated copy of agents/utils/parquet data
+# for external upload, regenerate via scripts/kaggle_debate_coverage.py's packaging step.
+# (kaggle_upload/marta-processed-data-v2/v3/ are pre-existing tracked snapshots — not ignored)
+kaggle_upload/marta-debate-coverage-pkg/
+kaggle_upload/marta-debate-coverage-pkg.zip

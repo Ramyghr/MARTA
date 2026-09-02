@@ -37,7 +37,7 @@ More recent work combines regime detection with deep reinforcement learning rath
 \subsection{Single- and Multi-Agent LLM Trading Systems}
 \label{subsec:llm-trading-systems}
 
-TradingGPT, an early multi-agent system, assigns LLM agents layered memory and distinct behavioral characters to simulate diverse trader personas contributing to a shared decision. FinAgent, presented at KDD 2024, is a multimodal foundation agent that fuses textual news, numerical price data, and visual chart information through a dual-level reflection module, allowing the agent to adapt its strategy based on recent market feedback; evaluated across six financial datasets spanning equities and crypto, it substantially outperformed prior single-modality baselines. TradingAgents, proposed shortly after, more directly mirrors the organizational structure of a real trading firm: specialized analyst agents (fundamental, sentiment, technical) feed a research team of Bull and Bear debaters, whose output passes through a risk management team before a trader agent commits to a decision, and the resulting framework outperformed several classical baselines (Buy-and-Hold, MACD, RSI) on cumulative return and Sharpe ratio in simulated equity trading.
+TradingGPT \cite{tradinggpt2023}, an early multi-agent system, assigns LLM agents layered memory and distinct behavioral characters to simulate diverse trader personas contributing to a shared decision. FinAgent, presented at KDD 2024, is a multimodal foundation agent that fuses textual news, numerical price data, and visual chart information through a dual-level reflection module, allowing the agent to adapt its strategy based on recent market feedback; evaluated across six financial datasets spanning equities and crypto, it substantially outperformed prior single-modality baselines. TradingAgents, proposed shortly after, more directly mirrors the organizational structure of a real trading firm: specialized analyst agents (fundamental, sentiment, technical) feed a research team of Bull and Bear debaters, whose output passes through a risk management team before a trader agent commits to a decision, and the resulting framework outperformed several classical baselines (Buy-and-Hold, MACD, RSI) on cumulative return and Sharpe ratio in simulated equity trading.
 
 \subsection{Multi-Agent Debate as a Design Pattern}
 \label{subsec:multi-agent-debate}
@@ -83,7 +83,7 @@ Table~\ref{tab:gap-comparison} consolidates the gaps identified across the three
 HMM regime filters \cite{questdb-hmm} & Partial (hand-features) & No & No & Yes \\
 FinRL \cite{finrl2020} & No & No & Yes (RL) & Partial \\
 HMM + FinRL \cite{hmm-finrl-2025} & Partial (hand-features) & No & Yes (RL) & Partial \\
-TradingGPT & No & Yes & No & Partial \\
+TradingGPT \cite{tradinggpt2023} & No & Yes & No & Partial \\
 FinAgent \cite{finagent2024} & No & Partial (single agent) & No & Yes \\
 TradingAgents \cite{tradingagents2024} & No & Yes & No & Yes \\
 \textbf{MARTA (this work)} & \textbf{Yes (TFT + InfoNCE)} & \textbf{Yes (5 agents)} & \textbf{Yes (PPO)} & \textbf{Yes} \\

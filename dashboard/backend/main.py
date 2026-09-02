@@ -45,6 +45,7 @@ import portfolio_service
 import debate_stream
 import live_feed
 import system_service
+import strategy_backtest
 from auth import APIKeyMiddleware
 from demo_scenarios import DEMO_SCENARIOS, SCENARIO_BY_ID
 
@@ -108,7 +109,13 @@ async def lifespan(app: FastAPI):
     ppo_inference.load_model()
     import signal_scheduler
     signal_scheduler.start()
-    live_feed.start_forex_feed()
+    # live_feed.start_forex_feed() — NOT started (2026-09-01). EURUSD/GOLD were dropped
+    # from /api/assets by the crypto-only migration (RESULTS_AND_METHODOLOGY.md Section 7)
+    # and have no remaining frontend consumer, but this Twelve Data poll loop kept running
+    # anyway — pure background noise (intermittent DNS/connect errors in the backend logs
+    # with nothing reading the result). live_feed.get_latest_price() / _fetch_forex_price()
+    # are left in place (historical.py's _append_live_candle degrades harmlessly to a no-op
+    # without a live tick) in case EURUSD/GOLD are ever reinstated as tradeable assets.
 
     # Refresh ablation on startup (background task) if clean no-regime debates exist
     no_regime_path = MARTA_ROOT / "data" / "debates" / "debate_results_no_regime.json"
@@ -262,6 +269,24 @@ def refresh_ablation():
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout or "eval failed")[-2000:])
     return get_ablation()
+
+
+@app.get("/api/backtest/strategies")
+def get_backtest_strategies():
+    return strategy_backtest.list_strategies()
+
+
+@app.get("/api/backtest/run")
+def run_strategy_backtest(
+    asset: str = Query(...),
+    strategy: str = Query(...),
+    start: Optional[str] = Query(None),
+    end: Optional[str] = Query(None),
+):
+    try:
+        return strategy_backtest.run_backtest(asset, strategy, start, end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/test-set")

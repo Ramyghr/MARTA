@@ -667,3 +667,121 @@ Asymmetric cause, and the exact boundary differs per asset:
   whole feature in the actual deployment until fixed.
 - BTC/ETH: same frozen-window mechanism, a different (much smaller — weeks, not months)
   gap, and no live bridge built for them yet — not addressed by this work.
+
+## NOTE: root CLAUDE.md staleness — read this before trusting anything above on regime/RL/agent architecture
+
+Everything above this section predates a full regime-layer + agent-layer audit and a
+crypto-only 5-asset panel pivot (`BTC_USDT, ETH_USDT, BNB_USDT, LTC_USDT, XRP_USDT`,
+"crypto5_multihorizon") that happened in a burst of work this file was never updated to
+reflect — including the contrastive encoder being fully abandoned (raw 14-feature input
+now backs RL/regime, not TFT embeddings) and a leaky forward-backward-smoothed regime
+stream being replaced by a causal one. **The real current state lives in
+`docs/RESULTS_AND_METHODOLOGY.md`** (actively maintained) and `docs/REGIME_LAYER_AUDIT_REPORT.{html,pdf}`.
+Treat this file as directionally useful engineering history, not a current architecture
+reference, until it gets a full pass.
+
+## Dense BTC debate coverage + RL re-eval (2026-09-02)
+
+**Kaggle debate-coverage run completed.** `kaggle_debate_coverage_instructions.md` /
+`notebooks/llm-debate-layer.ipynb` generated 366 real Mistral debates (BTC_USDT, daily
+stride, all 6 regimes, full 2024 window) and merged into `data/debates/debate_results.json`
+(39 → 384 total, backup at `debate_results.json.bak_before_kaggle_merge_2026-09-02`). Real
+bugs hit and fixed along the way (notebook + `scripts/kaggle_debate_coverage.py` both
+updated): the Ollama installer needs `apt-get install zstd` on the Kaggle base image (not
+present by default); `python scripts/kaggle_debate_coverage.py` silently can't import
+`agents`/`utils` because that puts `scripts/` (not the repo root) on `sys.path[0]` — fixed
+with an explicit `sys.path.insert` at the top of the script itself; `agents/sentiment_agent.py`
+does **not** auto-fall-back to pulling `ProsusAI/finbert` from Hugging Face despite what an
+earlier version of the instructions doc claimed — it only checks a local path and silently
+returns neutral for every debate if that path is empty, so the notebook now explicitly
+`snapshot_download`s the weights first.
+
+**LLM-agents-only backtest vs buy-and-hold** (`scripts/backtest_llm_agents_vs_buyhold.py`,
+BTC_USDT 2024 val, 5,928 hours, old 4-asset-panel env): rule-based, no PPO — nearest
+cached debate (≤7 days) drives direction/size every hour, via `rl/ablation.py`'s
+`_run_agents_rule()`. This *is* the regime-conditioned variant — every debate in the cache
+was generated with full `RegimeContext` injected into agent prompts, so there is no
+separate "without regime" comparison available from this same cache (would need a fresh
+`run_clean_ablation_debates.py` generation pass with `include_regime=False`). Result:
+buy-hold Sharpe 1.12 (+38.6% return, 45.3% max DD) vs agents-only Sharpe 0.31 (+0.55%
+return, **2.5% max DD**, 182 real meaningful trades). Δ Sharpe -0.93, 95% CI
+[-3.67, 1.67], not significant — same conclusion as every other result in
+`docs/RESULTS_AND_METHODOLOGY.md`, now backed by real dense data instead of a ~1%-coverage
+guess. Saved: `data/results/llm_agents_only_backtest.json`.
+
+**Cheap re-eval finding: dense debate coverage does not change trained-PPO behavior,
+confirmed on two independent checkpoints.**
+- `rl/checkpoints/ppo_best.zip` ("marta_full", hourly cadence) — Sharpe 0.322 (sparse
+  cache, previously documented) → 0.326 (384-debate dense cache). Also surfaced a real
+  naming/reality mismatch worth knowing: this checkpoint is `obs_mode="raw"`, **868-dim,
+  no regime block in the observation at all** — despite `ABLATION_VARIANTS["marta_full"]`
+  labeling it `{"regime": True}`. `rl/obs_builder.py`'s `consensus_vec()` is an exact
+  timestamp match (not the ablation module's own 7-day nearest-interpolation), so even
+  with 384 real debates the observation is non-zero on only ~6.5% of val steps.
+  Script: `scripts/reeval_marta_full_dense_debates.py` →
+  `data/results/marta_full_dense_debate_reeval.json`.
+- Native weekly-cadence checkpoints (`decision_interval=168`, Section 10b's crypto5
+  BTC_USDT pilot, seed 0) — condition A (raw): 2.0419 → 2.0407 Sharpe; condition C
+  (raw_regime, real HMM): 1.7384 → 1.7391 Sharpe. `n_meaningful_trades` identical
+  (37 → 37) in both — the specific trades taken didn't change at all, not just the
+  aggregate metric. This is the stronger of the two results: weekly steps land on 168h
+  boundaries from a 00:00 UTC anchor and the debate cache is daily at 00:00 UTC, so
+  (168 % 24 == 0) means most weekly decisions now exact-match a real debate — a much
+  bigger a priori density increase than the hourly case — and it *still* didn't move the
+  policy. Script: `scripts/reeval_weekly_dense_debates.py` →
+  `data/results/weekly_dense_debate_reeval.json`.
+
+**Why this happens, for both:** the debate cache only densified the *validation* window
+(2024) — the training split (pre-2024) still has ~zero debate coverage, so the policy was
+never conditioned to exploit a populated consensus slot no matter how often one now
+appears at eval time. This is a real, cross-validated confirmation that the RL layer's
+"closed" conclusion (Section 9 of the results doc) wasn't an artifact of thin debate-cache
+coverage — the trained checkpoints' behavior is essentially bit-identical with 10x more
+real data behind the consensus signal.
+
+## Strategy Tester — user-configurable backtest page (2026-09-02)
+
+Added a "Strategy Tester" panel to the dashboard's existing `/backtest` page (not a new
+route — sits above the pre-existing "Ablation Study" panel, same page/nav entry). Lets a
+user pick asset + strategy + date range and get a real backtest: equity curve chart
+(strategy vs. frictionless buy-and-hold) + Total Return / vs Buy&Hold / Sharpe / Max
+Drawdown / Win Rate / Trades + a trade log. Default range is the trailing 365 days from
+today, matching how a demo audience would expect to use it.
+
+- **Backend:** `dashboard/backend/strategy_backtest.py` — standalone module (numpy/pandas
+  only, no torch/stable-baselines3/rl.env import) that reads real OHLCV `close` directly
+  from `historical._load(asset)` (the same live-extended, cached loader `/api/history`
+  uses — reaches "today", not just the 2025-12-31 static-parquet ceiling) and recomputes
+  every indicator itself from price, never from the parquet's precomputed indicator
+  columns (those are NaN on live-extension rows — see `historical.py`'s `_extend()`
+  docstring — so they can't cover a range that reaches the present). Deliberately
+  bypasses `historical.get_history_range()`'s 2000-point step-decimation (fine for
+  charting, would silently corrupt indicator windows and return calcs for a >2000-hour
+  backtest — 1 year of hourly bars is 8,760).
+  9 strategies implemented: `buy_hold`, `ma_crossover` (12/26h), `rsi_oversold`
+  (Wilder RSI(14), buy <30 / exit >50), `macd_signal` (12/26/9, directional), `resistance_breakout`
+  (20h prior-high entry / rolling-mean exit), `bollinger_band` (20h, 2σ), `trend_following`
+  (20/50h SMA, same mechanic as ma_crossover but the literal periods the slide text specified),
+  `mean_reversion` (buys in 1/3 increments on return z-score < -2, exits on rebound above SMA),
+  `donchian_channel` (20h channel breakout). Every strategy's raw signal is `shift(1)`'d before
+  being applied to that bar's return — no lookahead. Transaction cost 0.001 (matches
+  `rl/env.py`'s default). "Trade" = a contiguous same-sign-position run; its PnL is the
+  compounded product of its own realized per-bar returns (not re-derived from close
+  prices) — this stays correct for `mean_reversion`'s staged position sizing, where
+  position magnitude changes mid-trade but direction doesn't.
+  Endpoints: `GET /api/backtest/strategies` (9 unlocked + 3 "locked"/disabled — Alpha
+  Accelerator / News-verified trend / QQQ Sharpe core, shown grayed out in the UI as an
+  intentional "coming soon" roadmap hint, not implemented), `GET /api/backtest/run?asset=&strategy=&start=&end=`
+  (start/end optional, default trailing 365 days) → `strategy_backtest.run_backtest()`.
+- **Frontend:** `dashboard/frontend/src/app/backtest/page.tsx`'s new `StrategyTesterPanel`.
+  The asset selector reads/writes the **global** `useMARTAStore.selectedAsset` (not local
+  state) — same store the Topbar's asset dropdown and `MARTAChat.tsx` already read, so
+  picking an asset here changes it everywhere else too, including what the chat panel
+  discusses (`chat_service.py`'s `asset` param). Verified live: setting the panel's asset
+  select to `ETH_USDT` immediately updated the Topbar's dropdown to match.
+  Verified end-to-end via the dashboard's dev servers (`.claude/launch.json`, added this
+  session — conda's uvicorn directly, not `run_dev.sh`, since `conda` itself isn't on the
+  preview tool's PATH): all 9 strategies produce distinct, sane metrics on real BTC/ETH
+  data reaching 2026-09-02; locked strategies render disabled in the `<select>`; a
+  too-short date range surfaces the backend's real 400 error message in the UI, not a
+  generic failure.

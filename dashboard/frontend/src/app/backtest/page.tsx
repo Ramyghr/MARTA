@@ -1,15 +1,19 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, ReferenceLine,
+  ComposedChart, Line,
+} from "recharts";
 import { Play, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Panel } from "@/components/ui/Panel";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton, SkeletonCard } from "@/components/ui/Skeleton";
 import { LearningPanel } from "@/components/LearningPanel";
 import { api } from "@/lib/api";
-import type { AblationResults } from "@/lib/api";
+import type { AblationResults, BacktestStrategyInfo, BacktestResult } from "@/lib/api";
 import { API_URL } from "@/lib/websocket";
 import { useMARTAStore } from "@/lib/store";
 
@@ -401,6 +405,224 @@ function ScenarioGrid() {
   );
 }
 
+// ── Strategy Tester (user-configurable backtest) ──────────────────────────────
+
+function fmtPctSigned(x: number, digits = 1): string {
+  return `${x >= 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
+}
+
+function defaultDateRange(): { start: string; end: string } {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 365);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+function StrategyTesterPanel() {
+  const selectedAsset = useMARTAStore((s) => s.selectedAsset);
+  const setSelectedAsset = useMARTAStore((s) => s.setSelectedAsset);
+
+  const [strategies, setStrategies] = useState<BacktestStrategyInfo[]>([]);
+  const [strategy, setStrategy] = useState("ma_crossover");
+  const [{ start, end }, setDates] = useState(defaultDateRange);
+  const [result, setResult] = useState<BacktestResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.getBacktestStrategies().then((d) => setStrategies(d.strategies)).catch(() => setStrategies([]));
+  }, []);
+
+  const byCategory = useMemo(() => {
+    const groups: Record<string, BacktestStrategyInfo[]> = {};
+    for (const s of strategies) (groups[s.category] ??= []).push(s);
+    return groups;
+  }, [strategies]);
+
+  const runBacktest = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ asset: selectedAsset, strategy, start, end });
+      const res = await fetch(`${API_URL}/api/backtest/run?${params.toString()}`);
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body.detail) detail = String(body.detail);
+        } catch { /* keep status text */ }
+        throw new Error(detail);
+      }
+      setResult(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const chartData = result?.equity_curve.map((p) => ({
+    timestamp: p.timestamp,
+    strategyPct: (p.strategy - 1) * 100,
+    buyHoldPct: (p.buy_hold - 1) * 100,
+  })) ?? [];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-[10px] text-[#555]">
+          Asset
+          <select
+            value={selectedAsset}
+            onChange={(e) => setSelectedAsset(e.target.value)}
+            className="bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] outline-none cursor-pointer"
+          >
+            {["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"].map((a) => (
+              <option key={a} value={a}>{a.replace("_", "/")}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-[10px] text-[#555]">
+          Strategy
+          <select
+            value={strategy}
+            onChange={(e) => setStrategy(e.target.value)}
+            className="bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] outline-none cursor-pointer max-w-[220px]"
+          >
+            {Object.entries(byCategory).map(([category, items]) => (
+              <optgroup key={category} label={category}>
+                {items.map((s) => (
+                  <option key={s.id} value={s.id} disabled={s.locked}>
+                    {s.label}{s.locked ? " (locked)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-[10px] text-[#555]">
+          Start
+          <input
+            type="date"
+            value={start}
+            onChange={(e) => setDates((d) => ({ ...d, start: e.target.value }))}
+            className="bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] outline-none"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[10px] text-[#555]">
+          End
+          <input
+            type="date"
+            value={end}
+            onChange={(e) => setDates((d) => ({ ...d, end: e.target.value }))}
+            className="bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] outline-none"
+          />
+        </label>
+        <button
+          onClick={runBacktest}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-[11px] font-semibold uppercase tracking-wider bg-[#00ff7f]/10 text-[#00ff7f] border border-[#00ff7f]/30 hover:bg-[#00ff7f]/20 transition-colors disabled:opacity-50"
+        >
+          <Play size={11} className={loading ? "animate-pulse" : ""} />
+          {loading ? "Running…" : "Run Backtest"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="text-[10px] text-[#ff3737] border border-[#ff3737]/30 bg-[#ff3737]/5 rounded px-2 py-1.5">
+          {error}
+        </div>
+      )}
+
+      {!result && !error && !loading && (
+        <EmptyState title="No backtest run yet" description="Pick a strategy, asset, and date range, then Run Backtest." />
+      )}
+
+      {loading && <Skeleton className="h-64 w-full" />}
+
+      {result && !loading && (
+        <div className="flex flex-col gap-3">
+          <div className="text-[10px] text-[#555]">
+            {result.strategy_label} on <span className="text-[#ccc] font-mono">{result.asset.replace("_", "/")}</span>{" "}
+            · {new Date(result.start).toLocaleDateString()} → {new Date(result.end).toLocaleDateString()}{" "}
+            · {result.n_bars.toLocaleString()} hourly bars
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            <StatCard label="Total Return" value={fmtPctSigned(result.metrics.total_return)}
+              color={result.metrics.total_return >= 0 ? "#00ff7f" : "#ff3737"} />
+            <StatCard label="vs Buy & Hold" value={fmtPctSigned(result.metrics.vs_buy_hold)}
+              color={result.metrics.vs_buy_hold >= 0 ? "#00ff7f" : "#ff3737"} />
+            <StatCard label="Sharpe" value={result.metrics.sharpe.toFixed(2)}
+              color={result.metrics.sharpe >= 0 ? "#00ff7f" : "#ff3737"} />
+            <StatCard label="Max Drawdown" value={`${(result.metrics.max_drawdown * 100).toFixed(1)}%`} color="#ff8c00" />
+            <StatCard label="Win Rate" value={`${(result.metrics.win_rate * 100).toFixed(1)}%`}
+              color={result.metrics.win_rate >= 0.5 ? "#00ff7f" : "#ff8c00"} />
+            <StatCard label="Trades" value={result.metrics.n_trades} />
+          </div>
+
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#141414" vertical={false} />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={(ts) => new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  tick={{ fill: "#444", fontSize: 10 }}
+                  axisLine={{ stroke: "#1a1a1a" }}
+                  tickLine={false}
+                  minTickGap={50}
+                />
+                <YAxis
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fill: "#444", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                  orientation="right"
+                />
+                <Tooltip
+                  contentStyle={{ background: "#111", border: "1px solid #333", fontSize: 11 }}
+                  labelFormatter={(ts) => new Date(ts as string).toLocaleString()}
+                  formatter={(v: number, name: string) => [`${v.toFixed(2)}%`, name === "strategyPct" ? result.strategy_label : "Buy & Hold"]}
+                />
+                <ReferenceLine y={0} stroke="#333" />
+                <Line type="monotone" dataKey="buyHoldPct" stroke="#4a9eff" strokeWidth={1.5} dot={false} strokeOpacity={0.6} />
+                <Line type="monotone" dataKey="strategyPct" stroke="#00ff7f" strokeWidth={1.75} dot={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center gap-3 text-[9px] text-[#444] px-1">
+            <span className="flex items-center gap-1"><span style={{ color: "#00ff7f" }}>—</span> {result.strategy_label}</span>
+            <span className="flex items-center gap-1"><span style={{ color: "#4a9eff" }}>—</span> Buy &amp; Hold</span>
+          </div>
+
+          {result.trades.length > 0 && (
+            <div className="overflow-x-auto max-h-48 overflow-y-auto">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Entry</th><th>Exit</th><th>Direction</th><th>PnL</th></tr>
+                </thead>
+                <tbody>
+                  {[...result.trades].reverse().map((t, i) => (
+                    <tr key={i}>
+                      <td className="text-[#888]">{new Date(t.entry_time).toLocaleDateString()}</td>
+                      <td className="text-[#888]">{new Date(t.exit_time).toLocaleDateString()}</td>
+                      <td className="uppercase" style={{ color: t.direction === "long" ? "#00ff7f" : "#ff3737" }}>{t.direction}</td>
+                      <td className="font-mono" style={{ color: t.pnl_pct >= 0 ? "#00ff7f" : "#ff3737" }}>{fmtPctSigned(t.pnl_pct, 2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function BacktestPage() {
@@ -437,6 +659,10 @@ export default function BacktestPage() {
   return (
     <div className="flex flex-col gap-3 pb-4">
       <PageHeader title="Backtest" description="Regime ablation study, demo scenarios, and headline comparison metrics" />
+
+      <Panel title="Strategy Tester" className="min-h-[420px]">
+        <StrategyTesterPanel />
+      </Panel>
 
       <Panel
         title="Ablation Study"

@@ -1,17 +1,24 @@
 """
-Generate one debate per week across the RL validation window (rl.env.VAL_START →
-VAL_END, currently 2023) for BTC_USDT and append to data/debates/debate_results.json.
+Generate one debate per anchor date across the RL validation window (rl.env.VAL_START →
+VAL_END) for BTC_USDT and append to data/debates/debate_results.json.
 
-For each weekly anchor date we pick the closest BTC_USDT timestamp in the regime
-stream that sits in a dominant BTC regime. Dominant regimes are computed
-dynamically as the two most frequent BTC labels inside the window (regime label
-semantics change whenever the HMM is refit, so hard-coding labels would silently
-skip most weeks). Weeks with no matching timestamp within 24h are skipped. Results
-are deduplicated by timestamp so the script is idempotent, then appended to the
-existing debate cache and logged to MLflow under experiment
-`marta_agent_deliberation`.
+Default (no flags): one debate per week, candidates restricted to the window's two
+most frequent ("dominant") BTC regimes — regime label semantics change whenever the
+HMM is refit, so hard-coding labels would silently skip most weeks. Anchors with no
+matching timestamp within 24h are skipped. Results are deduplicated by timestamp so
+the script is idempotent, and the debate cache is written to disk after every single
+debate (not just at the end), so a crash/timeout partway through a long run loses at
+most the in-flight debate.
+
+--stride-hours N   sample every N hours instead of weekly (e.g. 24 = daily)
+--all-regimes      sample every regime, not just the top-2 dominant ones — needed
+                    for dense per-decision coverage (e.g. the LLM debate-layer
+                    trading-performance audit), where restricting to dominant
+                    regimes would leave the same coverage gaps this sweep exists
+                    to close.
 
 Run: python run_weekly_debates.py
+     python run_weekly_debates.py --stride-hours 24 --all-regimes
 """
 
 from __future__ import annotations
@@ -69,10 +76,22 @@ def _load_data() -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
 
 def _select_weekly_timestamps(
     regime_stream: pd.DataFrame,
+    stride_hours: int = 168,
+    all_regimes: bool = False,
 ) -> list[tuple[pd.Timestamp, int]]:
     """
-    For each weekly anchor date, return (timestamp, regime_label) of the closest
-    BTC_USDT row in a dominant regime (R1/R4) within 24h. Weeks with no match are skipped.
+    For each anchor date (every `stride_hours`, default 168 = weekly), return
+    (timestamp, regime_label) of the closest BTC_USDT row within 24h.
+
+    Default behaviour (stride_hours=168, all_regimes=False) is unchanged from the
+    original weekly-only design: anchors land on Mondays and candidates are
+    restricted to the window's two most frequent ("dominant") BTC regimes.
+
+    `all_regimes=True` drops the dominant-regime restriction — needed for a dense,
+    per-decision coverage sweep (e.g. the LLM-debate-layer trading-performance
+    audit), where restricting to only the top-2 regimes would leave the same kind
+    of coverage gaps on minority-regime periods that this whole sweep exists to
+    close.
     """
     from rl.env import VAL_END, VAL_START
 
@@ -84,18 +103,23 @@ def _select_weekly_timestamps(
         & (stream["timestamp"] >= VAL_START)
         & (stream["timestamp"] <= VAL_END)
     ]
-    dominant = set(
-        btc_all["regime_label"].value_counts().head(_N_DOMINANT_REGIMES).index.astype(int)
-    )
-    logger.info(
-        f"Val window {VAL_START.date()} → {VAL_END.date()}: dominant BTC regimes {sorted(dominant)}"
-    )
 
-    btc = btc_all[btc_all["regime_label"].isin(dominant)].sort_values(
-        "timestamp"
-    ).reset_index(drop=True)
+    if all_regimes:
+        btc = btc_all.sort_values("timestamp").reset_index(drop=True)
+        logger.info(f"Val window {VAL_START.date()} → {VAL_END.date()}: sampling all regimes")
+    else:
+        dominant = set(
+            btc_all["regime_label"].value_counts().head(_N_DOMINANT_REGIMES).index.astype(int)
+        )
+        logger.info(
+            f"Val window {VAL_START.date()} → {VAL_END.date()}: dominant BTC regimes {sorted(dominant)}"
+        )
+        btc = btc_all[btc_all["regime_label"].isin(dominant)].sort_values(
+            "timestamp"
+        ).reset_index(drop=True)
 
-    anchors = pd.date_range(start=VAL_START, end=VAL_END, freq="W-MON", tz="UTC")
+    freq = "W-MON" if stride_hours == 168 else f"{stride_hours}h"
+    anchors = pd.date_range(start=VAL_START, end=VAL_END, freq=freq, tz="UTC")
 
     picks: list[tuple[pd.Timestamp, int]] = []
     seen: set[pd.Timestamp] = set()
@@ -106,12 +130,12 @@ def _select_weekly_timestamps(
             continue
         idx = delta.idxmin()
         if delta.loc[idx] > pd.Timedelta(hours=_MAX_MATCH_HOURS):
-            logger.warning(f"No BTC R1/R4 timestamp within 24h of {anchor.date()} — skipping week")
+            logger.warning(f"No BTC timestamp within 24h of {anchor} — skipping")
             continue
         ts = btc.loc[idx, "timestamp"]
         label = int(btc.loc[idx, "regime_label"])
         if ts in seen:
-            logger.info(f"Week {anchor.date()} maps to already-selected {ts} — skipping duplicate")
+            logger.info(f"Anchor {anchor} maps to already-selected {ts} — skipping duplicate")
             continue
         seen.add(ts)
         picks.append((ts, label))
@@ -138,15 +162,42 @@ def _normalize_ts(ts: str | pd.Timestamp) -> str:
     return str(pd.Timestamp(ts, tz="UTC") if pd.Timestamp(ts).tzinfo is None else pd.Timestamp(ts))
 
 
+def _save(records: list[dict]) -> None:
+    """Write the full debate cache to disk after every debate, not just at the end
+    of the run. A 38+ week real-LLM sweep can take hours; without this, a crash,
+    timeout, or kill partway through loses 100% of the completed work instead of
+    just the in-flight debate. Temp file + atomic rename so a kill mid-write can't
+    leave debate_results.json truncated."""
+    tmp_path = _OUTPUT_PATH.with_suffix(".json.tmp")
+    with open(tmp_path, "w") as f:
+        json.dump(records, f, indent=2, default=str)
+    tmp_path.replace(_OUTPUT_PATH)
+
+
 def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="MARTA weekly/dense debate coverage runner")
+    parser.add_argument(
+        "--stride-hours", type=int, default=168,
+        help="hours between sampled anchors (default: 168 = weekly, matches original behaviour)",
+    )
+    parser.add_argument(
+        "--all-regimes", action="store_true",
+        help="sample all regimes, not just the window's top-2 dominant ones "
+             "(needed for dense per-decision coverage, e.g. the debate-layer trading audit)",
+    )
+    args = parser.parse_args()
+
     console = Console()
     _OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     from rl.env import VAL_END, VAL_START
 
     console.rule(
-        f"[bold magenta]MARTA Weekly Debates — Validation Window "
-        f"{VAL_START.date()} → {VAL_END.date()}[/bold magenta]"
+        f"[bold magenta]MARTA Debate Coverage — Validation Window "
+        f"{VAL_START.date()} → {VAL_END.date()} (stride={args.stride_hours}h, "
+        f"all_regimes={args.all_regimes})[/bold magenta]"
     )
 
     logger.info("Loading data...")
@@ -167,7 +218,7 @@ def main() -> None:
     )
     logger.info("All 5 agents + RiskAgent initialized")
 
-    weekly = _select_weekly_timestamps(regime_stream)
+    weekly = _select_weekly_timestamps(regime_stream, args.stride_hours, args.all_regimes)
     logger.info(f"Selected {len(weekly)} weekly timestamps in the validation window")
 
     existing_records, existing_ts = _load_existing()
@@ -213,6 +264,11 @@ def main() -> None:
                 new_results.append((ts, result))
                 existing_ts.add(_normalize_ts(ts))
 
+                d = result.model_dump()
+                d["scenario_description"] = f"weekly_{ts.year} {ts.date()} R{result.regime_label}"
+                existing_records.append(d)
+                _save(existing_records)
+
                 fm = result.fund_manager_decision
                 prefix = f"week_{i+1}"
                 contrarian_theses = [t for t in result.round1_theses if t.agent_name == "ContrarianAgent"]
@@ -241,16 +297,9 @@ def main() -> None:
                 )
                 progress.advance(task)
 
-        # Append new results to existing cache and save
-        serialized_new = []
-        for ts, r in new_results:
-            d = r.model_dump()
-            d["scenario_description"] = f"weekly_{ts.year} {ts.date()} R{r.regime_label}"
-            serialized_new.append(d)
-
-        combined = existing_records + serialized_new
-        with open(_OUTPUT_PATH, "w") as f:
-            json.dump(combined, f, indent=2, default=str)
+        # existing_records was written to disk after every debate inside the loop
+        # above (_save) — it's already the complete, current cache here.
+        combined = existing_records
 
         mlflow.log_metric("new_debates_added", len(new_results))
         mlflow.log_metric("total_debates", len(combined))

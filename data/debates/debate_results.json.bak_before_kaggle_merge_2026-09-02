@@ -1,0 +1,4259 @@
+[
+  {
+    "timestamp": "2019-06-15 00:00:00+00:00",
+    "asset": "XRP_USDT",
+    "regime_label": 3,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "High negative return and volatility, combined with a dominant neutral-volatility/negative regime suggest bearish market conditions for XRP_USDT. Contagion from top correlated pairs BTC_USDT and ETH_USDT also indicates potential downward pressure.",
+        "key_factors": [
+          "annual return",
+          "annual volatility",
+          "regime state",
+          "contagion"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.7,
+        "reasoning": "Macd_histogram and RSI indicate strong bullish momentum in a market with low ADX, suggesting an up move rather than an imminent reversal.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "The FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments, aligning with the current market regime of R3 - Neutral volatility / negative regime. However, the market features indicate a slightly bearish trend with high realized volatility and negative ATR, BB_width, OBV_raw, and Vol_zscore.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market features"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.1,
+        "reasoning": "LLM response unavailable \u2014 defaulting to neutral.",
+        "key_factors": [
+          "system_error"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative ann. return, high volatility and negative market character suggest bearish outlook persists",
+        "maintains_bias": true,
+        "updated_confidence": 0.86
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "ADX is low (0.0155), suggesting a ranging market, but RSI is extremely low (1.6079), which in a ranging market typically indicates an oversold condition and potential bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.72
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Currently, the R3 regime indicates neutral market conditions for XRP_USDT with a low Sharpe ratio and high volatility. The price features also suggest a neutral bias.",
+        "maintains_bias": true,
+        "updated_confidence": 0.5
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and OBV readings suggest oversold conditions may lead to a potential short-term rebound.",
+        "maintains_bias": true,
+        "updated_confidence": 0.15
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.010935,
+      "cvar_95": -0.013712,
+      "volatility_forecast": 0.006648,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "hold",
+      "position_size": 0.0,
+      "conviction": 0.3122,
+      "consensus_direction": "split",
+      "dissenting_agents": [],
+      "rationale": "Maintain hold position as Contrarian Agent's bullish stance against bearish macro and neutral sentiment conditions presents an opportunity for potential price reversal within the neutral regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 11480,
+    "debate_duration_seconds": 173.91,
+    "scenario_description": "XRP_USDT @ 2019-06-15 (resolved: 2019-06-15 00:00)"
+  },
+  {
+    "timestamp": "2024-01-01 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral, with BTC_USDT showing a low return and moderate volatility. The directional bias is not clear as the asset's price features do not strongly indicate a bullish or bearish trend.",
+        "key_factors": [
+          "current_regime",
+          "price_features"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.7,
+        "reasoning": "MACD histogram and RSI are both indicating a bullish trend continuation in the market, despite the low ADX value suggesting a ranging market. The large negative MACD histogram alongside a large negative recent return and ADX > 25 is bearish momentum, but given the regime is R2 (trend following), this is likely to be a temporary correction rather than a reversal.",
+        "key_factors": [
+          "MACD histogram",
+          "RSI"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments, aligning with the current market regime of low volatility and negative performance.",
+        "key_factors": [
+          "Sentiment scores reflecting neutral dominance",
+          "Market regime of low volatility and negative performance"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.57 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.006215,
+      "cvar_95": -0.007794,
+      "volatility_forecast": 0.003779,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.52,
+      "conviction": 0.65,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [],
+      "rationale": "Given the current neutral regime and low market volatility, a long position is taken with reduced conviction due to contradictory signals from the macro and technical agents.",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 3622,
+    "debate_duration_seconds": 129.22,
+    "scenario_description": "weekly_2024 2024-01-01 R2"
+  },
+  {
+    "timestamp": "2024-01-08 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative regime, high correlation with dominant asset (ETH_USDT) and negative contagion signal.",
+        "key_factors": [
+          "Regime: R2 \u2014 Neutral volatility / negative regime",
+          "Top corr pair: BTC_USDT/ETH_USDT=0.892 | Contagion: True"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.8,
+        "reasoning": "Negative RSI and MACD histogram indicate bearish momentum in a trending market (ADX > 25). The large negative recent return further supports this bearish call.",
+        "key_factors": [
+          "RSI",
+          "MACD histogram",
+          "recent return"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance, which aligns with the current market regime of negative volatility and a bearish trend. The close return mean is slightly negative but within its standard deviation, indicating market noise rather than a clear directional move.",
+        "key_factors": [
+          "Sentiment scores aligning with the market regime",
+          "Close return mean being within its standard deviation"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar R2 regimes is 54.0%, suggesting potential for BTC_USDT to outperform expectations. Current regime complacency may lead to overestimation of risk.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative market features and regime persist, bearish view maintained",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "ADX < 1.15 is not indicative of a ranging market, RSI < 30 in this context suggests oversold conditions and potential bounce, contradicting the bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative sentiment scores persist despite recent price movements, indicating potential continuation of bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.55
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative market sentiment may persist, with indicators such as RSI, ADX, OBV and Volatility Z-Score all pointing towards bearish conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.0082,
+      "cvar_95": -0.010283,
+      "volatility_forecast": 0.004985,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6295,
+      "conviction": 0.7869,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "The contrarian agent's challenge to the bearish consensus, combined with the current neutral regime and low realized volatility, suggests a potential short-term market reversal, justifying a cautious short position.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 17927,
+    "debate_duration_seconds": 312.21,
+    "scenario_description": "weekly_2024 2024-01-08 R2"
+  },
+  {
+    "timestamp": "2024-01-15 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "High negative correlation with BNB_USDT and contagion detected, indicating potential market downturn.",
+        "key_factors": [
+          "Top corr pair: BNB_USDT/XRP_USDT=0.751, Contagion: True"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.7,
+        "reasoning": "Large positive latest close return and low ADX indicate an up move, which is supported by the encoder's attention to bullish factors like macd_histogram and rsi in a trending market.",
+        "key_factors": [
+          "large positive latest close return",
+          "low ADX"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "The FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments, which aligns with the current market regime of low volatility and negative performance. However, the 6h momentum vs 24h avg is slightly positive, indicating a potential shift in sentiment.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "6h momentum vs 24h avg"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for this regime is 54.0%, suggesting a potential market reversal. Current complacency in the market, as indicated by the negative RSI and low ADX, may lead to overreaction and subsequent price increase.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative annual return and high volatility suggest bearish market conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is at an extreme low, suggesting potential for a bounce in a ranging market (ADX < 25), contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.73
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current price features indicate a potential bottom, contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and OBV readings may indicate oversold conditions, potentially setting up for a bullish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.014206,
+      "cvar_95": -0.017815,
+      "volatility_forecast": 0.008636,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "hold",
+      "position_size": 0.0,
+      "conviction": 0.3052,
+      "consensus_direction": "split",
+      "dissenting_agents": [],
+      "rationale": "Hold position, as the Neutral volatility regime persists and contrarian view aligns with bullish technical signals, offering a potential opportunity for rebound.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 32036,
+    "debate_duration_seconds": 215.6,
+    "scenario_description": "weekly_2024 2024-01-15 R2"
+  },
+  {
+    "timestamp": "2024-01-22 04:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Negative regime, high contagion with ETH_USDT and other top correlated assets, negative market features and low close return mean.",
+        "key_factors": [
+          "regime",
+          "contagion",
+          "market_features",
+          "close_return_mean"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Large negative MACD histogram and RSI, combined with a downward close return and low ADX, suggest bearish momentum in the market.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.65,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments. The current market regime is also neutral, which aligns with the sentiment scores.",
+        "key_factors": [
+          "Sentiment scores",
+          "Market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regime is 54.0%, suggesting potential for market reversal. Current regime complacency and overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "SentimentAgent",
+        "rebuttal_point": "Negative market character and high volatility indicators suggest bearish outlook",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "SentimentAgent",
+        "rebuttal_point": "ADX is bearish, RSI and MACD histogram support a downtrend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current price features indicate bearish sentiment, but R2 regime is neutral. Recent market volatility and negative return suggest short-term correction, not a bear market.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative market features and low RSI suggest oversold conditions, potentially signaling a bullish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.010145,
+      "cvar_95": -0.012722,
+      "volatility_forecast": 0.006168,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6351,
+      "conviction": 0.7938,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Short position taken due to strong consensus among macro, technical, and sentiment agents, with a contrarian bullish stance acting as a partial hedge",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 45987,
+    "debate_duration_seconds": 124.17,
+    "scenario_description": "weekly_2024 2024-01-22 R2"
+  },
+  {
+    "timestamp": "2024-01-29 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "High negative correlation with ETH_USDT (-0.817) and dominant market position of ETH_USDT in the current regime suggest a bearish outlook for BTC_USDT.",
+        "key_factors": [
+          "Cross-asset contagion",
+          "Market dominance of ETH_USDT"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.7,
+        "reasoning": "Negative MACD histogram (-0.7497) and low ADX (-0.0354), indicating a weak market, align with the negative close return (-0.0014). The encoder's attention to macd_histogram suggests bearish momentum.",
+        "key_factors": [
+          "macd_histogram",
+          "close_return"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral bias, aligning with the current market regime of negative sentiment. The lack of positive or negative dominance in the sentiment data suggests a balanced outlook.",
+        "key_factors": [
+          "FinBERT sentiment scores reflecting neutral bias",
+          "market regime of negative sentiment"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regime is 54.0%, suggesting a potential market reversal. Current regime complacency and overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative regime persists, with BTC-USDT underperforming ETH-USDT and high realized volatility.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI and MACD histogram are in bearish territory, contradicting the contrarian view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current neutral volatility regime suggests market uncertainty, contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and OBV readings suggest bearish momentum may be waning, potentially setting stage for a reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.006557,
+      "cvar_95": -0.008223,
+      "volatility_forecast": 0.003986,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6295,
+      "conviction": 0.7869,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Short position taken due to bearish consensus, with a contrarian factor for potential bullish reversal",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 60019,
+    "debate_duration_seconds": 132.44,
+    "scenario_description": "weekly_2024 2024-01-29 R2"
+  },
+  {
+    "timestamp": "2024-02-12 03:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral with a negative annual return, and the price features indicate a downtrend. However, the correlation data shows no significant contagion or volatility ratios suggesting a directional bias.",
+        "key_factors": [
+          "current_regime",
+          "price_features"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.65,
+        "reasoning": "The encoder's attention is on bearish factors like the negative MACD histogram and RSI, which are currently in extreme levels despite ADX indicating a strong downward trend. The large negative recent return further supports this bearish bias.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and a negative market regime suggest neutral bias. However, the slight positive momentum in sentiment data might indicate a potential shift.",
+        "key_factors": [
+          "Sentiment scores",
+          "Market regime"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.55 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.007563,
+      "cvar_95": -0.009484,
+      "volatility_forecast": 0.004598,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.72,
+      "conviction": 0.9,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [],
+      "rationale": "Given the current neutral regime, bearish market character, and predominant technical signals, a short position is justified to capitalize on potential BTC price decline.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 36447,
+    "debate_duration_seconds": 61.32,
+    "scenario_description": "weekly_2024 2024-02-12 R2"
+  },
+  {
+    "timestamp": "2024-02-18 16:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "High negative correlation with ETH_USDT (-0.802) and dominance of the ETH_USDT-dominant, ann. return -14.7% regime suggests a bearish market trend.",
+        "key_factors": [
+          "Cross-asset contagion",
+          "Regime dominance"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.65,
+        "reasoning": "MACD histogram is positive and the market is trending strongly (ADX > 25), suggesting continuation of the up move.",
+        "key_factors": [
+          "macd_histogram",
+          "adx"
+        ],
+        "regime_alignment": "mixed"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "The FinBERT sentiment scores show a neutral sentiment dominance, which aligns with the current market regime of negative volatility and a neutral asset return. However, the 6h momentum vs 24h avg is slightly positive, indicating a potential shift in sentiment.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "6h momentum vs 24h avg"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.58,
+        "reasoning": "Despite the current neutral regime with a high historical loss rate of 54.0% under similar conditions, the persistent ETH_USDT-dominance may signal an opportunity for BTC_USDT to outperform. The overconfident consensus might be underestimating potential bullish movements.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "underestimated_opportunity"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative regime persists with high probability and market characteristics support bearish outlook",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is at a low of -0.0132, indicating oversold conditions in a trending market (ADX = -1.1079 > 25). This suggests potential for price reversal or mean reversion.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Currently, the sentiment scores are neutral despite the negative market regime. The price features indicate a slight bullish trend with MACD histogram and OBV suggesting potential buying pressure.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI and ADX suggest bearish momentum may be waning, potentially setting stage for bullish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.45
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.006184,
+      "cvar_95": -0.007755,
+      "volatility_forecast": 0.00376,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.2844,
+      "conviction": 0.3554,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "MacroAgent"
+      ],
+      "rationale": "Given the neutral volatility and negative regime, along with low risk indicators, a long position is taken to capitalize on the contrarian view against the market consensus while applying a conviction penalty.",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 80898,
+    "debate_duration_seconds": 138.4,
+    "scenario_description": "weekly_2024 2024-02-18 R2"
+  },
+  {
+    "timestamp": "2024-03-04 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral, with negative annual return and low Sharpe ratio. Price features show high volatility but no clear directional bias. Market character shows a slight positive mean return but high volatility. Macro data indicates correlation with ETH_USDT, the dominant asset in the current regime, but no contagion or significant volatility ratios.",
+        "key_factors": [
+          "current_regime",
+          "price_features",
+          "market_character",
+          "macro_data"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "MACD histogram and RSI are both indicating strong momentum in the up direction, supported by a positive recent return and low ADX, suggesting a ranging market.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and the current negative market regime suggest a neutral directional bias for BTC_USDT. However, the positive 6h momentum vs 24h average in sentiment data may indicate a slight shift.",
+        "key_factors": [
+          "Sentiment scores",
+          "Market regime"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.58 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.00781,
+      "cvar_95": -0.009793,
+      "volatility_forecast": 0.004748,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.52,
+      "conviction": 0.65,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [],
+      "rationale": "Long position despite negative regime due to strong technical signals and low risk environment",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 47569,
+    "debate_duration_seconds": 62.85,
+    "scenario_description": "weekly_2024 2024-03-04 R2"
+  },
+  {
+    "timestamp": "2024-03-11 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "High negative correlation with ETH_USDT (-0.818) and dominance of the ETH_USDT market suggests a bearish trend for BTC_USDT. The current neutral regime is contrary to this trend.",
+        "key_factors": [
+          "Cross-asset contagion",
+          "Market dominance by ETH_USDT"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.8,
+        "reasoning": "Negative MACD histogram (-1.3819) and low RSI (-1.75) indicate bearish momentum in a market with ADX below 25 (indicating a ranging market), suggesting the prevailing move is strong and not an imminent reversal or bounce.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance, aligning with the current market regime of negative sentiment and low volatility. However, the 6h momentum vs 24h avg shows a slight positive shift, which might suggest a potential change in sentiment.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "6h momentum vs 24h avg"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for R2 regime is 54.0%, indicating a potential opportunity for profit in bullish positions. Overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative market character and high realized volatility suggest bearish trend persists",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI < 30 in trending market (ADX > 25) suggests momentum continuation, not a bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative sentiment scores persist despite technical signals, suggesting potential market reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative RSI and ADX, along with decreasing realized volatility, suggest bearish momentum may persist despite current neutral regime.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.014235,
+      "cvar_95": -0.017851,
+      "volatility_forecast": 0.008654,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6319,
+      "conviction": 0.7899,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "The contrarian agent's bullish stance, while challenging the overall bearish consensus, was mitigated due to the current negative regime and low risk environment, leading to a short position.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 101741,
+    "debate_duration_seconds": 127.21,
+    "scenario_description": "weekly_2024 2024-03-11 R2"
+  },
+  {
+    "timestamp": "2024-03-18 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.95,
+        "reasoning": "High-volatility bull regime with a positive annual return and high Sharpe ratio, coupled with strong correlation with the dominant asset ETH_USDT. Contagion is present among top correlated pairs.",
+        "key_factors": [
+          "Regime: R4",
+          "Top corr pair: BTC_USDT/ETH_USDT=0.936",
+          "Contagion: True"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative RSI and ADX indicate downward momentum in a market with low trend strength. The large MACD histogram supports this bearish view.",
+        "key_factors": [
+          "RSI",
+          "ADX",
+          "MACD histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score of 0.330 (above neutral) in a high-volatility bull regime with a strong market history suggests a bullish bias.",
+        "key_factors": [
+          "Positive FinBERT sentiment score",
+          "Market regime: R4"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in R4 regime is 72%, suggesting potential for market correction. Current complacency in the high-volatility bull regime may lead to overreaction and increased risk.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High-volatility bull regime persists, contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.97
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI below 30 in a trending market (ADX > 25) indicates continued bearish momentum, not an oversold setup about to bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High-volatility bull regime persists, ATR and vol_zscore suggest increased market activity, potentially signaling a continuation of the bullish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility and negative RSI, ADX, and OBV indicators suggest bearish momentum may be building.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.014289,
+      "cvar_95": -0.017919,
+      "volatility_forecast": 0.008687,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4526,
+      "conviction": 0.5658,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "The high-volatility bull regime persists, despite bearish technical signals and contrarian skepticism, as macro and sentiment indicators remain strongly bullish.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 115811,
+    "debate_duration_seconds": 130.42,
+    "scenario_description": "weekly_2024 2024-03-18 R4"
+  },
+  {
+    "timestamp": "2024-03-25 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative regime and high contagion with BTC_USDT having the lowest volatility ratio among top correlated assets.",
+        "key_factors": [
+          "Negative regime",
+          "High contagion"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and high RSI indicate bearish momentum in a trending market (ADX > 25), suggesting continuation of the down move.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and a negative market regime suggest a neutral directional bias for BTC_USDT. However, the positive momentum of sentiment in the last 6 hours slightly deviates from the overall neutral sentiment.",
+        "key_factors": [
+          "neutral sentiment scores",
+          "negative market regime"
+        ],
+        "regime_alignment": "mixed"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regime R2 is 54.0%, suggesting a potential market reversal. Overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative regime, low realized volatility mean, negative RSI mean suggest bearish trend persists.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI is above 60, indicating overbought conditions in a trending market (ADX > 25), suggesting potential continuation of the bearish momentum.",
+        "maintains_bias": true,
+        "updated_confidence": 0.78
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current sentiment scores suggest neutral market conditions, contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and realized volatility mean suggest potential oversold conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.010946,
+      "cvar_95": -0.013726,
+      "volatility_forecast": 0.006654,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.631,
+      "conviction": 0.7887,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Short position due to bearish consensus from Macro and Technical Agents, partially offset by neutral sentiment, with a low risk environment",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 129785,
+    "debate_duration_seconds": 173.56,
+    "scenario_description": "weekly_2024 2024-03-25 R2"
+  },
+  {
+    "timestamp": "2024-04-01 17:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "High-volatility bull regime, strong correlation with ETH_USDT and top correlated assets, high annual return and Sharpe ratio.",
+        "key_factors": [
+          "Regime: High-volatility bull regime",
+          "Strong cross-asset contagion"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.6,
+        "reasoning": "Large negative MACD histogram and RSI at -1.38 indicate oversold conditions in a trending market (ADX=1.05). However, the recent close return of +0.0027 suggests an ongoing up move.",
+        "key_factors": [
+          "MACD histogram",
+          "RSI"
+        ],
+        "regime_alignment": "mixed"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score slightly higher than negative despite the neutral dominant label, suggesting a bullish bias in market sentiment.",
+        "key_factors": [
+          "Positive sentiment score",
+          "Neutral dominant label"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency and overconfident consensus may lead to increased volatility and potential price decline.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Recent price features indicate potential trend reversal, but the high-volatility bull regime persists.",
+        "maintains_bias": true,
+        "updated_confidence": 0.73
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI is at an extreme oversold level, but ADX is low (1.0549), indicating a ranging market. This suggests a potential mean-reversion rather than a continuation of the bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.62
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Current high-volatility bull regime, strong ETH_USDT dominance with positive annual return and Sharpe ratio. Price features show oversold conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and realized volatility suggest bearish momentum may persist despite bull regime.",
+        "maintains_bias": true,
+        "updated_confidence": 0.71
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.01147,
+      "cvar_95": -0.014384,
+      "volatility_forecast": 0.006973,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.62,
+      "conviction": 0.775,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Strong bullish consensus from macro, technical, and sentiment agents, despite contrarian's bearish stance, justifies a long position in the high-volatility bull regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 143929,
+    "debate_duration_seconds": 162.97,
+    "scenario_description": "weekly_2024 2024-04-01 R4"
+  },
+  {
+    "timestamp": "2024-04-08 10:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High-volatility bull regime, strong positive correlation with ETH_USDT and top correlated assets.",
+        "key_factors": [
+          "Regime state",
+          "Top correlations"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Large positive MACD histogram and high RSI indicate strong momentum in an already trending market (ADX > 25), suggesting continuation of the up move.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "FinBERT sentiment scores show a slight positive bias (0.33) in the current market context of a high-volatility bull regime, which aligns with the market character's close return mean being slightly positive (0.0011).",
+        "key_factors": [
+          "Sentiment score trend",
+          "Market regime and close return mean"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72.0%. Current regime complacency may lead to overreaction and increased volatility.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Current high-volatility bull regime persists, BTC_USDT's short-term realized volatility decrease may be temporary.",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI is below 30, but ADX is high (1.27), indicating a strong trend. Extreme RSI in a strong trend is more likely to continue the momentum rather than signal an imminent reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Current high-volatility bull regime supports BTC price increase, with a strong annual return and Sharpe ratio.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility, negative realized volume, and low RSI suggest a potential short-term correction ahead.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.012707,
+      "cvar_95": -0.015935,
+      "volatility_forecast": 0.007725,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.6359,
+      "conviction": 0.7948,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Strong bullish consensus from multiple agents, with contrarian's bearish stance slightly discounted due to current high-volatility bull regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 158102,
+    "debate_duration_seconds": 161.68,
+    "scenario_description": "weekly_2024 2024-04-08 R4"
+  },
+  {
+    "timestamp": "2024-04-15 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.95,
+        "reasoning": "High-volatility bull regime with strong correlation to the dominant asset ETH_USDT, and a top correlated pair BTC_USDT/ETH_USDT having a correlation of 0.923.",
+        "key_factors": [
+          "Regime alignment",
+          "Correlation to dominant and top correlated asset"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.65,
+        "reasoning": "RSI and ADX indicate a down move with RSI at 0.52 (below overbought level of 70) and ADX at 0.44 (indicating a trend, but not strongly). The large MACD histogram of 1.6862 supports this bearish momentum.",
+        "key_factors": [
+          "RSI",
+          "MACD histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score slightly higher than neutral despite the negative dominant sentiment category, aligns with the high-volatility bull regime.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency may lead to overreaction and increased volatility.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "High-volatility bull regimes often persist despite short-term corrections, as indicated by the R4 regime and high Sharpe ratio.",
+        "maintains_bias": true,
+        "updated_confidence": 0.97
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI < 30, ADX < 25, negative MACD histogram indicate bearish momentum.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Current high-volatility bull regime persists, with strong annual returns and Sharpe ratio, despite short-term market turbulence.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current high volatility may signal market top, leading to potential price correction.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 0.9727,
+      "leverage_cap": 5.0,
+      "var_95": -0.016396,
+      "cvar_95": -0.020561,
+      "volatility_forecast": 0.009968,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4663,
+      "conviction": 0.5829,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "The high-volatility bull regime, combined with a contrarian challenge to the bullish consensus, indicates a potential opportunity for long positioning despite bearish technical signals.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 172202,
+    "debate_duration_seconds": 206.42,
+    "scenario_description": "weekly_2024 2024-04-15 R4"
+  },
+  {
+    "timestamp": "2024-04-22 03:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, which is also in a negative regime, suggests contagion. High volatility ratios and negative price features further support bearish sentiment.",
+        "key_factors": [
+          "Asset correlation with ETH_USDT",
+          "High volatility ratios"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.65,
+        "reasoning": "MACD histogram is positive and RSI is high, indicating potential continuation of the up move in a trending market as per ADX (<-1.04).",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments. However, the current market regime is in a negative state. The market character and price features suggest a slightly bearish trend, but the sentiment scores are not strongly indicative of a directional bias.",
+        "key_factors": [
+          "market_regime",
+          "sentiment_scores"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for R2 regime is 54.0%, indicating a potential market reversal. Current complacency in the market, as indicated by the negative ADX and RSI values, may lead to increased volatility and potential price appreciation.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative regime with high volatility and negative return suggests bearish market conditions persist.",
+        "maintains_bias": true,
+        "updated_confidence": 0.83
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is at an extreme low, but ADX is below the threshold for a trending market, suggesting a ranging market where RSI extremes could be interpreted as mean-reversion signals.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative sentiment scores indicate bearish market conditions, but current price features suggest a potential reversal with high volatility and RSI above 70.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative ADX, RSI and OBV suggest bearish momentum may be waning, potentially setting up for a bullish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.011074,
+      "cvar_95": -0.013888,
+      "volatility_forecast": 0.006733,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "hold",
+      "position_size": 0.0,
+      "conviction": 0.3155,
+      "consensus_direction": "split",
+      "dissenting_agents": [],
+      "rationale": "Given the neutral volatility regime and the bullish technical signal, holding BTC_USDT is justified despite bearish macro and neutral sentiment signals.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 186298,
+    "debate_duration_seconds": 190.59,
+    "scenario_description": "weekly_2024 2024-04-22 R2"
+  },
+  {
+    "timestamp": "2024-05-06 10:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, the dominant asset in this regime, suggest potential downward pressure on BTC_USDT.",
+        "key_factors": [
+          "Regime dominance by ETH_USDT",
+          "High correlation with ETH_USDT"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.6,
+        "reasoning": "Despite the down move in close return and negative RSI, the ADX is low (0.42), indicating a ranging market. The large MACD histogram (0.23) aligns with the bullish bias, suggesting accumulation. Key factors are MACD histogram and ADX.",
+        "key_factors": [],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and neutral market regime suggest a lack of directional bias for BTC_USDT.",
+        "key_factors": [
+          "FinBERT sentiment scores are neutral",
+          "Market regime is neutral"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for R2 regime is 54.0%, suggesting a potential bullish trend despite current bearish sentiment. Overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative ann. return and high volatility suggest bearish market conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is below 30, but ADX is low (0.4184), suggesting a ranging market. Extreme RSI in this context could indicate mean reversion, not continuation of the bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current neutral volatility regime may indicate market consolidation rather than bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and OBV readings suggest bearish momentum may be waning.",
+        "maintains_bias": true,
+        "updated_confidence": 0.47
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.013527,
+      "cvar_95": -0.016964,
+      "volatility_forecast": 0.008224,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "hold",
+      "position_size": 0.0,
+      "conviction": 0.2982,
+      "consensus_direction": "split",
+      "dissenting_agents": [],
+      "rationale": "Given the neutral regime and low risk, we choose to hold position as the contrarian agent's bullish stance challenges the bearish macro view.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 200328,
+    "debate_duration_seconds": 181.12,
+    "scenario_description": "weekly_2024 2024-05-06 R2"
+  },
+  {
+    "timestamp": "2024-05-20 20:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High positive correlation with LTC_USDT and XRP_USDT, dominant in a high-volatility bull regime.",
+        "key_factors": [
+          "Top corr pair: LTC_USDT/XRP_USDT=0.811",
+          "Regime: R4 \u2014 High-volatility bull regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.8,
+        "reasoning": "Large negative MACD histogram and a large negative recent return indicate bearish momentum in a trending market (ADX > 25). The encoder's attention to the MACD histogram and RSI supports this bearish call.",
+        "key_factors": [
+          "MACD histogram",
+          "RSI"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "FinBERT sentiment scores show a slight positive bias (0.33), aligning with the high-volatility bull regime (R4). The neutral sentiment dominance may indicate caution, but the positive score suggests optimism.",
+        "key_factors": [
+          "Positive FinBERT sentiment scores",
+          "High-volatility bull market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus for R4 regime is 72%. Current complacency in the market may lead to increased volatility and potential price decline.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High-volatility bull regime persists, contradicting bearish sentiment.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is at an extreme level (1.7422), which in a trending market with ADX > 25, suggests momentum continuation, not reversal as suggested by MacroAgent's bullish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High volatility bull regime persists, with strong fundamentals reflected in FinBERT scores, suggesting continued upward momentum.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility and overbought indicators suggest potential correction ahead.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.014818,
+      "cvar_95": -0.018582,
+      "volatility_forecast": 0.009009,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.431,
+      "conviction": 0.5387,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "The high-volatility bull regime, strong macro and sentiment indicators, and contrarian agent's bearish stance at a reduced weight suggest entering a long position with caution.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 214387,
+    "debate_duration_seconds": 190.33,
+    "scenario_description": "weekly_2024 2024-05-20 R4"
+  },
+  {
+    "timestamp": "2024-07-08 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High positive correlation with ETH_USDT, dominant asset in the current regime, and high annual return indicate a bullish market.",
+        "key_factors": [
+          "Top corr pair: BTC_USDT/ETH_USDT=0.885",
+          "Regime: R4 \u2014 High-volatility bull regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Extreme RSI (-1.97) and negative MACD histogram (-2.2243) indicate bearish momentum in a market with ADX < 25 (non-trending), suggesting an imminent reversal or bounce.",
+        "key_factors": [
+          "RSI",
+          "MACD histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score (0.330) is slightly above the neutral average (0.340), indicating a bullish sentiment trend. The current market regime (R4) is a high-volatility bull regime, which further supports a bullish bias.",
+        "key_factors": [
+          "Positive sentiment score",
+          "High-volatility bull regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency and overconfident consensus may signal increased risk for bearish movements.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High-volatility bull regime persists, contradicting bearish view",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI <30 in trending market (ADX > 25) confirms bearish momentum, not oversold setup.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "High volatility bull regime, strong negative ADX and RSI indicate oversold conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility, negative MACD histogram, low OBV, and high realized volatility suggest bearish market conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.71
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 0.9753,
+      "leverage_cap": 5.0,
+      "var_95": -0.016352,
+      "cvar_95": -0.020506,
+      "volatility_forecast": 0.009941,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4213,
+      "conviction": 0.5267,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "The high-volatility bull regime, despite bearish technical signals and contra-indicative sentiment, is supported by a strong macro perspective, making it advantageous to enter a long position.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 228487,
+    "debate_duration_seconds": 297.95,
+    "scenario_description": "weekly_2024 2024-07-08 R4"
+  },
+  {
+    "timestamp": "2024-07-15 01:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High correlation with ETH_USDT (0.877) and dominant regime (R4), combined with high annual return (+140.6%) and Sharpe ratio (1.39), indicate a bullish bias for BTC_USDT.",
+        "key_factors": [
+          "Correlation with leading asset in dominant regime",
+          "High annual return and Sharpe ratio"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.8,
+        "reasoning": "MACD histogram and RSI are both indicating positive momentum in an already trending market (ADX > 25), suggesting continuation of the up move.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score of 0.33 and neutral-dominant market regime suggest a bullish outlook for BTC_USDT.",
+        "key_factors": [
+          "FinBERT sentiment score",
+          "Market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency and overconfident consensus indicate potential for market correction.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "High-volatility bull regime persists despite short-term correction, supported by ETH_USDT dominance and strong Sharpe ratio.",
+        "maintains_bias": true,
+        "updated_confidence": 0.82
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI is below 30, but ADX is high (2.14), suggesting a strong trend. In a trending market, low RSI doesn't necessarily indicate an imminent reversal or bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "High-volatility bull regime persists, with strong returns and Sharpe ratio. Maintaining bullish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility, high RSI, and low OBV suggest overbought conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.71
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.012005,
+      "cvar_95": -0.015055,
+      "volatility_forecast": 0.007299,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.6295,
+      "conviction": 0.7869,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Strong bullish consensus from macro, technical, and sentiment agents, with a slight bearish challenge from Contrarian, justifies a long position in the high-volatility bull regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 242631,
+    "debate_duration_seconds": 303.02,
+    "scenario_description": "weekly_2024 2024-07-15 R4"
+  },
+  {
+    "timestamp": "2024-07-22 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, which is also in a negative regime. High contagion between the two assets.",
+        "key_factors": [
+          "Regime: R2 \u2014 Neutral volatility / negative regime \u2014 ETH_USDT-dominant",
+          "Top corr pair: BTC_USDT/ETH_USDT=0.893 \u2014 Contagion: True"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High MACD histogram and positive recent return suggest strong bullish momentum in a trending market (ADX > 25), while the RSI being above 70 indicates overbought conditions but is consistent with the prevailing move. The attention map highlights the significance of MACD histogram and RSI, supporting our bullish call.",
+        "key_factors": [
+          "MACD histogram",
+          "RSI"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "The neutral sentiment score and the negative market regime suggest a lack of directional bias. The sentiment data shows an equal distribution of positive and negative scores, indicating a balanced market sentiment. However, the current regime is ETH_USDT-dominant, which could potentially influence BTC_USDT's performance.",
+        "key_factors": [
+          "Market regime: R2 \u2014 Neutral volatility / negative regime",
+          "Equal distribution of positive and negative sentiment scores"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under neutral consensus for R2 regime is 54.0%, indicating potential for upward trend. Current complacency in the market may lead to overlooking undervalued opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative macro regime persists, bearish outlook maintained",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI extreme (30) in trending market (ADX > 25), MACD histogram positive, indicates bullish momentum continuation.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative market regime and weak sentiment scores contradict bullish technical signals, suggesting caution.",
+        "maintains_bias": false,
+        "updated_confidence": 0.35
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and realized volatility suggest bearish momentum may be waning, potentially setting up for a bullish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.008648,
+      "cvar_95": -0.010845,
+      "volatility_forecast": 0.005258,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.3069,
+      "conviction": 0.3836,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "MacroAgent"
+      ],
+      "rationale": "Given the current neutral volatility/negative regime and the REGIME CONTRADICTION, a long position is taken with a cautious approach due to low conviction.",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 256921,
+    "debate_duration_seconds": 205.29,
+    "scenario_description": "weekly_2024 2024-07-22 R2"
+  },
+  {
+    "timestamp": "2024-07-29 02:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.6,
+        "reasoning": "Current regime is neutral and BTC_USDT shows a negative return and high volatility in the latest data. However, it has a strong negative correlation with ETH_USDT, the dominant asset in the current regime.",
+        "key_factors": [
+          "Negative return and high volatility in latest data",
+          "Strong negative correlation with ETH_USDT"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Large positive MACD histogram and high RSI indicate strong bullish momentum, despite the low ADX suggesting a weak trend. The recent return is also positive.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "mixed"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments, aligning with the current market regime of neutral volatility and negative performance.",
+        "key_factors": [
+          "Sentiment scores reflecting neutral dominance",
+          "Market regime of neutral volatility and negative performance"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.46,
+        "reasoning": "Historical loss rate under bullish consensus in similar regime (R2) is 46.0%. Current complacency in the market may lead to increased volatility and potential losses.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Neutral volatility and negative regime persist, contradicting bullish sentiment.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI < 30 in trending market indicates continuation, not reversal. ADX > 25, RSI = 1.5466 and MACD histogram = 1.4282 support bullish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative market regime and high volatility may counteract bullish technical signals",
+        "maintains_bias": false,
+        "updated_confidence": 0.35
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative return, high volatility, and weak momentum indicators suggest potential bearish reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.43
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.012803,
+      "cvar_95": -0.016055,
+      "volatility_forecast": 0.007783,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4041,
+      "conviction": 0.5052,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Given the Neutral volatility / negative regime and REGIME CONTRADICTION, we choose to remain cautious and avoid long positions despite the bullish consensus.",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 270982,
+    "debate_duration_seconds": 194.33,
+    "scenario_description": "weekly_2024 2024-07-29 R2"
+  },
+  {
+    "timestamp": "2024-08-04 23:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.8,
+        "reasoning": "High-volatility bull regime and strong correlation with top correlated pair BNB_USDT",
+        "key_factors": [
+          "Regime state",
+          "Top correlations"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and RSI value indicate strong bearish momentum in the market. ADX also indicates a trending market.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score (0.33) and neutral dominant sentiment suggest a bullish outlook, despite the current high-volatility bull regime.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market sentiment"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar regime R4 is 72%. Current complacency and overconfident consensus indicate potential for market reversal.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Regime remains bullish with high volatility, R4 prob=0.84",
+        "maintains_bias": true,
+        "updated_confidence": 0.79
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI <30 in trending market suggests continuation, not reversal. ADX >25 supports this view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.78
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Despite current price features suggesting bearishness, the high-volatility bull regime and strong sentiment scores indicate potential for continued upward trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.78
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Recent price features and market character indicate bearish signals, with negative RSI, low ADX, and decreasing close returns.",
+        "maintains_bias": true,
+        "updated_confidence": 0.71
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.0143,
+      "cvar_95": -0.017933,
+      "volatility_forecast": 0.008694,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4179,
+      "conviction": 0.5224,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "Despite bearish technical signals, the high-volatility bull regime and strong macro and sentiment indicators suggest a potential buying opportunity.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 285004,
+    "debate_duration_seconds": 178.76,
+    "scenario_description": "weekly_2024 2024-08-04 R4"
+  },
+  {
+    "timestamp": "2024-08-12 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High-volatility bull regime with positive annual return and high Sharpe ratio, coupled with strong correlation to top correlated pair BNB_USDT. Contagion detected.",
+        "key_factors": [
+          "Regime state",
+          "Top corr pair and contagion"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and RSI indicate bearish momentum in a market with low ADX, suggesting an imminent reversal or bounce.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score slightly higher than negative, and the market is in a high-volatility bull regime.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency and overconfident consensus may signal potential market reversal.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Regime remains bullish with high-volatility, ETH_USDT-dominant, ann. return +140.6%, ann. vol 101.5%",
+        "maintains_bias": true,
+        "updated_confidence": 0.83
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI and MACD histogram indicate bearish momentum, ADX is below trending threshold.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Current high-volatility bull regime supports positive sentiment, contradicting bearish technical indicators.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Recent price features suggest bearish momentum with RSI, ADX and OBV all indicating oversold conditions.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.012446,
+      "cvar_95": -0.015608,
+      "volatility_forecast": 0.007567,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4315,
+      "conviction": 0.5393,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "Despite bearish technical signals, the high-volatility bull regime and strong macro and sentiment indicators suggest a long position",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 299092,
+    "debate_duration_seconds": 183.99,
+    "scenario_description": "weekly_2024 2024-08-12 R4"
+  },
+  {
+    "timestamp": "2024-08-19 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, which is also in a negative regime. High volatility and contagion indicators support bearish bias.",
+        "key_factors": [
+          "High correlation with ETH_USDT in negative regime",
+          "High volatility and contagion indicators"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative MACD histogram and RSI reading indicate bearish momentum in a market with low ADX, suggesting a reversal or mean-reversion signal.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral bias, aligning with the current market regime of negative sentiment and low volatility. However, the 6h momentum vs 24h avg for sentiment is slightly positive, which could indicate a potential shift in sentiment.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "6h momentum vs 24h sentiment average"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for R2 regime is 54.0%, suggesting potential market overreaction. Current complacency in the market may lead to unexpected price increases.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative price features and market character indicate bearish trend persistence.",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI < 30 in trending market (ADX > 25) often indicates continuation, not reversal",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Despite negative sentiment scores and current bearish market conditions, the high volatility z-score suggests potential for price reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative indicators such as RSI, ADX, and OBV are at multi-month lows, suggesting a potential reversal in trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.011033,
+      "cvar_95": -0.013836,
+      "volatility_forecast": 0.006708,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6305,
+      "conviction": 0.7881,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Short position taken due to strong bearish consensus amidst neutral regime and low risk conditions",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 313147,
+    "debate_duration_seconds": 173.46,
+    "scenario_description": "weekly_2024 2024-08-19 R2"
+  },
+  {
+    "timestamp": "2024-09-09 20:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High-volatility bull regime, strong positive correlation with ETH_USDT and top correlated assets, high close return mean in the 60-candle window.",
+        "key_factors": [
+          "Regime state",
+          "Top correlations"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and RSI above 70 in a trending market suggest bearish momentum continuation.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "Positive sentiment score slightly higher than negative despite neutral dominant sentiment, aligns with high-volatility bull regime.",
+        "key_factors": [
+          "Sentiment scores",
+          "Market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar regimes is 72%. Current regime complacency may lead to overreaction and increased volatility.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "60-candle window shows stable bullish trend with low realized volatility and positive RSI mean",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "ADX is low (0.3372), indicating a ranging market, but RSI is extremely low (1.9414). This suggests an oversold condition that could lead to a bounce, contradicting the bullish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Current high-volatility bull regime persists, with strong annual return and Sharpe ratio. Sentiment scores remain positive despite recent price drop.",
+        "maintains_bias": true,
+        "updated_confidence": 0.82
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility, negative realized volatility mean, low RSI mean, and falling ADX may indicate bearish sentiment building.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.012235,
+      "cvar_95": -0.015343,
+      "volatility_forecast": 0.007438,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4225,
+      "conviction": 0.5281,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "Despite bearish technical signals, the high-volatility bull regime and strong macro and sentiment indicators suggest a potential BTC_USDT price increase.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 327217,
+    "debate_duration_seconds": 163.04,
+    "scenario_description": "weekly_2024 2024-09-09 R4"
+  },
+  {
+    "timestamp": "2024-09-16 02:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "High negative correlation with ETH_USDT (-0.893) and dominant position in the market suggests contagion from a negative regime. Negative price features also support bearish bias.",
+        "key_factors": [
+          "Correlation with ETH_USDT",
+          "Negative price features"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and RSI, along with a downward close return, suggest bearish momentum in the market. ADX is low, indicating a ranging market, but the current move is strong.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral bias, aligning with the current market regime of negative sentiment. However, the slight increase in positive sentiment compared to negative in the last 6 hours suggests potential for a shift.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regime R2 is 54.0%. Current regime complacency may suggest a potential reversal, as the negative return and high volatility indicate market stress. Overconfident consensus could lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative market character and low realized volatility mean persisting bearish trend",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "ADX < 25 indicates ranging market, but current ADX is 0.1666, suggesting a trending market. Extreme RSI and negative MACD histogram support bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Currently, the neutral regime with negative sentiment scores suggests market stabilization. However, high realized volatility and negative price features indicate potential bearish pressure.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and MACD indicate oversold conditions potentially setting up for a rebound.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.008562,
+      "cvar_95": -0.010737,
+      "volatility_forecast": 0.005205,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6351,
+      "conviction": 0.7938,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Given the prevailing R2 regime, negative market character, and a contrarian challenge to the bearish consensus, we opt for a short position as a hedge against potential further downside.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 341348,
+    "debate_duration_seconds": 193.85,
+    "scenario_description": "weekly_2024 2024-09-16 R2"
+  },
+  {
+    "timestamp": "2024-10-07 18:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "High-volatility bull regime with positive annual return and high Sharpe ratio, coupled with strong correlation with ETH_USDT and contagion across other top correlated pairs.",
+        "key_factors": [
+          "Regime state",
+          "Top correlations"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and RSI indicate bearish momentum in a market with low ADX, suggesting an imminent reversal or bounce.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "FinBERT sentiment scores show a slight positive bias despite the neutral dominant sentiment, which could indicate an upward trend in line with the current high-volatility bull regime.",
+        "key_factors": [
+          "Slightly positive FinBERT sentiment scores",
+          "High-volatility bull regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar regimes is high at 72.0%, suggesting potential for market reversal. Current regime complacency may lead to overconfident consensus.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Current high-volatility bull regime persists despite short-term bearish signals",
+        "maintains_bias": true,
+        "updated_confidence": 0.73
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI <30 in a non-trending market with ADX<25 suggests potential mean reversion or reversal, contradicting bullish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.74
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Current high-volatility bull regime persists, with positive annual return and Sharpe ratio, contradicting bearish technical signals.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and MACD histogram suggest bearish momentum may be building.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.014586,
+      "cvar_95": -0.018291,
+      "volatility_forecast": 0.008867,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4301,
+      "conviction": 0.5376,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "The high-volatility bull regime persists, despite bearish technical signals, as macro and sentiment indicators remain strongly bullish.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 355448,
+    "debate_duration_seconds": 192.28,
+    "scenario_description": "weekly_2024 2024-10-07 R4"
+  },
+  {
+    "timestamp": "2024-10-14 22:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High-volatility bull regime and strong correlation with ETH_USDT, the dominant asset in this regime. Contagion is present between BTC_USDT and ETH_USDT.",
+        "key_factors": [
+          "Regime: R4",
+          "Top corr pair: BTC_USDT/ETH_USDT=0.840"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "The encoder's attention is on bullish indicators (macd_histogram and rsi) and the latest close return is positive. ADX value is above 20, indicating a trending market.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "FinBERT sentiment scores show a slight positive bias despite the neutral dominant sentiment, which could indicate a bullish market sentiment shift. Additionally, the current regime is a high-volatility bull regime.",
+        "key_factors": [
+          "FinBERT sentiment score trend",
+          "current market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar regime R4 is 72.0%, suggesting potential market complacency and overconfident consensus.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Recent bullish trend supported by high regime probability, positive ann. return, and low realized volatility in the past 60-candle window.",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI < 30 in trending market (ADX > 25) indicates continuation, not reversal or bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Current high-volatility bull regime indicates potential for continued upward trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High volatility and negative realized volatility mean suggestive of market uncertainty, potentially indicating a bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.010474,
+      "cvar_95": -0.013135,
+      "volatility_forecast": 0.006368,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.6344,
+      "conviction": 0.793,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Given the high-volatility bull regime, strong bullish consensus from all agents, and low realized volatility, a long position is justified with a focus on risk management.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 369641,
+    "debate_duration_seconds": 215.01,
+    "scenario_description": "weekly_2024 2024-10-14 R4"
+  },
+  {
+    "timestamp": "2024-10-22 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.65,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, the dominant asset in this regime, suggests potential contagion.",
+        "key_factors": [
+          "Correlation with ETH_USDT",
+          "Negative regime"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Extreme RSI (-1.72) and negative MACD histogram (-0.3940) suggest bearish momentum, which contradicts the low ADX (0.22), indicating a non-trending market. The encoder's attention to RSI and realized_vol further supports this bearish call.",
+        "key_factors": [
+          "RSI",
+          "MACD histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and the current market regime (R2) indicate a neutral directional bias. The sentiment data shows an equal distribution of positive and negative scores, aligning with the market's overall neutral state.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "Market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regime R2 with high probability (0.8) is 54.0%. Current regime complacency may lead to overlooking the potential for bullish movements.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative market character and high realized volatility suggest continuation of bearish trend",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI <30 in a non-trending market (ADX<20), but ADX is 0.2207, suggesting a weak trend. Therefore, the RSI reading may indicate an oversold condition, potentially signaling a bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative sentiment scores persist despite neutral market regime, suggesting potential for continued bearish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative RSI, ADX, and MACD indicate bearish momentum may persist, despite current neutral regime.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.007852,
+      "cvar_95": -0.009847,
+      "volatility_forecast": 0.004774,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6184,
+      "conviction": 0.773,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "The contrarian agent's bullish stance, despite a bearish consensus, is based on the historically low volatility and negative return in the current regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 383895,
+    "debate_duration_seconds": 183.48,
+    "scenario_description": "weekly_2024 2024-10-22 R2"
+  },
+  {
+    "timestamp": "2024-11-04 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral with BTC_USDT having a negative annual return and low Sharpe ratio. However, the high correlation with ETH_USDT suggests potential contagion from the dominant asset.",
+        "key_factors": [
+          "Negative annual return",
+          "High correlation with ETH_USDT"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram (1.4405) and negative close return (-0.0009) contradict the RSI value of -0.21 which is not an extreme in a trending market (ADX = 0.64).",
+        "key_factors": [
+          "macd_histogram",
+          "close_return"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and a predominantly negative regime suggest market neutrality. However, the slight positive momentum in sentiment data might indicate a potential shift.",
+        "key_factors": [
+          "Sentiment scores",
+          "Regime characteristics"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.58 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.006745,
+      "cvar_95": -0.008459,
+      "volatility_forecast": 0.004101,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.72,
+      "conviction": 0.9,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [],
+      "rationale": "Short position due to bearish technical signals and neutral macro and sentiment indicators within a negative regime",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 205544,
+    "debate_duration_seconds": 88.26,
+    "scenario_description": "weekly_2024 2024-11-04 R2"
+  },
+  {
+    "timestamp": "2024-11-11 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "High-volatility bull regime, strong correlation with ETH_USDT and LTC_USDT, high annual return and Sharpe ratio.",
+        "key_factors": [
+          "Regime is R4",
+          "Strong correlations with top correlated assets"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "The market is trending (ADX > 25) and the large negative MACD histogram alongside a large positive recent return aligns with bearish momentum, but in a trending market, an extreme RSI (0.86) confirms the prevailing move is strong \u2014 read it as momentum continuation. The encoder's attention to macd_histogram and rsi also supports this bullish bias.",
+        "key_factors": [
+          "ADX > 25",
+          "Large negative MACD histogram alongside positive recent return"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "Positive sentiment score and the current high-volatility bull regime alignment suggests a potential upward trend.",
+        "key_factors": [
+          "High positive sentiment score",
+          "Current market regime: R4"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in R4 regime is 72%, suggesting potential for a bearish reversal. Current complacency in the market, as indicated by high realized volatility and overbought indicators (ATR, RSI), may increase the likelihood of a correction.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "High-volatility bull regime persists, contradicting bearish outlook",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "RSI < 30 in a trending market (ADX > 25) indicates momentum continuation, not reversal. Current RSI = 0.8604, ADX = 1.0970.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Despite high volatility, RSI and OBV suggest bullish momentum persists.",
+        "maintains_bias": true,
+        "updated_confidence": 0.8
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "High-volatility bull regimes have historically been followed by periods of increased market uncertainty, potentially leading to price corrections.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.008832,
+      "cvar_95": -0.011076,
+      "volatility_forecast": 0.00537,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.6273,
+      "conviction": 0.7841,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Strong bullish consensus from multiple agents, despite contrarian challenge, supports entering a long position in the high-volatility bull regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 404722,
+    "debate_duration_seconds": 204.83,
+    "scenario_description": "weekly_2024 2024-11-11 R4"
+  },
+  {
+    "timestamp": "2024-11-18 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Negative regime and high correlation with ETH_USDT, which is also in a negative regime. Contagion detected between BTC_USDT and ETH_USDT.",
+        "key_factors": [
+          "Regime: R2 - Negative",
+          "Top corr pair: BTC_USDT/ETH_USDT=0.778 - Contagion: True"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.7,
+        "reasoning": "MACD histogram and RSI are in bullish territory despite ADX being below 25, indicating a potential trend reversal. However, the current up move and the positive recent return suggest continuation of the existing trend.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral bias, aligning with the current market regime of negative sentiment and low volatility. The neutral sentiment score is consistent with the neutral-dominant market regime.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus for R2 regime is 54.0%, indicating a potential reversal in trend. Current regime complacency and overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative ann. return, high volatility, and negative market indicators suggest bearish trend persists.",
+        "maintains_bias": true,
+        "updated_confidence": 0.83
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI is oversold, ADX is below 25 indicating a ranging market, and MACD histogram is negative. This suggests a potential mean-reversion or reversal signal, contradicting the bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.75
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Current RSI, ADX, and ATR indicators suggest neutral market conditions, contradicting bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Despite negative regime, indicators such as ATR, OBV, and volatility z-score suggest potential buying opportunity.",
+        "maintains_bias": true,
+        "updated_confidence": 0.56
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.007125,
+      "cvar_95": -0.008935,
+      "volatility_forecast": 0.004331,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.288,
+      "conviction": 0.3599,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "MacroAgent"
+      ],
+      "rationale": "Given the current neutral volatility and negative regime, combined with a bearish macro view and a contrarian challenge to the bullish consensus, we choose to enter a long position with a low risk approach.",
+      "regime_override": true,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": true
+    },
+    "total_tokens_used": 418858,
+    "debate_duration_seconds": 192.4,
+    "scenario_description": "weekly_2024 2024-11-18 R2"
+  },
+  {
+    "timestamp": "2024-11-25 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral with a negative return, and BTC's price features show no clear directional bias. However, the high correlation with ETH suggests potential market movements may influence BTC prices.",
+        "key_factors": [
+          "High correlation with ETH_USDT",
+          "Current neutral regime"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.8,
+        "reasoning": "Large negative MACD histogram and low ADX indicate bearish momentum, while the negative RSI suggests downward pressure on price. The encoder's attention to macd_histogram and rsi further supports this analysis.",
+        "key_factors": [
+          "macd_histogram",
+          "rsi"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores show a neutral dominance with equal positive and negative sentiments, aligning with the current market regime of low volatility and negative returns. However, the 6h momentum vs 24h avg is slightly positive, indicating a potential shift.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "market regime alignment"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar R2 regimes is 54.0%. Current regime shows complacency with low volatility and negative return, suggesting potential for reversal. Overconfident consensus may lead to missed opportunities.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Despite bearish technical signals, macro regime remains neutral with low volatility and negative return.",
+        "maintains_bias": true,
+        "updated_confidence": 0.5
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "ADX is extremely low (0.0134), indicating a ranging market. In this context, the bullish call contradicts the extreme RSI (<30) which usually signals mean-reversion or reversal. However, the large negative MACD histogram (-1.1153) supports the bearish view.",
+        "maintains_bias": true,
+        "updated_confidence": 0.82
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Despite bearish technical signals, sentiment remains neutral suggesting potential market stabilization.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Negative RSI, ADX, and Volatility Z-Score indicate bearish momentum may persist despite short-term price increase.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.008502,
+      "cvar_95": -0.010661,
+      "volatility_forecast": 0.005169,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.5623,
+      "conviction": 0.7029,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "The contrarian agent's challenge to the bearish consensus, combined with a low-risk environment in the R2 regime, justifies a short position.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 433002,
+    "debate_duration_seconds": 204.67,
+    "scenario_description": "weekly_2024 2024-11-25 R2"
+  },
+  {
+    "timestamp": "2024-12-02 03:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral with a low return and high volatility, and the price features suggest bearish momentum. However, the correlation data shows a mixed alignment as BTC_USDT has a lower correlation to other assets compared to ETH_USDT and BNB_USDT, which are in a dominant position.",
+        "key_factors": [
+          "price_features",
+          "correlation_data"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Negative RSI and ADX indicate strong downward momentum, supported by a large negative MACD histogram.",
+        "key_factors": [
+          "rsi",
+          "adx",
+          "macd_histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "FinBERT sentiment scores are neutral, aligning with the current market regime of negative sentiment and low volatility. However, a slight positive momentum in sentiment scores over the last 6 hours is observed.",
+        "key_factors": [
+          "sentiment scores",
+          "market regime"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.58 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.01116,
+      "cvar_95": -0.013995,
+      "volatility_forecast": 0.006785,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.72,
+      "conviction": 0.9,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [],
+      "rationale": "Given the current neutral regime, bearish technical signals, and low risk, a short position is recommended due to the prevailing negative market character and weak sentiment towards BTC_USDT.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 231263,
+    "debate_duration_seconds": 86.44,
+    "scenario_description": "weekly_2024 2024-12-02 R2"
+  },
+  {
+    "timestamp": "2024-12-09 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Current regime is neutral with low return and high volatility, and BTC_USDT's correlation with other assets is not indicating a clear directional bias.",
+        "key_factors": [
+          "Regime Neutral",
+          "Low Return"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "Large negative MACD histogram and current down move contradict the regime's neutral state. ADX is low, suggesting a ranging market, making the RSI extreme a potential mean-reversion signal.",
+        "key_factors": [
+          "macd_histogram",
+          "close_return"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "The neutral sentiment scores and the current negative market regime suggest a neutral directional bias for BTC_USDT. The market is in a period of low volatility with ETH_USDT dominance, which may indicate a lack of strong directional movement for Bitcoin.",
+        "key_factors": [
+          "Current market regime",
+          "FinBERT sentiment scores"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.1,
+        "reasoning": "Consensus confidence 0.58 is below the activation threshold 0.6. No strong consensus to challenge.",
+        "key_factors": [
+          "low_consensus_confidence"
+        ],
+        "regime_alignment": "neutral"
+      }
+    ],
+    "round2_rebuttals": [],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.01331,
+      "cvar_95": -0.016691,
+      "volatility_forecast": 0.008092,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.72,
+      "conviction": 0.9,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [],
+      "rationale": "Given the current neutral regime, bearish market character and technical indicators, a short position is justified due to low risk.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 234792,
+    "debate_duration_seconds": 69.85,
+    "scenario_description": "weekly_2024 2024-12-09 R2"
+  },
+  {
+    "timestamp": "2024-12-16 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.75,
+        "reasoning": "High negative contagion with BNB_USDT, top correlated pair, and overall negative market character indicate potential bearish trend for BTC_USDT.",
+        "key_factors": [
+          "Contagion with BNB_USDT",
+          "Negative market character"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.65,
+        "reasoning": "Large MACD histogram and positive recent return suggest bullish momentum in a trending market (ADX > 25). RSI is high but not extreme given the current ADX level.",
+        "key_factors": [
+          "macd_histogram",
+          "close_return"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and a neutral regime suggest market neutrality. However, the 6h momentum vs 24h avg is slightly positive.",
+        "key_factors": [
+          "sentiment scores",
+          "6h momentum"
+        ],
+        "regime_alignment": "neutral"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.68,
+        "reasoning": "Despite the neutral regime with a historical loss rate of 54.0%, the current R2 regime has shown resilience in the past, offering an average 24h forward return of -0.0001. The complacency within the current consensus may underestimate the potential for BTC_USDT to outperform, especially given the ETH_USDT-dominant market condition.",
+        "key_factors": [
+          "historical_resilience",
+          "regime_complacency",
+          "underconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative regime persists with high probability, supported by low realized volatility mean and negative RSI mean.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "ADX is low (1.7736), suggesting a ranging market, but RSI is also low (2.7376) which in a ranging market can indicate oversold conditions and potential for a bounce.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "BTC's current neutral volatility suggests potential market stabilization, contradicting bearish sentiment.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative return (-14.7%) and low Sharpe ratio (-0.22) in the current neutral regime suggest potential bearish sentiment, but negative realized volatility (-0.6483) indicates market may be oversold.",
+        "maintains_bias": true,
+        "updated_confidence": 0.59
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.011782,
+      "cvar_95": -0.014775,
+      "volatility_forecast": 0.007163,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "hold",
+      "position_size": 0.0,
+      "conviction": 0.3078,
+      "consensus_direction": "split",
+      "dissenting_agents": [],
+      "rationale": "Given the current neutral volatility regime and bullish technical signals, a hold position is maintained, with a slight bias towards contrarian optimism in response to the bearish macro outlook.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.65,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 460296,
+    "debate_duration_seconds": 200.63,
+    "scenario_description": "weekly_2024 2024-12-16 R2"
+  },
+  {
+    "timestamp": "2024-12-23 00:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 2,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "High negative correlation with ETH_USDT and contagion detected, coupled with a negative regime state.",
+        "key_factors": [
+          "Top corr pair: ETH_USDT/BNB_USDT=0.871",
+          "Regime: R2 \u2014 Neutral volatility / negative regime"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "RSI and MACD histogram are in extreme bearish territory despite ADX indicating a strong downward trend. These indicators suggest continued bearish momentum.",
+        "key_factors": [
+          "rsi",
+          "macd_histogram"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "neutral",
+        "confidence": 0.5,
+        "reasoning": "Neutral sentiment scores and a neutral dominant sentiment suggest market neutrality, which aligns with the current regime. However, the negative 6h momentum compared to the 24h average indicates a potential shift.",
+        "key_factors": [
+          "sentiment scores",
+          "6h momentum"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.54,
+        "reasoning": "Historical loss rate under bearish consensus in similar regimes is 54.0%, suggesting potential for BTC_USDT to outperform. Current regime complacency and overconfident consensus may be misleading.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "Negative regime, high volatility, and negative RSI suggest bearish market conditions persist.",
+        "maintains_bias": true,
+        "updated_confidence": 0.83
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "ContrarianAgent",
+        "rebuttal_point": "ADX < 25 indicates a ranging market, but current ADX is -0.05, which contradicts the bullish view. RSI is also at -1.4687, suggesting bearish momentum.",
+        "maintains_bias": true,
+        "updated_confidence": 0.87
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI, ADX, and OBV indicators suggest neutral market conditions despite negative regime.",
+        "maintains_bias": true,
+        "updated_confidence": 0.65
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Negative RSI, ADX, and MACD indicate oversold conditions potentially signaling a reversal.",
+        "maintains_bias": true,
+        "updated_confidence": 0.46
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 1.0,
+      "leverage_cap": 5.0,
+      "var_95": -0.010577,
+      "cvar_95": -0.013264,
+      "volatility_forecast": 0.00643,
+      "risk_regime": "low",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "short",
+      "position_size": 0.6342,
+      "conviction": 0.7927,
+      "consensus_direction": "bearish",
+      "dissenting_agents": [
+        "ContrarianAgent"
+      ],
+      "rationale": "Contrarian agent's bullish stance, albeit weak, challenges the dominant bearish sentiment, suggesting potential for short-term price recovery within the overall negative regime.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 474493,
+    "debate_duration_seconds": 176.06,
+    "scenario_description": "weekly_2024 2024-12-23 R2"
+  },
+  {
+    "timestamp": "2024-12-30 21:00:00+00:00",
+    "asset": "BTC_USDT",
+    "regime_label": 4,
+    "round1_theses": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.85,
+        "reasoning": "High-volatility bull regime with strong contagion from ETH_USDT and positive correlation with top pairs indicating market alignment.",
+        "key_factors": [
+          "Regime: R4",
+          "Top corr pair: ETH_USDT/XRP_USDT=0.866"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.85,
+        "reasoning": "Large negative MACD histogram alongside a large negative recent return and low ADX indicates bearish momentum, not an oversold setup about to bounce.",
+        "key_factors": [
+          "macd_histogram",
+          "close_return"
+        ],
+        "regime_alignment": "contrary"
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 1,
+        "directional_bias": "bullish",
+        "confidence": 0.75,
+        "reasoning": "FinBERT sentiment scores show a slight positive bias despite the neutral dominant sentiment, aligning with the high-volatility bull regime in place. The market character shows negative trends in realized volatility and RSI, but the current price features such as ATR, MACD histogram, and OBV suggest potential upward momentum.",
+        "key_factors": [
+          "FinBERT sentiment scores",
+          "price features"
+        ],
+        "regime_alignment": "aligned"
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 1,
+        "directional_bias": "bearish",
+        "confidence": 0.72,
+        "reasoning": "Historical loss rate under bullish consensus in similar R4 regimes is 72%. Current regime complacency and overconfident consensus indicate potential for reversal.",
+        "key_factors": [
+          "historical_loss_rate",
+          "regime_complacency",
+          "overconfident_consensus"
+        ],
+        "regime_alignment": "contrary"
+      }
+    ],
+    "round2_rebuttals": [
+      {
+        "agent_name": "MacroAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Despite short-term bearish indicators, macro data suggests high-volatility bull regime persists.",
+        "maintains_bias": true,
+        "updated_confidence": 0.83
+      },
+      {
+        "agent_name": "TechnicalAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "RSI extreme at -1.1124, ADX 0.2737 suggests bearish momentum continuation rather than a bullish reversal as suggested by MacroAgent.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "SentimentAgent",
+        "round": 2,
+        "target_agent": "TechnicalAgent",
+        "rebuttal_point": "Current high-volatility bull regime supports price increase, contradicting recent market character.",
+        "maintains_bias": true,
+        "updated_confidence": 0.85
+      },
+      {
+        "agent_name": "ContrarianAgent",
+        "round": 2,
+        "target_agent": "MacroAgent",
+        "rebuttal_point": "Recent market characteristics show decreasing close returns, increasing RSI negativity, and rising realized volatility, suggesting a potential reversal in the bullish trend.",
+        "maintains_bias": true,
+        "updated_confidence": 0.68
+      }
+    ],
+    "risk_limits": {
+      "max_position_size": 0.7815,
+      "leverage_cap": 5.0,
+      "var_95": -0.020407,
+      "cvar_95": -0.025591,
+      "volatility_forecast": 0.012407,
+      "risk_regime": "medium",
+      "event_risk_multiplier": 1.0
+    },
+    "fund_manager_decision": {
+      "final_action": "long",
+      "position_size": 0.4215,
+      "conviction": 0.5268,
+      "consensus_direction": "bullish",
+      "dissenting_agents": [
+        "TechnicalAgent",
+        "ContrarianAgent"
+      ],
+      "rationale": "Despite bearish technical and sentiment indicators, the high-volatility bull regime persists and a contrarian approach is partially adopted to capitalize on potential market reversal.",
+      "regime_override": false,
+      "regime_penalty_applied": 0.9,
+      "regime_contradiction": false
+    },
+    "total_tokens_used": 488626,
+    "debate_duration_seconds": 227.57,
+    "scenario_description": "weekly_2024 2024-12-30 R4"
+  }
+]
