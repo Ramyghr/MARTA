@@ -193,6 +193,35 @@ def ma_crossover_strategy(
     return positions
 
 
+_MOMENTUM_STRATEGY_LOOKBACK = 3
+
+
+def momentum_strategy(
+    close_returns: np.ndarray,
+    lookback: int = _MOMENTUM_STRATEGY_LOOKBACK,
+    position_size: float = _RULE_POSITION_SIZE,
+) -> np.ndarray:
+    """Classic momentum positions: long when the last ``lookback`` close_returns are
+    unanimously positive, short when unanimously negative, else flat. Position at step
+    ``i`` is decided from returns ``[i-lookback, i-1]`` (no lookahead) and applies to the
+    return at ``i`` — same no-lookahead/fixed-size/no-CVaR-cap contract as
+    ``rsi_strategy``/``ma_crossover_strategy`` (run through ``_run_rule_positions``).
+
+    NOT the same thing as ``_run_momentum_rule`` below, which drives the env's
+    Gym ``step()`` API and gets the env's own CVaR risk-cap applied to its position size
+    — that one stands in for a collapsed PPO on the no-regime ablation variants. This one
+    is the plain technical-analysis baseline, comparable apples-to-apples with rsi/ma.
+    """
+    positions = np.zeros(len(close_returns), dtype=np.float64)
+    for i in range(lookback, len(close_returns)):
+        window = close_returns[i - lookback : i]
+        if np.all(window > 0):
+            positions[i] = position_size
+        elif np.all(window < 0):
+            positions[i] = -position_size
+    return positions
+
+
 def _run_rule_positions(
     env: MARTATradingEnv,
     positions_fn: Callable[[np.ndarray], np.ndarray],

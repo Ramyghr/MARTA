@@ -785,3 +785,49 @@ today, matching how a demo audience would expect to use it.
   data reaching 2026-09-02; locked strategies render disabled in the `<select>`; a
   too-short date range surfaces the backend's real 400 error message in the UI, not a
   generic failure.
+
+**2026-09-02, same day — "Alpha Accelerator" promoted from locked placeholder to a real
+strategy** (`_sig_alpha_accelerator` in `strategy_backtest.py`), moved out of
+`_LOCKED_STRATEGIES` into `_STRATEGIES`. Three independently-computed filters AND-gated,
+re-evaluated fresh every bar (no sticky enter/exit — a filter dropping out flattens the
+position immediately): trend (20/50h SMA alignment), momentum (RSI(14) >55 bull / <55
+bear, dead zone around 50 to avoid a trend-only whipsaw), volatility (20h rolling realized
+vol must sit at/below its own trailing 90h percentile — mutes entries during vol spikes).
+`news_verified_trend` and `qqq_sharpe_core` stay locked/unimplemented on purpose — the
+former needs a historical sentiment score for arbitrary backtest dates (the news cache is
+static 2018-2021 headlines only, see `agents/sentiment_agent.py`), the latter needs
+US-equity price data entirely outside the crypto5-only pipeline. No frontend changes
+needed — the strategy list/lock state is fully server-driven, the `<select>` just renders
+whatever `/api/backtest/strategies` returns. Verified on real BTC data: -65.7% return /
+Sharpe -4.2 / 587 trades over the trailing 1y window — high-frequency/whipsaw-prone by
+construction (no hysteresis between filter states), an honest result rather than a
+tuned-to-look-good one, consistent with this project's existing standard of reporting
+real backtest numbers even when they're poor.
+
+## Future work: Bull/Bear Researcher agent split (not implemented, 2026-09-02)
+
+Discussed while comparing MARTA's agent roster against TradingAgents' team structure
+(Analyst / Research / Trading / Risk / Portfolio Management teams) for the literature
+slides. TradingAgents runs an explicit Bull Researcher vs Bear Researcher debate before
+its Risk team; MARTA's closest analogue is the single `ContrarianAgent`
+(`agents/contrarian_agent.py`) — one devil's-advocate voice, not a symmetric two-sided
+debate.
+
+**Proposed change:** split `ContrarianAgent` into paired Bull/Bear Researcher agents that
+debate before `FundManagerAgent` synthesis, reusing the existing R1→R2 rebuttal machinery
+in `agents/graph.py` rather than new infrastructure — mostly a schema (`agents/schemas.py`)
+and prompt change, plus a `FundManagerAgent` synthesis rewrite to weight two new voices
+instead of one.
+
+**Why this is worth doing over other RL/encoder work:** the ablation table
+(`data/results/ablation_results.json`) already shows `agents_no_regime` (Sharpe 1.456)
+far outperforming `marta_full` (Sharpe -2.152, includes the trained PPO) — the LLM agent
+layer is where this system's real signal lives, not the RL execution layer (consistent
+with Section 9's "RL layer closed" conclusion in `docs/RESULTS_AND_METHODOLOGY.md`), so
+expanding agent roster depth is higher-leverage than continuing to chase RL/encoder fixes.
+
+**Cost, not free:** more Ollama calls per debate (latency), and any RL re-evaluation using
+the debate cache would need a fresh regeneration pass (`run_clean_ablation_debates.py` or
+similar) before the new Bull/Bear signal could be reflected in RL-side results.
+
+Deliberately not implemented this session — captured as a roadmap/future-work item only.

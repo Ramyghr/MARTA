@@ -862,3 +862,77 @@ independently on BTC alone, on the full 5-asset panel's 2024 validation, and on 
 out-of-window check, further seeds/grid expansion is not expected to change this conclusion and
 was not pursued. Full detail: `data/results/weekly_grid_crypto5_reconciled.json` and
 `data/results/weekly_grid_crypto5_longrun.json`.
+
+### 10c. Majority-vote ensemble of the 3-seed grid — no consistent effect (2026-09-02)
+
+An idea taken from reading the FinRL Contest 2025 (AlphaSeek Crypto) starter kit, which trains
+several agents independently and combines their actions by majority vote at eval time
+(`task2_eval.py::_ensemble_action`). Applied here to the 12 already-trained checkpoints from
+Section 10's BTC-only weekly grid (conditions A/B/C/D × seeds 0/1/2) — no new training, pure
+read-only re-evaluation (`rl/ensemble_weekly_backtest.py`). At each weekly decision, the 3 seeds
+within a condition each predict `{direction, position_fraction}` on the identical observation;
+the majority direction wins (position_fraction averaged over the agreeing models), and a genuine
+3-way tie (all three seeds pick a different direction) defaults to hold rather than an arbitrary
+break.
+
+**One real bug caught before trusting the result:** the first draft copied
+`rl/reconcile_weekly_grid_crypto5.py`'s `debate=False` env-construction convention, which is
+correct for *that* script's own crypto5-pilot comparisons but not for this one —
+`evaluate_ppo()` (which produced Section 10's original numbers) defaults to `debate=True`. Using
+`debate=False` silently shifted seed 0's recomputed Sharpe from the published 1.677 to 1.545 —
+exactly the "match the debate-cache configuration when comparing eval runs" trap the Eval
+Reliability Audit warned about. Fixed by matching `evaluate_ppo()`'s actual default; the
+corrected per-seed numbers (1.681/1.686/1.735 for condition A) land close to but not bit-identical
+with the original 1.677/1.688/1.736 — expected, since `debate_results.json` has grown since these
+checkpoints were trained (dense BTC coverage added 2026-09-02, see the section above this one),
+not a new bug.
+
+| Condition | Seed Sharpes | Seed mean ± std | Ensemble Sharpe | Buy-hold Δ (95% CI) | No-consensus weeks |
+|---|---|---|---|---|---|
+| A (raw) | 1.681 / 1.686 / 1.735 | 1.701 ± 0.024 | 1.648 | +0.147 [-1.695, 2.240] | 10/53 |
+| B (raw+vol) | 1.686 / 1.883 / 2.708 | 2.092 ± 0.443 | 2.604 | +1.248 [-0.437, 3.086] | 15/53 |
+| C (raw+regime) | 1.755 / 1.666 / 2.173 | 1.865 ± 0.221 | 1.715 | +0.456 [-1.766, 2.710] | 8/53 |
+| D (raw+regime placebo) | 2.723 / 1.764 / 1.665 | 2.051 ± 0.477 | 2.262 | +1.002 [-0.707, 2.887] | 9/53 |
+
+**No consistent effect.** The ensemble lands *below* the seed mean for A and C, and *above* it
+for B and D — not the systematic variance-reduction FinRL's write-up would predict. Where it
+does move (B, D), it tracks close to that condition's single best seed rather than genuinely
+averaging out disagreement, and 15-28% of weekly decisions (8-15 of 53) have no 2-of-3 majority
+at all, itself a sign of real seed-to-seed policy disagreement rather than shared noise
+cancelling out. None of the four ensemble-vs-buy-hold deltas reach significance (every CI
+crosses zero) — consistent with every other number in this document. **This does not change
+Section 9's final decision**; it is one more data point in the same negative-result record.
+Full detail: `data/results/weekly_ensemble_backtest.json`.
+
+### 10d. Reverse-the-signal diagnostic — reversal makes every checkpoint worse, some worse than naive shorting (2026-09-02)
+
+Same 12 checkpoints, a different question: does the policy have *anti-correlated* skill (right
+information, wrong sign) or *no* skill (noise)? At every decision, `rl/reverse_signal_experiment.py`
+inverts the model's own choice (long→short, short→long, hold unchanged — a straight swap of
+`_DIRECTION_SIGN`'s 0/1 keys in `rl/env.py:121`, position_fraction untouched) and re-measures.
+Anti-correlated skill would turn a loser into a winner; noise would land the reversed Sharpe
+close to zero or symmetric around the original.
+
+**Neither happened cleanly.** All 12 original Sharpes were positive (1.665–2.723, per Section 10's
+own table); reversing every one produced a negative Sharpe (−0.231 to −2.401) — 12/12 same-direction
+point estimates, 9/12 individually significant vs. the original at 95% (`B_seed1`, `C_seed0`,
+`D_seed2` don't individually clear it, wide-CI noise given only 53 weekly observations, same
+caveat as everywhere else in this document). This is the pattern you'd expect from a policy with
+real (not anti-correlated) directional skill, or simply from an unconditionally long-biased policy
+riding 2024's bull trend (buy-hold itself returned +91.8%, Sharpe 1.571) — reversing a mostly-long
+book in an up year tanks performance either way, so "reversal hurts" alone doesn't distinguish
+skill from long bias.
+
+**The naive-short comparator does distinguish them, partially.** Negating a return series exactly
+negates its Sharpe (`mean(-r)/std(-r) = -mean(r)/std(r)`), so "short-and-hold the whole window"
+has Sharpe exactly **−1.571** — the mirror of buy-hold, no simulation needed. If reversal were
+doing nothing but flipping a long bias into a short bias, every reversed Sharpe should cluster
+near −1.571. Instead: **7 of 12 reversed runs are worse than naive short** (as low as −2.401),
+and **5 of 12 are better** (as high as −0.231, `D_seed1`). Being *worse* than naive short is the
+more informative half — it means the specific *timing* the policy learned, not just its average
+long/short balance, is actively costing money when inverted, which a pure long-bias story alone
+would not produce. But the split (7 worse / 5 better, not 12/12) means this isn't a clean verdict
+either way — some of the trained timing appears to add a little value beyond directional bias,
+some of it doesn't. **Consistent with, not overturning, Section 9's closed decision**: real but
+small and inconsistent structure, not a confirmed edge. Full detail:
+`data/results/weekly_reversed_signal_experiment.json`.

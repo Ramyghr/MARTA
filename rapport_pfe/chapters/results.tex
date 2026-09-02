@@ -61,6 +61,38 @@ Two findings hold across all six configurations without a single exception. Vola
 
 A trade-off not visible from either extreme alone emerged once every feature-horizon variant had been tested against the same battery: the 22-column feature set gives near-perfect seed stability (0.989--1.000) at the cost of weaker return distinctness (2/5 assets significant versus 4/5 for the 14-column set on the five-asset panel), and neither variant's return-distinctness advantage translates into predictive AUC. The 22-column set is preferred for anything requiring a reproducible regime definition across refits, on the reasoning that a return-distinctness advantage that does not translate into predictive signal is worth less than reproducibility, but this is a judgment call between two real, opposing properties rather than a configuration that dominates on every axis.
 
+\subsection{Regime Characterization}
+\label{subsec:regime-characterization}
+
+Table~\ref{tab:regime-characterization} reports the fitted per-state statistics for the six-state, five-asset, 22-column configuration --- the production regime model referenced throughout the remainder of this chapter and used by both the multi-agent and RL layers. Labels are generated automatically from each state's $\overline{\mathrm{realized\_vol}}$ (bucketed into five volatility tiers) and the sign of $\overline{\mathrm{adx}}$ (trending versus range-bound), the same direction-agnostic classifier documented in Section~\ref{subsec:regime-label-fix}; no directional (``bull''/``bear''/``crisis'') language is used, for the reasons Section~\ref{subsec:regime-zigzag} establishes below.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Per-regime fitted statistics, six-state five-asset 22-column configuration (pooled 2018--2025 training data). Sharpe, annualized return, and annualized volatility are historical population averages conditional on regime membership, not forward-looking predictions --- see Section~\ref{subsec:regime-zigzag}.}
+\label{tab:regime-characterization}
+\begin{tabular}{|c|p{4.0cm}|c|c|c|c|c|}
+\hline
+\textbf{Regime} & \textbf{Label} & \textbf{Sharpe} & \textbf{Ann.\ Return} & \textbf{Ann.\ Vol} & \textbf{Time Share} & \textbf{Dominant Asset} \\
+\hline
+R0 & Very Low Volatility / Range-bound & $-1.04$ & $-34.8\%$ & $33.5\%$ & $15.2\%$ & BTC \\
+\hline
+R1 & Moderate Volatility / Trending & $+1.11$ & $+74.4\%$ & $67.0\%$ & $17.2\%$ & LTC \\
+\hline
+R2 & Low Volatility / Range-bound & $-0.22$ & $-14.7\%$ & $68.3\%$ & $18.8\%$ & ETH \\
+\hline
+R3 & Low Volatility / Range-bound & $-0.26$ & $-12.4\%$ & $46.9\%$ & $20.3\%$ & XRP \\
+\hline
+R4 & Elevated Volatility / Trending & $+1.39$ & $+140.6\%$ & $101.5\%$ & $19.4\%$ & ETH \\
+\hline
+R5 & Extreme Volatility / Trending & $-0.44$ & $-82.7\%$ & $189.8\%$ & $9.0\%$ & XRP \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+Read purely as descriptive statistics, R0 and R5 resemble a natural short-or-avoid signal and R4 a natural long signal. Section~\ref{subsec:regime-zigzag} tests this reading directly at the level of individual price legs rather than accepting it at face value, and finds that it does not hold: these historical averages describe each state's unconditional population history over 2018--2025, not a leg-by-leg or forward-looking predictive property, and R4 in particular is dominant on \emph{more} down-legs than up-legs despite carrying the highest historical Sharpe of any state.
+
 \subsection{Downstream Value: Position Sizing and Directional Conditioning}
 \label{subsec:regime-downstream-value}
 

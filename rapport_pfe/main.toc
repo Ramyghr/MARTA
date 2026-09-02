@@ -81,23 +81,24 @@
 \contentsline {chapter}{\numberline {4}Results}{32}{}%
 \contentsline {section}{\numberline {4.1}Regime Detection Results}{32}{}%
 \contentsline {subsection}{\numberline {4.1.1}Statistical Validity Across Candidate Configurations}{32}{}%
-\contentsline {subsection}{\numberline {4.1.2}Downstream Value: Position Sizing and Directional Conditioning}{33}{}%
-\contentsline {subsection}{\numberline {4.1.3}Regime Label Directional Fidelity: A Leg-Level Check}{34}{}%
-\contentsline {subsection}{\numberline {4.1.4}Consequence: Removing Directional Language from Regime Descriptions (2026-09-01)}{35}{}%
-\contentsline {subsection}{\numberline {4.1.5}Synthetic Recovery Summary}{36}{}%
+\contentsline {subsection}{\numberline {4.1.2}Regime Characterization}{33}{}%
+\contentsline {subsection}{\numberline {4.1.3}Downstream Value: Position Sizing and Directional Conditioning}{34}{}%
+\contentsline {subsection}{\numberline {4.1.4}Regime Label Directional Fidelity: A Leg-Level Check}{35}{}%
+\contentsline {subsection}{\numberline {4.1.5}Consequence: Removing Directional Language from Regime Descriptions (2026-09-01)}{36}{}%
+\contentsline {subsection}{\numberline {4.1.6}Synthetic Recovery Summary}{37}{}%
 \contentsline {section}{\numberline {4.2}Multi-Agent Deliberation Results}{37}{}%
-\contentsline {subsection}{\numberline {4.2.1}Validation Battery: What the System Actually Does}{37}{}%
-\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{37}{}%
-\contentsline {subsection}{\numberline {4.2.3}Relationship to the Reported RL Policy}{38}{}%
-\contentsline {section}{\numberline {4.3}RL Execution Results}{39}{}%
-\contentsline {subsection}{\numberline {4.3.1}Controlled Ablation on the Crypto-Only Panel}{39}{}%
-\contentsline {subsection}{\numberline {4.3.2}Predictability Ceiling Check}{40}{}%
-\contentsline {subsection}{\numberline {4.3.3}Final Decision on the RL Layer}{40}{}%
-\contentsline {subsection}{\numberline {4.3.4}Native Weekly-Decision-Cadence Follow-Up (2026-08-31)}{40}{}%
-\contentsline {subsubsection}{2025 Test-Set Confirmation: the Lead Does Not Replicate}{41}{}%
-\contentsline {subsubsection}{Crypto5 Panel Extension: the Null Result Generalizes (2026-09-01)}{42}{}%
-\contentsline {chapter}{\numberline {5}Conclusion}{44}{}%
-\contentsline {section}{\numberline {5.1}Regime Detection: Status and Interim Conclusion}{44}{}%
-\contentsline {subsection}{\numberline {5.1.1}What Was Found}{44}{}%
-\contentsline {subsection}{\numberline {5.1.2}Interpretation}{45}{}%
-\contentsline {subsection}{\numberline {5.1.3}Open Items}{45}{}%
+\contentsline {subsection}{\numberline {4.2.1}Validation Battery: What the System Actually Does}{38}{}%
+\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{38}{}%
+\contentsline {subsection}{\numberline {4.2.3}Relationship to the Reported RL Policy}{39}{}%
+\contentsline {section}{\numberline {4.3}RL Execution Results}{40}{}%
+\contentsline {subsection}{\numberline {4.3.1}Controlled Ablation on the Crypto-Only Panel}{40}{}%
+\contentsline {subsection}{\numberline {4.3.2}Predictability Ceiling Check}{41}{}%
+\contentsline {subsection}{\numberline {4.3.3}Final Decision on the RL Layer}{41}{}%
+\contentsline {subsection}{\numberline {4.3.4}Native Weekly-Decision-Cadence Follow-Up (2026-08-31)}{41}{}%
+\contentsline {subsubsection}{2025 Test-Set Confirmation: the Lead Does Not Replicate}{42}{}%
+\contentsline {subsubsection}{Crypto5 Panel Extension: the Null Result Generalizes (2026-09-01)}{43}{}%
+\contentsline {chapter}{\numberline {5}Conclusion}{45}{}%
+\contentsline {section}{\numberline {5.1}Regime Detection: Status and Interim Conclusion}{45}{}%
+\contentsline {subsection}{\numberline {5.1.1}What Was Found}{45}{}%
+\contentsline {subsection}{\numberline {5.1.2}Interpretation}{46}{}%
+\contentsline {subsection}{\numberline {5.1.3}Open Items}{46}{}%
