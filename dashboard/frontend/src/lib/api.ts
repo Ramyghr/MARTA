@@ -269,6 +269,9 @@ export const api = {
   getRlExecution: () => fetchApi<{ rl_execution_enabled: boolean; warning: string }>("/api/settings/rl-execution"),
   setRlExecution: (enabled: boolean) =>
     fetch(`${API_URL}/api/settings/rl-execution?enabled=${enabled}`, { method: "POST" }).then((r) => r.json()) as Promise<{ rl_execution_enabled: boolean }>,
+  getWeeklyPpo: () => fetchApi<{ weekly_ppo_enabled: boolean; weekly_ppo_obs_mode: "raw" | "raw_regime" }>("/api/settings/weekly-ppo"),
+  setWeeklyPpo: (enabled: boolean, obsMode?: "raw" | "raw_regime") =>
+    fetch(`${API_URL}/api/settings/weekly-ppo?enabled=${enabled}${obsMode ? `&obs_mode=${obsMode}` : ""}`, { method: "POST" }).then((r) => r.json()) as Promise<{ weekly_ppo_enabled: boolean; weekly_ppo_obs_mode: "raw" | "raw_regime" }>,
   getPendingTrades: (status: "pending" | "approved" | "rejected" = "pending") =>
     fetchApi<{ trades: PendingTrade[] }>(`/api/trades/pending?status=${status}`),
   approvePendingTrade: (id: number) =>

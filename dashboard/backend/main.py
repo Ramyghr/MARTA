@@ -91,9 +91,21 @@ async def _broadcast_notification(notif: dict) -> None:
 
 
 def _run_ablation_eval() -> subprocess.CompletedProcess:
-    """Re-run run_rl.py --eval-only to regenerate data/results/ablation_results.json."""
+    """Re-run run_rl.py --eval-only to regenerate data/results/ablation_results.json.
+
+    The deployed rl/checkpoints/ppo_best.zip has observation_space Box(-10,10,(868,))
+    (confirmed via PPO.load(...).observation_space, 2026-09-03) — that's
+    window_size(60)*n_raw_features(14) + CONSENSUS_DIM(16) + portfolio_dim(8) +
+    asset_id_dim(4) = 868, i.e. the OLD 4-asset production panel's obs_mode="raw"
+    (rl/env.py's default CANONICAL_ASSETS = [BTC,ETH,EURUSD,GOLD], 14 raw features),
+    NOT the crypto5_multihorizon panel (22 features, 5 assets -> 1350-dim, confirmed by
+    reproducing that exact shape mismatch when --crypto5 was tried here first).
+    run_rl.py --eval-only defaults to obs_mode="encoder" (152/156-dim), which crashes
+    with a SB3 "Unexpected observation shape" ValueError against this checkpoint — only
+    --obs-mode raw (no --crypto5) matches how it was actually trained.
+    """
     return subprocess.run(
-        ["python", "run_rl.py", "--eval-only"],
+        ["python", "run_rl.py", "--eval-only", "--obs-mode", "raw"],
         cwd=MARTA_ROOT,
         capture_output=True,
         text=True,
@@ -261,13 +273,26 @@ def get_ablation():
 
 @app.post("/api/ablation/refresh")
 def refresh_ablation():
-    """Re-run --eval-only to regenerate ablation_results.json with clean no-regime debates."""
+    """Re-run --eval-only (--obs-mode raw, matching the deployed checkpoint) and copy its
+    suffixed output over the canonical ablation_results.json/ppo_evaluation.json the
+    dashboard actually reads. run_rl.py's own suffix naming (checkpoint_suffix -> "_raw")
+    exists to stop different experiment configs from clobbering each other's results on
+    disk, so eval-only never writes the bare canonical filename itself for a non-default
+    obs_mode run — this endpoint is the one place that deliberately promotes that
+    suffixed run's output to canonical, since it's regenerating the exact thing the
+    dashboard displays.
+    """
     try:
         result = _run_ablation_eval()
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Eval timed out after 5 minutes")
     if result.returncode != 0:
         raise HTTPException(status_code=500, detail=(result.stderr or result.stdout or "eval failed")[-2000:])
+    results_dir = MARTA_ROOT / "data" / "results"
+    for stem in ("ablation_results", "ppo_evaluation"):
+        suffixed = results_dir / f"{stem}_raw.json"
+        if suffixed.exists():
+            (results_dir / f"{stem}.json").write_bytes(suffixed.read_bytes())
     return get_ablation()
 
 
@@ -519,13 +544,16 @@ async def get_chat_suggestions(asset: str):
 @app.post("/api/rl/trigger-signal")
 async def trigger_signal_now(asset: str = Query("BTC_USDT")):
     """Manually fire one signal tick for `asset` — useful for testing without waiting an hour."""
-    import asyncio
     import signal_scheduler
-    # Must be `async def`: a sync `def` endpoint runs in FastAPI's worker thread pool,
-    # which has no running event loop, so asyncio.create_task() raised
-    # "RuntimeError: no running event loop" and silently dropped the tick.
-    asyncio.create_task(signal_scheduler._tick_asset(asset))
-    return {"status": "tick_queued", "asset": asset}
+    # Was fire-and-forget (asyncio.create_task, returning immediately with no result data)
+    # — the frontend then guessed completion with a hardcoded 4s setTimeout before
+    # refetching, so a slow tick (PPO/GARCH inference in a thread executor, can run
+    # longer than 4s under load) silently refetched stale state and the button looked
+    # like it did nothing. _tick_asset is already `async def` and does its blocking work
+    # via run_in_executor, so it's safe to await here directly — returns the real fresh
+    # signal instead of an opaque "queued" ack.
+    await signal_scheduler._tick_asset(asset)
+    return {"status": "tick_complete", "asset": asset, "signal": signal_scheduler.get_last_signals().get(asset)}
 
 
 @app.get("/api/paper/trades")
@@ -622,6 +650,36 @@ def get_rl_execution_setting():
 def set_rl_execution_setting(enabled: bool = Query(...)):
     import app_settings
     return {"rl_execution_enabled": app_settings.set_rl_execution_enabled(enabled)}
+
+
+@app.get("/api/settings/weekly-ppo")
+def get_weekly_ppo_setting():
+    """Weekly-cadence (decision_interval=168) PPO toggle — a different checkpoint from
+    rl-execution above, validated with a positive Sharpe on BTC_USDT
+    (rl/train_weekly_smoketest.py). BTC_USDT-only; takes over that asset's signal
+    entirely when on (see live_signal.py)."""
+    import app_settings
+    return {
+        "weekly_ppo_enabled": app_settings.get_weekly_ppo_enabled(),
+        "weekly_ppo_obs_mode": app_settings.get_weekly_ppo_obs_mode(),
+    }
+
+
+@app.post("/api/settings/weekly-ppo")
+def set_weekly_ppo_setting(enabled: bool = Query(...), obs_mode: Optional[str] = Query(None)):
+    import app_settings
+    import weekly_ppo_live
+    was_enabled = app_settings.get_weekly_ppo_enabled()
+    if obs_mode is not None:
+        app_settings.set_weekly_ppo_obs_mode(obs_mode)
+    result = app_settings.set_weekly_ppo_enabled(enabled)
+    if enabled and not was_enabled:
+        # Fresh on-switch: discard any stale decision state from a previous enabled
+        # period (see weekly_ppo_live.reset_state's docstring — a stale multi-week-old
+        # timestamp would catch up a long, possibly-irrelevant return history under the
+        # wrong regime context on the very next tick).
+        weekly_ppo_live.reset_state()
+    return {"weekly_ppo_enabled": result, "weekly_ppo_obs_mode": app_settings.get_weekly_ppo_obs_mode()}
 
 
 @app.get("/api/trades/pending")

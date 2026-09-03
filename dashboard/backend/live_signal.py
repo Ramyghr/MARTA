@@ -211,44 +211,62 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
     regime_label = regime_info.get("regime_label", 0)
     regime_prob = regime_info.get("probabilities", {})
 
-    # --- Signal priority 1: trained PPO — opt-in only (see app_settings.py) ---
-    # Default off per docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete, controlled
-    # ablation found no crypto5 RL configuration with a defensible edge over
-    # buy-and-hold. Skipping the predict() call entirely when disabled (not just
-    # ignoring its result) so this behaves exactly like "no checkpoint loaded" already
-    # does below — no new code path, just gating the existing fallback earlier.
     import app_settings
-    ppo_result = ppo_inference.predict(asset, now) if app_settings.get_rl_execution_enabled() else None
-    if ppo_result is not None:
-        action = ppo_result["action"]
-        size = ppo_result["position_size"]
-        source = "ppo"
-    else:
-        # --- Signal priority 2: rule-based fallback ---
-        action, size = _generate_regime_policy().get(regime_label, ("hold", 0.01))
-        source = "regime_policy"
 
-    # --- Signal priority 3: explicit caller-supplied debate override (direction only;
-    # stress/crisis stays flat) ---
+    # --- Signal priority 0: weekly-cadence PPO — opt-in, BTC_USDT only, takes over
+    # completely for this asset (see weekly_ppo_live.py's module docstring for why the
+    # debate-override priorities 3-4 below are deliberately skipped when this is
+    # active — they'd fight a policy that's only supposed to decide once a week). A
+    # different checkpoint from priority-1 "ppo" below (native decision_interval=168
+    # training, validated with a positive Sharpe, vs. the hourly checkpoint which
+    # isn't) — the two toggles are independent but only one can drive BTC_USDT at once.
     ppo_override = False
-    if last_debate_action and last_debate_action in ("long", "short", "hold"):
-        if regime_label != 2:  # never override flat in stress/crisis
-            if source == "ppo" and last_debate_action != action:
-                ppo_override = True
-            action = last_debate_action
-            source = f"{source}+debate"
+    ppo_result = None  # only ever set (possibly) in the priority-1 branch below; stays
+    # None on the weekly-PPO path too — "ppo_confidence" downstream specifically means
+    # the hourly checkpoint's confidence, not this one's position size.
+    if asset == "BTC_USDT" and app_settings.get_weekly_ppo_enabled():
+        import weekly_ppo_live
+        weekly = weekly_ppo_live.get_weekly_signal(app_settings.get_weekly_ppo_obs_mode(), now)
+        action = weekly["action"]
+        size = weekly["position_size"]
+        source = weekly["source"]
     else:
-        # --- Signal priority 4: automatic high-conviction debate override ---
-        # No explicit override was supplied — fall back to checking debate_results.json
-        # directly for a recent, high-conviction call for this asset. Overrides BOTH
-        # direction and size (the explicit path above only touches direction).
-        debate_override = _get_debate_override(asset, now)
-        if debate_override and regime_label != 2:  # never override flat in stress/crisis
-            if source == "ppo" and debate_override["action"] != action:
-                ppo_override = True
-            action = debate_override["action"]
-            size = debate_override["position_size"]
-            source = f"{source}+debate_override"
+        # --- Signal priority 1: trained PPO — opt-in only (see app_settings.py) ---
+        # Default off per docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete, controlled
+        # ablation found no crypto5 RL configuration with a defensible edge over
+        # buy-and-hold. Skipping the predict() call entirely when disabled (not just
+        # ignoring its result) so this behaves exactly like "no checkpoint loaded" already
+        # does below — no new code path, just gating the existing fallback earlier.
+        ppo_result = ppo_inference.predict(asset, now) if app_settings.get_rl_execution_enabled() else None
+        if ppo_result is not None:
+            action = ppo_result["action"]
+            size = ppo_result["position_size"]
+            source = "ppo"
+        else:
+            # --- Signal priority 2: rule-based fallback ---
+            action, size = _generate_regime_policy().get(regime_label, ("hold", 0.01))
+            source = "regime_policy"
+
+        # --- Signal priority 3: explicit caller-supplied debate override (direction only;
+        # stress/crisis stays flat) ---
+        if last_debate_action and last_debate_action in ("long", "short", "hold"):
+            if regime_label != 2:  # never override flat in stress/crisis
+                if source == "ppo" and last_debate_action != action:
+                    ppo_override = True
+                action = last_debate_action
+                source = f"{source}+debate"
+        else:
+            # --- Signal priority 4: automatic high-conviction debate override ---
+            # No explicit override was supplied — fall back to checking debate_results.json
+            # directly for a recent, high-conviction call for this asset. Overrides BOTH
+            # direction and size (the explicit path above only touches direction).
+            debate_override = _get_debate_override(asset, now)
+            if debate_override and regime_label != 2:  # never override flat in stress/crisis
+                if source == "ppo" and debate_override["action"] != action:
+                    ppo_override = True
+                action = debate_override["action"]
+                size = debate_override["position_size"]
+                source = f"{source}+debate_override"
 
     price = _fetch_latest_price(asset)
 
@@ -341,15 +359,38 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
     }
 
 
+_binance_client = None  # module-level cache — see _get_binance_client()
+
+
+def _get_binance_client():
+    """Cached ccxt.binance() instance, constructed once per process.
+
+    Confirmed 2026-09-03: a fresh ccxt.binance() instance lazily calls load_markets()
+    on its first API call (fetch_ticker included), fetching Binance's full exchange
+    metadata — measured ~4s on this network. _fetch_latest_price is on the hot path of
+    every get_live_signal() call (every Trading-page mount, every manual trigger, every
+    hourly scheduler tick), and previously constructed a brand-new client per call, so
+    every single call paid that ~4s cold-start cost again instead of once. Restricting
+    to spot markets (historical.py's _fetch_extension_binance found this already, same
+    root cause) trims the one-time cold start further (~2s vs ~8s unrestricted).
+    """
+    global _binance_client
+    if _binance_client is None:
+        import ccxt  # type: ignore
+        _binance_client = ccxt.binance({
+            "enableRateLimit": True,
+            "options": {"defaultType": "spot", "fetchMarkets": ["spot"]},
+        })
+    return _binance_client
+
+
 def _fetch_latest_price(asset: str) -> float:
     """Best-effort latest close price — tries CCXT REST, falls back to last parquet row."""
     from live_feed import SYMBOL_MAP
     symbol = SYMBOL_MAP.get(asset)
     if symbol:
         try:
-            import ccxt  # type: ignore
-            ex = ccxt.binance({"enableRateLimit": True})
-            ticker = ex.fetch_ticker(symbol)
+            ticker = _get_binance_client().fetch_ticker(symbol)
             return float(ticker.get("last", 0.0))
         except Exception:
             pass

@@ -399,6 +399,86 @@ function RlExecutionSection() {
   );
 }
 
+// ── Section 3b-3 — Weekly PPO (experimental, opt-in, BTC/USDT only) ────────────
+
+function WeeklyPpoSection() {
+  const weeklyPpoEnabled = useMARTAStore((s) => s.weeklyPpoEnabled);
+  const setWeeklyPpoEnabled = useMARTAStore((s) => s.setWeeklyPpoEnabled);
+  const weeklyPpoObsMode = useMARTAStore((s) => s.weeklyPpoObsMode);
+  const setWeeklyPpoObsMode = useMARTAStore((s) => s.setWeeklyPpoObsMode);
+  const [saving, setSaving] = useState(false);
+
+  const toggle = async () => {
+    const next = !weeklyPpoEnabled;
+    setSaving(true);
+    setWeeklyPpoEnabled(next);
+    try {
+      const res = await api.setWeeklyPpo(next);
+      setWeeklyPpoEnabled(res.weekly_ppo_enabled);
+      setWeeklyPpoObsMode(res.weekly_ppo_obs_mode);
+    } catch {
+      setWeeklyPpoEnabled(!next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeObsMode = async (mode: "raw" | "raw_regime") => {
+    setSaving(true);
+    setWeeklyPpoObsMode(mode);
+    try {
+      const res = await api.setWeeklyPpo(weeklyPpoEnabled, mode);
+      setWeeklyPpoObsMode(res.weekly_ppo_obs_mode);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 text-[11px]">
+      <label className="flex items-center justify-between cursor-pointer">
+        <span className="stat-label">Weekly PPO — BTC/USDT only (experimental)</span>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          className="relative w-9 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50"
+          style={{ background: weeklyPpoEnabled ? "#00ff7f33" : "#1a1a1a" }}
+        >
+          <span
+            className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+            style={{ left: weeklyPpoEnabled ? 18 : 2, background: weeklyPpoEnabled ? "#00ff7f" : "#555" }}
+          />
+        </button>
+      </label>
+      <div className="flex items-center justify-between">
+        <span className="text-[#555]">Observation mode</span>
+        <div className="flex rounded overflow-hidden border border-[#1a1a1a]">
+          {(["raw", "raw_regime"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => changeObsMode(m)}
+              disabled={saving}
+              className="px-2 py-0.5 text-[10px] transition-colors disabled:opacity-50"
+              style={{
+                background: weeklyPpoObsMode === m ? "rgba(0,255,127,0.15)" : "transparent",
+                color: weeklyPpoObsMode === m ? "#00ff7f" : "#444",
+                borderRight: m !== "raw_regime" ? "1px solid #1a1a1a" : "none",
+              }}
+            >
+              {m === "raw" ? "Raw" : "Regime-aware"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="text-[10px] text-[#3a3a3a] leading-relaxed border-t border-[#161616] pt-2">
+        {weeklyPpoEnabled
+          ? `ON — replaces the hourly PPO/regime-policy/debate-override chain for BTC/USDT with a policy trained to decide once a week (168h). Validated positive Sharpe on both modes; unaffected by other assets or the RL Execution toggle above.`
+          : "OFF (default) — BTC/USDT uses the same signal chain as every other asset."}
+      </div>
+    </div>
+  );
+}
+
 // ── Section 3c — Indicator Visibility ──────────────────────────────────────────
 
 function IndicatorVisibilitySection() {
@@ -531,6 +611,7 @@ export default function SettingsPage() {
         <Panel title="Agent Configuration"><AgentConfigSection /></Panel>
         <Panel title="Execution Controls"><ExecutionControlsSection /></Panel>
         <Panel title="RL Execution"><RlExecutionSection /></Panel>
+        <Panel title="Weekly PPO"><WeeklyPpoSection /></Panel>
         <Panel title="Indicator Visibility"><IndicatorVisibilitySection /></Panel>
         <Panel title="System Status"><SystemStatusSection /></Panel>
       </div>

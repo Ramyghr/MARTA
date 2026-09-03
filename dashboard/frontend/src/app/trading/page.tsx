@@ -449,17 +449,17 @@ export default function TradingPage() {
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
     try {
+      // Backend now awaits the tick and returns the fresh signal directly (was
+      // fire-and-forget with a guessed 4s setTimeout before refetching — a slow tick
+      // under load could outlast that guess and the button would look like a no-op).
       await api.triggerSignal(selectedAsset);
     } catch {
-      // best-effort — the scheduler tick may still complete server-side
-    }
-    // The tick runs as a background task on the server; give it a few seconds
-    // to finish the debate lookup + paper_db write before refetching.
-    setTimeout(() => {
-      loadSignal();
+      // best-effort — surface via loadSignal() below regardless
+    } finally {
+      await loadSignal();
       setTradeLogKey((k) => k + 1);
       setTriggering(false);
-    }, 4000);
+    }
   }, [selectedAsset, loadSignal]);
 
   const handleRunDebateAndExecute = useCallback(() => {
@@ -508,12 +508,14 @@ export default function TradingPage() {
         // point — trigger-signal's get_live_signal() call will pick it up via the
         // automatic high-conviction override in live_signal.py.
         setExecuting(true);
-        api.triggerSignal(selectedAsset).catch(() => {});
-        setTimeout(() => {
+        // trigger-signal now awaits the tick server-side and resolves once it's really
+        // done — chain off that instead of guessing with a fixed setTimeout (see
+        // handleTrigger above for the same fix + rationale).
+        api.triggerSignal(selectedAsset).catch(() => {}).finally(() => {
           loadSignal();
           setTradeLogKey((k) => k + 1);
           setExecuting(false);
-        }, 4000);
+        });
       } else if (type === "error") {
         off();
         ws.close();

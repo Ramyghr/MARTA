@@ -12,6 +12,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const setRegimeNames = useMARTAStore((s) => s.setRegimeNames);
   const setApprovalMode = useMARTAStore((s) => s.setApprovalMode);
   const setRlExecutionEnabled = useMARTAStore((s) => s.setRlExecutionEnabled);
+  const setWeeklyPpoEnabled = useMARTAStore((s) => s.setWeeklyPpoEnabled);
+  const setWeeklyPpoObsMode = useMARTAStore((s) => s.setWeeklyPpoObsMode);
 
   // Regime semantics shift every time the HMM is refit — pull the live, dynamically
   // generated descriptions once at app boot instead of trusting the static REGIME_NAMES
@@ -38,6 +40,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.getRlExecution().then((s) => setRlExecutionEnabled(s.rl_execution_enabled)).catch(() => {});
   }, [setRlExecutionEnabled]);
+
+  // Weekly-cadence PPO toggle — same server-persisted hydration pattern, a different
+  // checkpoint from RL execution above (native decision_interval=168 training).
+  useEffect(() => {
+    api.getWeeklyPpo().then((s) => {
+      setWeeklyPpoEnabled(s.weekly_ppo_enabled);
+      setWeeklyPpoObsMode(s.weekly_ppo_obs_mode);
+    }).catch(() => {});
+  }, [setWeeklyPpoEnabled, setWeeklyPpoObsMode]);
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>

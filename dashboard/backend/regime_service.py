@@ -559,9 +559,22 @@ def _append_live_regime_log(asset: str, ts: pd.Timestamp, result: dict) -> None:
     dashboard's "current regime" GET endpoint and the /ws/regime websocket can be
     polled arbitrarily often and shouldn't each be rewriting this file; only
     live_signal's once-per-hour-per-asset tick opts in.
+
+    n_states is taken from len(result["probabilities"]) — NOT _n_regime_states()
+    (that reads the legacy encoder-based _hmm_model's component count regardless of
+    which model actually produced `result`). Found 2026-09-03: crypto5 assets route
+    through get_live_regime_crypto5()'s 6-state model, but whenever the legacy 4-state
+    _hmm_model happened to also be loaded in-process, _n_regime_states() silently
+    truncated the logged row to 4 probabilities, leaving regime_prob_4/5 NaN even
+    though regime_label (computed from the full 6-state argmax) could legitimately be
+    4 or 5. result["probabilities"] always has exactly the right number of keys for
+    whichever model computed it (get_live_regime_crypto5, get_live_regime, and
+    get_regime's crypto5 dispatch all size it correctly), so deriving n_states from it
+    directly is correct for every caller and immune to which model(s) happen to be
+    loaded.
     """
     try:
-        n_states = _n_regime_states()
+        n_states = len(result.get("probabilities", {})) or _n_regime_states()
         row = {
             "timestamp": ts,
             "asset": asset,

@@ -1,4 +1,6 @@
 {
   "approval_mode": false,
-  "rl_execution_enabled": false
+  "rl_execution_enabled": false,
+  "weekly_ppo_enabled": false,
+  "weekly_ppo_obs_mode": "raw_regime"
 }

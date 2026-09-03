@@ -880,3 +880,166 @@ agent-agreement panel used to have the frontend fetch every debate's full detail
 matches routes in registration order, so an untyped `{debate_id}` path segment would otherwise
 swallow the literal string `"agreement"` ahead of its own `int` validation). Frontend
 (`analytics/page.tsx`, `lib/api.ts`) now makes one request instead of N.
+
+## regime_live_log.parquet: crypto5 rows truncated to 4 of 6 probabilities — fixed (2026-09-03)
+
+268 crypto5-asset rows (BTC/ETH/BNB/LTC/XRP_USDT, spanning 2026-08-08 → today) had
+`regime_prob_4`/`regime_prob_5` as NaN while `regime_prob_0..3` were populated, even though
+`regime_label` could legitimately be 4 or 5 on those exact rows — proof the underlying
+computation used the real 6-state crypto5 HMM, only the *logged* row was truncated.
+
+**Root cause:** `regime_service.py`'s `_append_live_regime_log()` sized every logged row from
+`_n_regime_states()` — which reads the LEGACY 4-state encoder-based `_hmm_model`'s component
+count — instead of from the `result` dict actually passed in. `get_live_regime_crypto5()`
+(6-state model) and `get_live_regime()`'s legacy path (4-state model) both already build
+`result["probabilities"]` with exactly the right number of keys; `_append_live_regime_log` just
+ignored that and re-derived a count from the wrong global. It manifested intermittently (not on
+every crypto5 row) because whether the bug fired depended on whether the legacy 4-state
+`hmm_model_live.pkl` happened to *also* be loaded in that backend process — `_n_regime_states()`
+falls back to a hardcoded 6 when it isn't loaded, which is accidentally correct for crypto5 and
+only wrong when the legacy model successfully loads too. EURUSD/GOLD rows with the same-looking
+NaN pattern are NOT this bug — those assets genuinely use the legacy 4-state model, so only 4
+populated probabilities is correct for them.
+
+**Fixed:** `_append_live_regime_log()` now derives `n_states` from
+`len(result.get("probabilities", {}))`, correct for every caller regardless of which model(s)
+happen to be loaded in-process. No caller-side changes needed.
+
+**Existing 268 NaN rows deliberately NOT backfilled** — recomputing them via
+`get_live_regime_crypto5()` was attempted and rejected: 6 of 268 recomputed rows produce an
+argmax that *disagrees* with the `regime_label` actually logged live at write-time (not
+floating-point noise — a genuine posterior flip), because
+`regime/checkpoints/crypto5_multihorizon/hmm_model.pkl` is a gitignored binary checkpoint with a
+single mtime (2026-08-19) and no version history — it's been overwritten in place by at least
+one retrain since some of these rows were logged, so "recompute with today's model" is not the
+same model that actually produced the historical entry, and can't be told apart from cases where
+it happens to still agree. Left as a known, now-explained historical gap; harmless downstream
+since `rl/obs_builder.py`'s `build_regime_prob_series()` already `fillna(0.0)`s missing
+`regime_prob_i` columns. `regime_label` itself was never affected by this bug and remains
+trustworthy for all 268 rows. Diagnostic (report-only, writes nothing):
+`dashboard/backend/diagnose_regime_live_log_crypto5_nan.py`.
+
+## Dashboard bug sweep + chart rewrite + weekly-cadence PPO wiring (2026-09-03)
+
+A user bug-report session covering the live dashboard end-to-end. Four backend bugs fixed and
+verified against the running docker deployment (not just read, actually redeployed + curled/
+browser-tested each one):
+
+- **`debate_stream.py`'s live debate crashed** (`FileNotFoundError` on
+  `crypto5_multihorizon/regime_stream.parquet`) — `utils.freshness.CRYPTO5_PROCESSED` is a
+  cwd-relative `Path`, and the backend container's cwd (`/dashboard_backend`) isn't the repo
+  root; `regime_service.py` already anchored its own copy to `MARTA_ROOT`, this call site didn't.
+  Anchored the same way. This is the same bug class that recurred at least three more times this
+  session (see below and the two spawned follow-up tasks) — worth checking on sight in any new
+  module that builds a path from `Path(__file__).parent...` instead of the `MARTA_ROOT` env-var
+  pattern every other `dashboard/backend/` module already uses.
+- **"Trigger Manual Signal" silently did nothing** — `POST /api/rl/trigger-signal` was
+  fire-and-forget (`asyncio.create_task`, returned instantly with no data); the frontend guessed
+  completion with a hardcoded 4s `setTimeout` before refetching. Made the endpoint `await` the
+  tick and return the real signal; frontend now refetches off that response.
+- **"Refresh Ablation" 500'd** — `run_rl.py --eval-only` defaults to `obs_mode="encoder"`, but
+  the deployed `rl/checkpoints/ppo_best.zip` is actually `obs_mode="raw"` on the **old 4-asset
+  panel** (confirmed via the observation-shape math: 60×14 + 16 + 8 + 4 = 868, matching
+  `PPO.load(...).observation_space` exactly — `--crypto5` was tried first and also fails, giving
+  1350-dim). `dashboard/backend/main.py`'s `_run_ablation_eval()` now passes `--obs-mode raw`
+  explicitly, and `refresh_ablation()` copies the resulting suffixed output
+  (`ablation_results_raw.json`) over the canonical `ablation_results.json` the dashboard reads
+  (eval-only's own suffix-naming means it never writes the bare filename itself for a non-default
+  obs_mode). **Consequence: the dashboard's `marta_full` Sharpe changed from a stale −2.152 (a
+  leftover multi-seed sweep run, different config from what's deployed) to 0.326 — matching the
+  384-debate dense-cache number already in this file's "Dense BTC debate coverage" section.**
+- **Regime page stuck 2026-01→2026-07-25** — not a code bug: the crypto5 static regime stream is
+  frozen at 2025-12-31 and hourly live-logging only started 2026-08-08, leaving a genuine gap.
+  `dashboard/backend/backfill_live_regime.py` already existed for exactly this and had just never
+  been run — ran it, backfilled 5,885 real (reconstructed, not repeated) hourly rows per crypto5
+  asset into `regime_live_log.parquet`.
+
+**Latency root-caused and fixed, with real before/after timing, not a guess:** measured every
+dashboard API endpoint's response time directly against the docker backend; `/api/rl/live-signal`
+was the one outlier at ~4.8s (everything else <50ms). `live_signal.py`'s `_fetch_latest_price()`
+constructed a brand-new `ccxt.binance()` client on every call, and ccxt lazily calls
+`load_markets()` (fetches Binance's full exchange metadata) on that client's *first* API call —
+restricting to spot markets (same fix `historical.py`'s `_fetch_extension_binance` already made,
+for the same reason) and caching the client at module scope dropped steady-state calls to ~0.55s.
+The frontend's apparent "same ~14 endpoints fire twice on every page load" is **not** a production
+issue — confirmed it's React StrictMode's dev-only double-effect-invoke (the docker frontend runs
+a real `next build && next start`, where this doesn't happen); the genuinely production-relevant
+finding is that there's no shared fetch/cache layer (no React Query/SWR, just per-component
+`useEffect` + raw `fetch`), so N mounted components independently fetching the same conceptual
+data will always cost N round-trips — not fixed this session, just diagnosed.
+
+**Price chart rewritten from Recharts to `lightweight-charts`** (TradingView's own open-source
+library) — `dashboard/frontend/src/components/PriceChart.tsx`. Real native pan/zoom/crosshair
+instead of the old `Brush`-crop-without-refetch hack. Regime background bands are now projected
+fresh from the chart's own time-scale coordinate conversion on every
+`subscribeVisibleLogicalRangeChange` event (fires on both pan and zoom), which is the actual fix
+for the reported bug — verified by a synthetic wheel-zoom event that moved the bands in lockstep
+with the candles (synthetic mouse/pointer *drag* events don't reliably trigger the library's
+pointer-capture-based pan handling in an automated test, but pan and zoom both drive the exact
+same visible-range-change event internally, so the zoom test covers the mechanism either way).
+Two real bugs hit and fixed during the rewrite, worth knowing if this file is touched again:
+1. `displayCandles` (`liveCandles.slice(-2000)`) was never memoized — harmless under Recharts
+   (never a `useEffect` dependency there), but a fresh array every render fed into a new
+   `useEffect` here caused an infinite `setBands` → re-render → new-array → effect-fires-again
+   loop. Now `useMemo`'d on `[liveCandles]`.
+2. `chart.resize()` sets an explicit inline `width`/`height` style directly on the container
+   element passed to `createChart()`. Measuring *that same element* to decide the next resize
+   permanently pins it to whatever the very first, pre-layout-settle call used — every later
+   "fresh" `getBoundingClientRect()` read is just reading back your own last write. Fixed by
+   giving the chart mount div a separate, never-chart-touched parent wrapper (`wrapperRef`) as
+   the sizing source of truth, plus (found empirically, root cause not fully pinned down —
+   candidate: CSS Grid `minmax(0, Nfr)` row-track sizing settling late without notifying the
+   `ResizeObserver` on this particular descendant) a 4s post-mount polling fallback since even a
+   correctly-sourced `ResizeObserver` didn't reliably fire a follow-up callback in this layout.
+`lightweight-charts` added to `dashboard/frontend/package.json`; the frontend Docker image
+bundles its own `node_modules.tar.gz` (not a fresh `npm install`) so that had to be regenerated
+and the image rebuilt, not just hot-reloaded.
+
+**Native weekly-cadence PPO checkpoint (`rl/train_weekly_smoketest.py`, `decision_interval=168`,
+validated positive Sharpe on BTC_USDT — ~2.04 raw / ~1.74 raw_regime, see "Dense BTC debate
+coverage" above) wired into both the Strategy Tester and live signal generation, both opt-in:**
+
+- **Backtest:** `dashboard/backend/ppo_strategy_backtest.py` (new) — faithfully replicates
+  `rl/env.py`'s `step()` for `decision_interval>1` (CVaR-based position sizing via
+  `risk_cap_from_vol`, transaction cost charged once per decision not once per hour, the
+  `min_hold_bars`/`min_hold_stop_loss_dd` reversal lock, hour-by-hour compounding within a held
+  decision) as a plain walk-forward loop over `{asset}_normalized_live.parquet` — no Gymnasium env
+  needed since this is inference + bookkeeping, not training. Regime probabilities for
+  `obs_mode="raw_regime"` are stitched from `regime_stream_causal.parquet` (history, frozen at
+  2025-12-31) + `regime_live_log.parquet` (the gap since, per the backfill above) via
+  `rl/obs_builder.py`'s own `build_regime_prob_series` — the exact function training/eval use, not
+  a reimplementation. Two new strategies in `strategy_backtest.py`'s Strategy Tester,
+  `weekly_ppo_raw`/`weekly_ppo_raw_regime`, BTC_USDT-only (`run_backtest` 400s on any other
+  asset). Verified end-to-end through the real browser UI, not just curl: real metrics card, real
+  multi-week-spaced trade log.
+- **Live:** `dashboard/backend/weekly_ppo_live.py` (new) + a `weekly_ppo_enabled`/
+  `weekly_ppo_obs_mode` toggle in `app_settings.py` (default off, mirrors `rl_execution_enabled`'s
+  existing pattern) surfaced in Settings → "Weekly PPO". When on, it becomes the **sole** signal
+  source for BTC_USDT in `live_signal.get_live_signal()` — deliberately skips both the hourly
+  `ppo_inference`/regime-policy chain AND the debate-override logic for this asset, since layering
+  an hourly override on a policy specifically validated at weekly cadence would undermine it (this
+  project already measured, in the "Dense BTC debate coverage" section above, that denser debate
+  coverage doesn't move this class of checkpoint's behavior at all). The scheduler still ticks
+  hourly, but a genuinely fresh decision only happens once `DECISION_INTERVAL` (168h) has actually
+  elapsed since the last one — state persisted to `data/processed/weekly_ppo_state.json` (last
+  decision timestamp, held position, a small synthetic portfolio value/peak used only for the
+  min-hold stop-loss escape hatch), kept deliberately separate from `paper_db.py`'s shared-capital
+  pool rather than mixed into it, so this policy's observation stays on the training-consistent
+  trajectory instead of drifting with whatever else is happening to the shared account. Toggling
+  back on after being off resets this state (`weekly_ppo_live.reset_state()`) rather than catching
+  up a stale, possibly multi-week-old timestamp. Verified: real decision (`short`, real GARCH-vol
+  risk-capped size) on first enable (~32s, cold checkpoint+data load), held unchanged with no
+  recompute on a second call seconds later (~0.6s), correctly released back to `regime_policy` on
+  disable, real position size flows through `paper_db`'s existing generic `_apply_constraints`
+  cap unchanged (0.391 requested → 0.2 applied, same as every other signal source).
+
+**Also found + fixed same session:** `weekly_ppo_live.py`/`ppo_strategy_backtest.py` importing
+`rl.env.precompute_vol_forecast` exposed a latent bug there too — `rl/env.py`'s
+`_CACHE_DIR = Path("data/processed/rl_cache")` was cwd-relative like the others above, and since
+this was the first caller of it from the dashboard backend's container (cwd `/dashboard_backend`,
+not repo root), it wrote a stray GARCH cache file to `dashboard/backend/data/processed/rl_cache/`
+instead of the real, shared `data/processed/rl_cache/` every training/eval script reads.
+`rl/env.py` had never needed a `MARTA_ROOT` concept before since it was always run with
+cwd=repo-root via `run_rl.py` — now anchors `_CACHE_DIR` to `MARTA_ROOT` the same way every
+`dashboard/backend/` module does. The stray `dashboard/backend/data/` artifact from before the
+fix is left for manual cleanup (untracked, harmless to leave, just disk cruft).

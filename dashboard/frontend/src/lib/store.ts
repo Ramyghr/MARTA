@@ -61,6 +61,15 @@ interface MARTAStore {
   rlExecutionEnabled: boolean;
   setRlExecutionEnabled: (on: boolean) => void;
 
+  // Weekly-cadence PPO toggle — a DIFFERENT checkpoint from rlExecutionEnabled above
+  // (native decision_interval=168 training, validated with a positive Sharpe on
+  // BTC_USDT — see rl/train_weekly_smoketest.py). BTC_USDT-only; takes over that
+  // asset's signal entirely when on. Default off, same server-persisted pattern.
+  weeklyPpoEnabled: boolean;
+  setWeeklyPpoEnabled: (on: boolean) => void;
+  weeklyPpoObsMode: "raw" | "raw_regime";
+  setWeeklyPpoObsMode: (mode: "raw" | "raw_regime") => void;
+
   // Sidebar collapse
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -110,6 +119,11 @@ export const useMARTAStore = create<MARTAStore>((set) => ({
 
   rlExecutionEnabled: false,
   setRlExecutionEnabled: (rlExecutionEnabled) => set({ rlExecutionEnabled }),
+
+  weeklyPpoEnabled: false,
+  setWeeklyPpoEnabled: (weeklyPpoEnabled) => set({ weeklyPpoEnabled }),
+  weeklyPpoObsMode: "raw_regime",
+  setWeeklyPpoObsMode: (weeklyPpoObsMode) => set({ weeklyPpoObsMode }),
 
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

@@ -1,22 +1,21 @@
 "use client";
-import { useMemo, useState, useCallback, useEffect, useRef, type WheelEvent } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
-  ComposedChart,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-  Brush,
-  Cell,
-} from "recharts";
+  createChart,
+  ColorType,
+  CrosshairMode,
+  LineStyle,
+  CandlestickSeries,
+  HistogramSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+  type MouseEventParams,
+} from "lightweight-charts";
 import type { Candle, DataRange } from "@/lib/types";
 import { REGIME_COLORS } from "@/lib/types";
 import { useMARTAStore } from "@/lib/store";
-import { ZoomIn, ZoomOut, ChevronUp, ChevronDown, Maximize2 } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 
 interface Props {
   candles: Candle[];
@@ -32,8 +31,8 @@ type RangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 const RANGES: RangeKey[] = ["1W", "1M", "3M", "6M", "1Y", "ALL"];
 
 // Fallback only, for the brief window before useMARTAStore's regimeNames is populated
-// from the live backend (or if that fetch fails) — see PriceChart's legend render,
-// which prefers regimeNames over this. Worded as volatility/trend, not bull/bear: a
+// from the live backend (or if that fetch fails) — see the legend render below, which
+// prefers regimeNames over this. Worded as volatility/trend, not bull/bear: a
 // 2026-09-01 validation (regime/validate_regime_trend_alignment.py) found sharpe-
 // derived bull/bear labels didn't reliably match actual price direction per occurrence.
 const REGIME_SHORT: Record<number, string> = {
@@ -59,42 +58,8 @@ function rangeToMs(key: RangeKey): number {
   }
 }
 
-function CandleShape(props: Record<string, unknown>) {
-  const { x, y, width, height, open, close, regime_label } = props as {
-    x: number; y: number; width: number; height: number;
-    open: number; close: number; regime_label: number;
-  };
-  if (!x || !width) return null;
-  const isGreen = close >= open;
-  const bodyColor = isGreen ? "#00ff7f" : "#ff3737";
-  const cx = (x as number) + (width as number) / 2;
-  return (
-    <g>
-      <rect
-        x={x as number} y={-9999} width={width as number} height={99999}
-        fill={REGIME_COLORS[regime_label ?? 0] ?? "#444"} fillOpacity={0.08}
-      />
-      <rect
-        x={(x as number) + (width as number) * 0.15}
-        y={y as number}
-        width={(width as number) * 0.7}
-        height={Math.max(height as number, 1)}
-        fill={bodyColor}
-        fillOpacity={0.85}
-      />
-      <line x1={cx} y1={y as number} x2={cx} y2={(y as number) - 4} stroke={bodyColor} strokeWidth={1} strokeOpacity={1.0} />
-      <line x1={cx} y1={(y as number) + (height as number)} x2={cx} y2={(y as number) + (height as number) + 4} stroke={bodyColor} strokeWidth={1} strokeOpacity={1.0} />
-    </g>
-  );
-}
-
-function formatTimestamp(ts: string, count: number): string {
-  try {
-    const d = new Date(ts);
-    if (count > 800) return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-    if (count > 200) return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  } catch { return ts; }
+function toUTCTimestamp(iso: string): UTCTimestamp {
+  return Math.floor(new Date(iso).getTime() / 1000) as UTCTimestamp;
 }
 
 function formatPrice(v: number, asset: string): string {
@@ -104,44 +69,28 @@ function formatPrice(v: number, asset: string): string {
   return `$${v.toFixed(2)}`;
 }
 
-const CustomTooltip = ({ active, payload, asset }: { active?: boolean; payload?: Array<{ payload: Candle }>; asset: string }) => {
-  if (!active || !payload?.length) return null;
-  const c = payload[0].payload;
-  const isGreen = c.close >= c.open;
-  const fp = (v: number) => formatPrice(v, asset);
-  return (
-    <div className="bg-[#111] border border-[#333] rounded p-2 text-[11px] font-mono z-50">
-      <div className="text-[#666] mb-1">{new Date(c.timestamp).toLocaleString()}</div>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-        <span className="text-[#666]">O</span><span>{fp(c.open)}</span>
-        <span className="text-[#666]">H</span><span className="text-[#00ff7f]">{fp(c.high)}</span>
-        <span className="text-[#666]">L</span><span className="text-[#ff3737]">{fp(c.low)}</span>
-        <span className="text-[#666]">C</span><span style={{ color: isGreen ? "#00ff7f" : "#ff3737" }}>{fp(c.close)}</span>
-        {c.volume > 0 && (
-          <><span className="text-[#666]">Vol</span><span className="text-[#555]">{c.volume.toLocaleString("en", { maximumFractionDigits: 0 })}</span></>
-        )}
-      </div>
-      {c.regime_description && (
-        <div className="mt-1 text-[#444]">R{c.regime_label} {c.regime_description}</div>
-      )}
-    </div>
-  );
-};
+// One contiguous run of same regime_label — the unit the background bands are drawn
+// from (many candles collapse into one band, not one rect per candle).
+interface RegimeRun {
+  startSec: number;
+  endSec: number;
+  regime: number;
+}
+
+// Screen-space projection of a RegimeRun, recomputed on every pan/zoom/resize so the
+// band always matches whatever time window the chart is currently showing — this is
+// the fix for the reported bug (bands staying put while the candles scrolled under them).
+interface RegimeBand {
+  left: number;
+  width: number;
+  color: string;
+}
 
 export default function PriceChart({ candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false }: Props) {
   const regimeNames = useMARTAStore((s) => s.regimeNames);
   const [activeRange, setActiveRange] = useState<RangeKey>("ALL");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
-  const [hover, setHover] = useState<{ ts: string; price: number } | null>(null);
-
-  // Y-axis zoom/pan — mirrors the X-axis range controls so price scale isn't stuck
-  // on auto-fit. yZoom=1 is fit-to-visible-data; >1 zooms in, <1 zooms out. yPanOffset
-  // shifts the visible center up/down in price units. Both reset on asset switch since
-  // a stale zoom/offset from e.g. BTC's ~$40k scale is meaningless for EURUSD's ~1.1.
-  const [yZoom, setYZoom] = useState(1);
-  const [yPanOffset, setYPanOffset] = useState(0);
-  useEffect(() => { setYZoom(1); setYPanOffset(0); }, [asset]);
 
   // EURUSD/GOLD historical data ends 2024-12-31 — Twelve Data live ticks extend the
   // chart forward from today. Unlike BTC/ETH (continuous exchange coverage, safe to
@@ -217,60 +166,17 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
     onRangeChange({ start: new Date(customStart).toISOString(), end: new Date(customEnd).toISOString() });
   }, [customStart, customEnd, onRangeChange]);
 
-  const handleChartHover = useCallback((state: { activePayload?: Array<{ payload: Candle }> }) => {
-    const p = state?.activePayload?.[0]?.payload;
-    if (p) setHover({ ts: p.timestamp, price: p.close });
-  }, []);
-
-  const handleChartLeave = useCallback(() => setHover(null), []);
-
-  const displayCandles = liveCandles.slice(-2000);
-
-  const { minPrice: autoMinPrice, maxPrice: autoMaxPrice } = useMemo(() => {
-    if (!displayCandles.length) return { minPrice: 0, maxPrice: 1 };
-    const lows = displayCandles.map((c) => c.low);
-    const highs = displayCandles.map((c) => c.high);
-    const min = Math.min(...lows);
-    const max = Math.max(...highs);
-    const pad = (max - min) * 0.04;
-    return { minPrice: min - pad, maxPrice: max + pad };
-  }, [displayCandles]);
-
-  // Apply user Y zoom/pan on top of the auto-fit range computed above.
-  const { minPrice, maxPrice } = useMemo(() => {
-    const autoHalf = (autoMaxPrice - autoMinPrice) / 2 || 1;
-    const center = (autoMinPrice + autoMaxPrice) / 2 + yPanOffset;
-    const half = autoHalf / yZoom;
-    return { minPrice: center - half, maxPrice: center + half };
-  }, [autoMinPrice, autoMaxPrice, yZoom, yPanOffset]);
-
-  const zoomIn = useCallback(() => setYZoom((z) => Math.min(20, z * 1.35)), []);
-  const zoomOut = useCallback(() => setYZoom((z) => Math.max(0.2, z / 1.35)), []);
-  const panUp = useCallback(() => {
-    const half = ((autoMaxPrice - autoMinPrice) / 2 || 1) / yZoom;
-    setYPanOffset((o) => o + half * 0.3);
-  }, [autoMinPrice, autoMaxPrice, yZoom]);
-  const panDown = useCallback(() => {
-    const half = ((autoMaxPrice - autoMinPrice) / 2 || 1) / yZoom;
-    setYPanOffset((o) => o - half * 0.3);
-  }, [autoMinPrice, autoMaxPrice, yZoom]);
-  const resetYAxis = useCallback(() => { setYZoom(1); setYPanOffset(0); }, []);
-  const isYAutoFit = yZoom === 1 && yPanOffset === 0;
-
-  const handleChartWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    if (e.deltaY < 0) zoomIn(); else zoomOut();
-  }, [zoomIn, zoomOut]);
-
-  const chartData = displayCandles.map((c) => ({
-    ...c,
-    body: [Math.min(c.open, c.close), Math.max(c.open, c.close)],
-  }));
+  // Memoized: the data-push useEffect below depends on this array's identity, and
+  // an unmemoized .slice() (a fresh array every render) previously caused an infinite
+  // render loop (setBands inside the effect -> re-render -> new displayCandles
+  // reference -> effect fires again). Recharts never had a useEffect keyed on this,
+  // so the same unmemoized .slice() didn't loop there — introduced by this rewrite.
+  const displayCandles = useMemo(() => liveCandles.slice(-2000), [liveCandles]);
 
   const latestClose = displayCandles.at(-1)?.close;
   const prevClose = displayCandles.at(-2)?.close;
   const pctChange = latestClose && prevClose ? ((latestClose - prevClose) / prevClose) * 100 : 0;
-  const fp = (v: number) => formatPrice(v, asset);
+  const fp = useCallback((v: number) => formatPrice(v, asset), [asset]);
 
   // 24h high/low from visible candles
   const last24 = displayCandles.slice(-24);
@@ -279,28 +185,243 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
 
   const hasVolume = displayCandles.some((c) => c.volume > 0);
 
-  const tickInterval = Math.max(1, Math.floor(displayCandles.length / 6));
-
-  // Regime change boundaries for reference lines
-  const regimeBoundaries = useMemo(() => {
-    const bounds: Array<{ x: string; regime: number }> = [];
-    for (let i = 1; i < displayCandles.length; i++) {
-      if (displayCandles[i].regime_label !== displayCandles[i - 1].regime_label) {
-        bounds.push({ x: displayCandles[i].timestamp, regime: displayCandles[i].regime_label });
+  // Contiguous regime runs — many candles collapse into one band. Recomputed only
+  // when the underlying data changes, NOT on every pan/zoom (that part is just a
+  // cheap re-projection to pixels, done separately below).
+  const regimeRuns = useMemo<RegimeRun[]>(() => {
+    if (!displayCandles.length) return [];
+    const runs: RegimeRun[] = [];
+    const barSec = displayCandles.length > 1
+      ? toUTCTimestamp(displayCandles[1].timestamp) - toUTCTimestamp(displayCandles[0].timestamp)
+      : 3600;
+    let cur: RegimeRun | null = null;
+    for (const c of displayCandles) {
+      const t = toUTCTimestamp(c.timestamp);
+      if (cur && c.regime_label === cur.regime) {
+        cur.endSec = t + barSec;
+      } else {
+        if (cur) runs.push(cur);
+        cur = { startSec: t, endSec: t + barSec, regime: c.regime_label };
       }
     }
-    return bounds.slice(-20);
+    if (cur) runs.push(cur);
+    return runs;
   }, [displayCandles]);
 
   // Marks where historical data hands off to live-bridged ticks, so the transition
   // reads as a gap, not a bar. All 5 crypto5 assets are bridged the same way
   // EURUSD/GOLD were (see live_feature_bridge.py) — no longer asset-specific.
-  const liveBridgeBoundary = useMemo(() => {
+  const liveBridgeBoundarySec = useMemo(() => {
     const boundary = historicalEndRef.current;
     const last = displayCandles.at(-1);
     if (!boundary || !last || last.timestamp === boundary) return null;
-    return boundary;
-  }, [asset, displayCandles]);
+    return toUTCTimestamp(boundary);
+  }, [displayCandles]);
+
+  // ---------------------------------------------------------------- chart lifecycle
+  // wrapperRef is the sizing SOURCE OF TRUTH (flex-sized by CSS, never touched by the
+  // chart library). containerRef is what lightweight-charts mounts into — resize()
+  // sets an explicit inline width/height directly on that element, which fights its
+  // own position:absolute;inset:0 sizing if we ever measure IT instead of its parent
+  // (confirmed 2026-09-03: containerRef's rect gets permanently pinned to whatever the
+  // very first, pre-layout-settle resize() call used, since every later measurement of
+  // the same element just reads back that self-inflicted inline style). Always measure
+  // wrapperRef, never containerRef, when deciding a new chart size.
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const candleByTimeRef = useRef<Map<number, Candle>>(new Map());
+  const regimeRunsRef = useRef<RegimeRun[]>([]);
+  const liveBoundarySecRef = useRef<number | null>(null);
+  const onCandleClickRef = useRef(onCandleClick);
+  onCandleClickRef.current = onCandleClick;
+
+  const [bands, setBands] = useState<RegimeBand[]>([]);
+  const [liveBoundaryX, setLiveBoundaryX] = useState<number | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ candle: Candle; x: number; y: number } | null>(null);
+
+  // Re-project regime runs (and the live-bridge marker) to screen-space pixels using
+  // the chart's OWN time-scale coordinate conversion. Subscribed to every visible-
+  // range change (pan and zoom both fire this), so the bands always match whatever
+  // window is currently on screen instead of staying pinned to their original
+  // position while candles scroll underneath — that mismatch was the reported bug.
+  const recomputeOverlays = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const ts = chart.timeScale();
+    const next: RegimeBand[] = [];
+    for (const run of regimeRunsRef.current) {
+      const x1 = ts.timeToCoordinate(run.startSec as UTCTimestamp);
+      const x2 = ts.timeToCoordinate(run.endSec as UTCTimestamp);
+      if (x1 === null && x2 === null) continue;
+      const left = x1 ?? -50;
+      const right = x2 ?? (containerRef.current?.clientWidth ?? 0) + 50;
+      if (right <= 0 || left >= (containerRef.current?.clientWidth ?? 0)) continue;
+      next.push({ left, width: Math.max(right - left, 0.5), color: REGIME_COLORS[run.regime] ?? "#444" });
+    }
+    setBands(next);
+
+    if (liveBoundarySecRef.current !== null) {
+      const x = ts.timeToCoordinate(liveBoundarySecRef.current as UTCTimestamp);
+      setLiveBoundaryX(x);
+    } else {
+      setLiveBoundaryX(null);
+    }
+  }, []);
+
+  // Create the chart once. Data, options and callbacks are pushed into it via refs
+  // and separate effects below rather than recreating it on every prop change.
+  useEffect(() => {
+    if (!containerRef.current || !wrapperRef.current) return;
+    // autoSize:true measured this container before the surrounding CSS grid finished
+    // its layout pass, got a stale narrow width, and its internal ResizeObserver never
+    // re-fired on the later real resize (confirmed 2026-09-03). Sizing the chart
+    // explicitly off wrapperRef's measured rect — both here and in the ResizeObserver
+    // below — sidesteps whatever autoSize's internal observer was missing.
+    const initialRect = wrapperRef.current.getBoundingClientRect();
+    const chart = createChart(containerRef.current, {
+      width: Math.round(initialRect.width),
+      height: Math.round(initialRect.height),
+      layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#555", fontSize: 10 },
+      grid: { vertLines: { visible: false }, horzLines: { color: "#141414" } },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: "#4a9eff88", width: 1, style: LineStyle.Dashed, labelBackgroundColor: "#111" },
+        horzLine: { color: "#4a9eff88", width: 1, style: LineStyle.Dashed, labelBackgroundColor: "#111" },
+      },
+      rightPriceScale: { borderColor: "#1a1a1a" },
+      timeScale: { borderColor: "#1a1a1a", timeVisible: true, secondsVisible: false, rightOffset: 4 },
+      autoSize: false,
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+    });
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "#00ff7f", downColor: "#ff3737", borderVisible: false,
+      wickUpColor: "#00ff7f", wickDownColor: "#ff3737",
+      priceLineVisible: true, priceLineColor: "#2a2a2a", priceLineStyle: LineStyle.Dashed,
+      lastValueVisible: true,
+    }, 0);
+
+    const volumeSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" },
+      priceScaleId: "volume",
+    }, 1);
+    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0 } });
+    const panes = chart.panes();
+    if (panes[1]) panes[1].setStretchFactor(0.18);
+    if (panes[0]) panes[0].setStretchFactor(1);
+
+    chartRef.current = chart;
+    candleSeriesRef.current = candleSeries;
+    volumeSeriesRef.current = volumeSeries;
+
+    const handleClick = (param: MouseEventParams) => {
+      if (!param.time) return;
+      const c = candleByTimeRef.current.get(param.time as number);
+      if (c && onCandleClickRef.current) onCandleClickRef.current(c.timestamp);
+    };
+    const handleCrosshair = (param: MouseEventParams) => {
+      if (!param.point || !param.time) { setHoverInfo(null); return; }
+      const c = candleByTimeRef.current.get(param.time as number);
+      setHoverInfo(c ? { candle: c, x: param.point.x, y: param.point.y } : null);
+    };
+    chart.subscribeClick(handleClick);
+    chart.subscribeCrosshairMove(handleCrosshair);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(recomputeOverlays);
+
+    // Measure wrapperRef (never mutated by the chart library), not containerRef
+    // (resize() sets an explicit inline width/height directly on it — measuring that
+    // same element back would just read our own last write, permanently pinning it to
+    // whatever the very first, pre-layout-settle call used).
+    let lastAppliedW = Math.round(initialRect.width);
+    let lastAppliedH = Math.round(initialRect.height);
+    const applySize = () => {
+      if (!wrapperRef.current) return;
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      if (w > 0 && h > 0 && (w !== lastAppliedW || h !== lastAppliedH)) {
+        chart.resize(w, h);
+        lastAppliedW = w;
+        lastAppliedH = h;
+      }
+      recomputeOverlays();
+    };
+    const resizeObserver = new ResizeObserver(applySize);
+    resizeObserver.observe(wrapperRef.current);
+    // Belt-and-suspenders, not just timing: found 2026-09-03 that ResizeObserver can
+    // fail to fire a follow-up callback here even though wrapperRef's true rect (via a
+    // fresh getBoundingClientRect() from outside React) had already grown past its
+    // very-first-paint size — reproduced across reload, Fast Refresh, and a hard
+    // client-side unmount/remount, so it isn't just a one-off race. Root cause not
+    // pinned down (candidate: CSS Grid minmax(0, Nfr) row-track sizing settling after
+    // a sibling panel's async content changes the row height, which may not always
+    // notify a ResizeObserver on an absolutely-positioned descendant the same way a
+    // normal-flow resize would). Polling for a few seconds after mount is a robust
+    // fallback that converges regardless of the exact mechanism.
+    const pollUntil = Date.now() + 4000;
+    const pollInterval = setInterval(() => {
+      applySize();
+      if (Date.now() > pollUntil) clearInterval(pollInterval);
+    }, 200);
+
+    return () => {
+      clearInterval(pollInterval);
+      resizeObserver.disconnect();
+      chart.unsubscribeClick(handleClick);
+      chart.unsubscribeCrosshairMove(handleCrosshair);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(recomputeOverlays);
+      chart.remove();
+      chartRef.current = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Push fresh candle/volume data whenever the visible dataset changes.
+  useEffect(() => {
+    const candleSeries = candleSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (!candleSeries || !volumeSeries) return;
+
+    const byTime = new Map<number, Candle>();
+    const candleData = displayCandles.map((c) => {
+      const t = toUTCTimestamp(c.timestamp);
+      byTime.set(t, c);
+      return { time: t as UTCTimestamp, open: c.open, high: c.high, low: c.low, close: c.close };
+    });
+    candleByTimeRef.current = byTime;
+    candleSeries.setData(candleData);
+
+    volumeSeries.setData(
+      displayCandles.map((c) => ({
+        time: toUTCTimestamp(c.timestamp) as UTCTimestamp,
+        value: c.volume,
+        color: c.close >= c.open ? "rgba(0,255,127,0.45)" : "rgba(255,55,55,0.45)",
+      }))
+    );
+
+    regimeRunsRef.current = regimeRuns;
+    liveBoundarySecRef.current = liveBridgeBoundarySec;
+    recomputeOverlays();
+
+    // Collapse the volume pane to ~0 when this asset has no volume data (FX/commodity
+    // histdata feeds have no centralised volume — see CLAUDE.md) instead of showing an
+    // empty pane with axis chrome and no bars.
+    const panes = chartRef.current?.panes();
+    panes?.[1]?.setStretchFactor(hasVolume ? 0.18 : 0.0001);
+  }, [displayCandles, regimeRuns, liveBridgeBoundarySec, recomputeOverlays, hasVolume]);
+
+  // Y-axis autoscales to whatever's visible natively (lightweight-charts recomputes
+  // it on every pan/zoom already) — no manual zoom/pan state needed here anymore.
+  // "Fit" resets both axes to show the whole loaded dataset.
+  const handleFit = useCallback(() => {
+    chartRef.current?.timeScale().fitContent();
+  }, []);
 
   return (
     <div className="panel h-full flex flex-col">
@@ -378,156 +499,90 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
         </div>
       </div>
 
-      {/* Chart + Volume */}
+      {/* Chart — candles + volume in one lightweight-charts instance (two panes),
+          so the time scale, crosshair and pan/zoom are natively shared instead of
+          synced by hand across two separate chart libraries. */}
       <div className="flex-1 min-h-0 flex flex-col px-2 pb-1 pt-0">
-        {/* Price chart */}
-        <div style={{ flex: "1 1 0", minHeight: 0, position: "relative" }} onWheel={handleChartWheel}>
-          {/* Y-axis zoom/pan controls — mirrors the X-axis range buttons above so price
-              scale has the same manual override as time range. Scroll on the chart also
-              zooms the Y axis. */}
-          <div
-            className="absolute top-1 right-16 z-10 flex flex-col rounded border border-[#1a1a1a] bg-[#0a0a0acc] overflow-hidden"
-            title="Scroll on the chart to zoom the price axis"
-          >
-            <button onClick={zoomIn} className="p-1 text-[#666] hover:text-[#4a9eff] hover:bg-[#4a9eff11] transition-colors" title="Zoom in (Y axis)">
-              <ZoomIn size={12} />
-            </button>
-            <button onClick={zoomOut} className="p-1 text-[#666] hover:text-[#4a9eff] hover:bg-[#4a9eff11] transition-colors border-t border-[#1a1a1a]" title="Zoom out (Y axis)">
-              <ZoomOut size={12} />
-            </button>
-            <button onClick={panUp} className="p-1 text-[#666] hover:text-[#4a9eff] hover:bg-[#4a9eff11] transition-colors border-t border-[#1a1a1a]" title="Pan up">
-              <ChevronUp size={12} />
-            </button>
-            <button onClick={panDown} className="p-1 text-[#666] hover:text-[#4a9eff] hover:bg-[#4a9eff11] transition-colors border-t border-[#1a1a1a]" title="Pan down">
-              <ChevronDown size={12} />
-            </button>
-            <button
-              onClick={resetYAxis}
-              disabled={isYAutoFit}
-              className="p-1 text-[#666] hover:text-[#00ff7f] hover:bg-[#00ff7f11] transition-colors border-t border-[#1a1a1a] disabled:opacity-25 disabled:cursor-not-allowed"
-              title="Reset to auto-fit"
-            >
-              <Maximize2 size={12} />
-            </button>
+        <div ref={wrapperRef} style={{ flex: "1 1 0", minHeight: 0, position: "relative" }}>
+          {/* Regime background bands — projected fresh from the chart's own time
+              scale on every pan/zoom/resize (recomputeOverlays), so they always
+              match the currently-visible window instead of staying pinned to
+              wherever they were first drawn. */}
+          <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
+            {bands.map((b, i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute", left: b.left, top: 0, width: b.width, height: "100%",
+                  background: b.color, opacity: 0.09,
+                }}
+              />
+            ))}
+            {liveBoundaryX !== null && (
+              <div
+                style={{
+                  position: "absolute", left: liveBoundaryX, top: 0, bottom: 0, width: 1.5,
+                  background: "#4a9eff", opacity: 0.7,
+                }}
+              >
+                <span
+                  style={{
+                    position: "absolute", top: 2, left: 4, fontSize: 9, fontWeight: 700,
+                    color: "#4a9eff", whiteSpace: "nowrap",
+                  }}
+                >
+                  live ›
+                </span>
+              </div>
+            )}
           </div>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={chartData}
-              syncId="price-volume"
-              margin={{ top: 4, right: 8, bottom: 4, left: 4 }}
-              onClick={(ev) => {
-                const ts = (ev?.activePayload?.[0]?.payload as Candle | undefined)?.timestamp;
-                if (ts && onCandleClick) onCandleClick(ts);
-              }}
-              onMouseMove={handleChartHover}
-              onMouseLeave={handleChartLeave}
-              style={{ cursor: onCandleClick ? "crosshair" : "default" }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#141414" vertical={false} />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={(ts) => formatTimestamp(ts, displayCandles.length)}
-                tick={{ fill: "#444", fontSize: 10 }}
-                axisLine={{ stroke: "#1a1a1a" }}
-                tickLine={false}
-                interval={tickInterval}
-              />
-              <YAxis
-                domain={[minPrice, maxPrice]}
-                tickFormatter={fp}
-                tick={{ fill: "#444", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                width={64}
-                orientation="right"
-              />
-              <Tooltip content={<CustomTooltip asset={asset} />} cursor={{ stroke: "#4a9eff", strokeWidth: 1, strokeDasharray: "3 3" }} />
-              {latestClose && (
-                <ReferenceLine y={latestClose} stroke="#2a2a2a" strokeDasharray="4 4" strokeWidth={1} />
-              )}
-              {liveBridgeBoundary && (
-                <ReferenceLine
-                  x={liveBridgeBoundary}
-                  stroke="#4a9eff"
-                  strokeWidth={1.5}
-                  strokeDasharray="2 3"
-                  label={{ value: "live ›", position: "insideTopRight", fill: "#4a9eff", fontSize: 9, fontWeight: 700 }}
-                />
-              )}
-              {regimeBoundaries.map((b, i) => (
-                <ReferenceLine
-                  key={i}
-                  x={b.x}
-                  stroke={REGIME_COLORS[b.regime] ?? "#333"}
-                  strokeWidth={1}
-                  strokeOpacity={0.4}
-                  strokeDasharray="2 4"
-                />
-              ))}
-              {hover && (
-                <>
-                  <ReferenceLine
-                    y={hover.price}
-                    stroke="#4a9eff"
-                    strokeWidth={1}
-                    strokeOpacity={0.6}
-                    label={{ value: fp(hover.price), position: "right", fill: "#4a9eff", fontSize: 10, fontWeight: 700 }}
-                  />
-                  <ReferenceLine
-                    x={hover.ts}
-                    stroke="#4a9eff"
-                    strokeWidth={1}
-                    strokeOpacity={0.35}
-                    label={{ value: new Date(hover.ts).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit" }), position: "insideBottomLeft", fill: "#4a9eff", fontSize: 9 }}
-                  />
-                </>
-              )}
-              <Bar
-                dataKey="body"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                shape={(props: any) => {
-                  const idx = props.index as number;
-                  const c = chartData[idx];
-                  return <CandleShape {...props} open={c?.open} close={c?.close} regime_label={c?.regime_label} />;
-                }}
-                isAnimationActive={false}
-              />
-              <Brush
-                dataKey="timestamp"
-                height={22}
-                stroke="#1a1a1a"
-                fill="#080808"
-                travellerWidth={6}
-                tickFormatter={(ts: string) => {
-                  try { return new Date(ts).toLocaleDateString("en-US", { month: "short", year: "2-digit" }); }
-                  catch { return ""; }
-                }}
-                startIndex={Math.max(0, chartData.length - Math.floor(chartData.length * 0.4))}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
 
-        {/* Volume chart */}
-        {hasVolume && (
-          <div style={{ height: 38, flexShrink: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} syncId="price-volume" margin={{ top: 0, right: 8, bottom: 0, left: 4 }}>
-                <XAxis dataKey="timestamp" hide />
-                <YAxis hide domain={[0, "auto"]} />
-                <Tooltip content={() => null} cursor={{ stroke: "#4a9eff", strokeWidth: 1, strokeDasharray: "3 3" }} />
-                <Bar dataKey="volume" isAnimationActive={false} maxBarSize={8}>
-                  {chartData.map((c, i) => (
-                    <Cell
-                      key={i}
-                      fill={c.close >= c.open ? "rgba(0,255,127,0.45)" : "rgba(255,55,55,0.45)"}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+          {/* lightweight-charts mounts its canvas(es) into this element */}
+          <div ref={containerRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+
+          {/* Fit-to-view control — replaces the old manual Y zoom/pan buttons now
+              that the price axis autoscales natively to whatever's panned/zoomed
+              into view. */}
+          <button
+            onClick={handleFit}
+            className="absolute top-1 right-16 z-10 p-1 rounded border border-[#1a1a1a] bg-[#0a0a0acc] text-[#666] hover:text-[#00ff7f] hover:bg-[#00ff7f11] transition-colors"
+            title="Fit all loaded data"
+          >
+            <Maximize2 size={12} />
+          </button>
+
+          {/* Custom tooltip, positioned from the crosshair-move handler */}
+          {hoverInfo && (
+            <div
+              className="absolute z-20 bg-[#111] border border-[#333] rounded p-2 text-[11px] font-mono pointer-events-none"
+              style={{
+                left: Math.min(hoverInfo.x + 12, (containerRef.current?.clientWidth ?? 400) - 150),
+                top: 8,
+              }}
+            >
+              <div className="text-[#666] mb-1">{new Date(hoverInfo.candle.timestamp).toLocaleString()}</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+                <span className="text-[#666]">O</span><span>{fp(hoverInfo.candle.open)}</span>
+                <span className="text-[#666]">H</span><span className="text-[#00ff7f]">{fp(hoverInfo.candle.high)}</span>
+                <span className="text-[#666]">L</span><span className="text-[#ff3737]">{fp(hoverInfo.candle.low)}</span>
+                <span className="text-[#666]">C</span>
+                <span style={{ color: hoverInfo.candle.close >= hoverInfo.candle.open ? "#00ff7f" : "#ff3737" }}>
+                  {fp(hoverInfo.candle.close)}
+                </span>
+                {hoverInfo.candle.volume > 0 && (
+                  <>
+                    <span className="text-[#666]">Vol</span>
+                    <span className="text-[#555]">{hoverInfo.candle.volume.toLocaleString("en", { maximumFractionDigits: 0 })}</span>
+                  </>
+                )}
+              </div>
+              {hoverInfo.candle.regime_description && (
+                <div className="mt-1 text-[#444]">R{hoverInfo.candle.regime_label} {hoverInfo.candle.regime_description}</div>
+              )}
+            </div>
+          )}
+
+        </div>
       </div>
 
       {/* Regime legend with full names */}

@@ -228,6 +228,15 @@ async def stream_debate_live(websocket: WebSocket, asset: str, timestamp: str) -
         )
         import pandas as pd
 
+        # utils.freshness's CRYPTO5_PROCESSED/CRYPTO5_SEMANTICS_PATH are cwd-relative
+        # (Path("data/processed/crypto5_multihorizon")). regime_service.py anchors its own
+        # copy to MARTA_ROOT before use; this function didn't, so a backend process whose
+        # cwd isn't the repo root got a FileNotFoundError even though both files exist on
+        # disk. Anchor here too, once, so every downstream use (regime stream, aligned_path,
+        # MacroAgent/RiskAgent data_dir, FundManagerAgent semantics_path) is consistent.
+        CRYPTO5_PROCESSED = MARTA_ROOT / CRYPTO5_PROCESSED
+        CRYPTO5_SEMANTICS_PATH = MARTA_ROOT / CRYPTO5_SEMANTICS_PATH
+
         await websocket.send_json({"type": "debate_start", "asset": asset, "timestamp": timestamp, "mode": "live"})
 
         ts = pd.Timestamp(timestamp, tz="UTC")

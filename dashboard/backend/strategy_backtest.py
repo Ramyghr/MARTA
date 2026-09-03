@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 import historical
+import ppo_strategy_backtest
 
 TRANSACTION_COST = 0.001  # 10 bps per unit of position turnover — matches rl/env.py's default
 ANNUALIZE_HOURLY = np.sqrt(24 * 365)
@@ -222,6 +223,26 @@ _STRATEGIES: dict[str, dict[str, object]] = {
     },
 }
 
+# The one non-rule-based entry: native weekly-cadence (decision_interval=168) PPO
+# checkpoints (rl/train_weekly_smoketest.py) — see ppo_strategy_backtest.py, which is
+# where the actual model loading/inference lives (kept out of this file so its torch/
+# stable-baselines3 imports don't load for the 10 rule-based strategies above). Both
+# validated positive Sharpe on BTC_USDT (~2.04 raw, ~1.74 raw_regime — CLAUDE.md's
+# "Dense BTC debate coverage" section) — only asset this pair was trained/evaluated on,
+# so unlike every other strategy here these two are BTC_USDT-only, enforced in
+# run_backtest() below rather than left to silently produce a meaningless result on
+# a different asset's price series.
+_PPO_STRATEGIES: dict[str, dict[str, object]] = {
+    "weekly_ppo_raw": {
+        "label": "Weekly PPO (raw)", "category": "Advanced", "obs_mode": "raw",
+        "description": "Trained PPO policy, decides once a week from 60h of raw price/indicator history. BTC/USDT only.",
+    },
+    "weekly_ppo_raw_regime": {
+        "label": "Weekly PPO (regime-aware)", "category": "Advanced", "obs_mode": "raw_regime",
+        "description": "Same weekly PPO policy, additionally conditioned on the crypto5 HMM regime probability vector. BTC/USDT only.",
+    },
+}
+
 # Not implemented — shown in the UI as disabled/"coming soon" cards. Unlike
 # alpha_accelerator (built entirely from primitives already computed from `close`),
 # these two need data this pipeline doesn't have for an arbitrary backtest date range:
@@ -244,6 +265,14 @@ def list_strategies() -> dict:
     strategies = [
         {"id": sid, "label": s["label"], "category": s["category"], "description": s["description"], "locked": False}
         for sid, s in _STRATEGIES.items()
+    ]
+    checkpoints_available = ppo_strategy_backtest.available()
+    strategies += [
+        {
+            "id": sid, "label": s["label"], "category": s["category"], "description": s["description"],
+            "locked": not checkpoints_available.get(s["obs_mode"], False),
+        }
+        for sid, s in _PPO_STRATEGIES.items()
     ]
     strategies += [{**s, "locked": True} for s in _LOCKED_STRATEGIES]
     return {"strategies": strategies}
@@ -298,8 +327,14 @@ def _downsample_equity_curve(index: pd.Index, strat_values: np.ndarray, bh_value
 
 
 def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) -> dict:
-    if strategy not in _STRATEGIES:
+    is_ppo = strategy in _PPO_STRATEGIES
+    if not is_ppo and strategy not in _STRATEGIES:
         raise ValueError(f"Unknown or locked strategy: '{strategy}'")
+    if is_ppo and asset != ppo_strategy_backtest.ASSET:
+        raise ValueError(
+            f"'{strategy}' was only trained/evaluated on {ppo_strategy_backtest.ASSET} "
+            f"— pick that asset to run it."
+        )
 
     df = historical._load(asset)
     end_ts = pd.Timestamp(end, tz="UTC") if end else pd.Timestamp.now(tz="UTC")
@@ -313,10 +348,18 @@ def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) 
         )
 
     close = window["close"].astype(float)
-    spec = _STRATEGIES[strategy]
-    signal_fn: Callable[[pd.Series], pd.Series] = spec["fn"]  # type: ignore[assignment]
-    signal = signal_fn(close)
-    positions = signal.shift(1).fillna(0.0).to_numpy()
+    if is_ppo:
+        spec = _PPO_STRATEGIES[strategy]
+        # Walk-forward PPO position series, already shifted by construction — each
+        # decision only ever sees data up to and including its own decision bar, same
+        # no-lookahead guarantee run_backtest() gives every other strategy via the
+        # shift(1) below (which is skipped here, not needed twice).
+        positions = ppo_strategy_backtest.run(spec["obs_mode"], window.index).to_numpy()  # type: ignore[arg-type]
+    else:
+        spec = _STRATEGIES[strategy]
+        signal_fn: Callable[[pd.Series], pd.Series] = spec["fn"]  # type: ignore[assignment]
+        signal = signal_fn(close)
+        positions = signal.shift(1).fillna(0.0).to_numpy()
     returns = close.pct_change().fillna(0.0).to_numpy()
 
     turnover = np.abs(np.diff(np.concatenate([[0.0], positions])))

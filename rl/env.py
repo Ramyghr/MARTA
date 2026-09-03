@@ -47,6 +47,7 @@ defined once in configs/splits.py:
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -116,7 +117,17 @@ _CVAR_MULT = float(-norm.pdf(_Z05) / 0.05)  # ~ -2.063 (applied to vol → negat
 
 _GARCH_WINDOW = 90 * 24       # 90 days hourly (same lookback as RiskAgent)
 _GARCH_STRIDE = 168           # refit weekly, forward-fill between refits
-_CACHE_DIR = Path("data/processed/rl_cache")
+
+# Anchored to MARTA_ROOT (not a bare relative path) — dashboard/backend/ modules
+# (regime_service.py, live_signal.py, app_settings.py, ppo_strategy_backtest.py) already
+# route through this same env-var-with-fallback pattern for exactly this reason: this
+# module was historically only ever invoked with cwd=repo-root (run_rl.py et al.), but
+# ppo_strategy_backtest.py/weekly_ppo_live.py now call precompute_vol_forecast() from
+# inside the dashboard backend container, whose cwd is not the repo root. A bare relative
+# path there silently wrote/read a stray, wrong-location cache directory instead of the
+# shared one every training/eval script actually uses (found + fixed 2026-09-03).
+MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).resolve().parent.parent)))
+_CACHE_DIR = MARTA_ROOT / "data" / "processed" / "rl_cache"
 
 _DIRECTION_SIGN = {0: 1.0, 1: -1.0, 2: 0.0}  # long / short / hold
 
