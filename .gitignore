@@ -31,6 +31,12 @@ data/processed/
 data/validated/
 data/results/*.json
 data/debates/*.json
+# dashboard/backend/data/ — stray runtime cache/live-bridge artifacts written from inside
+# the docker container when a MARTA_ROOT-anchored path was missing (fixed 2026-09-03).
+# The repo-root data/processed/ rule above doesn't cover this nested path (gitignore
+# patterns with a mid-pattern "/" anchor to the .gitignore's own directory), which let
+# these get git-add -A'd into a commit by accident.
+dashboard/backend/data/
 encoder/checkpoints/
 encoder/plots/
 regime/checkpoints/
