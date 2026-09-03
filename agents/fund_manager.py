@@ -37,6 +37,28 @@ _REGIME_VOL_CONVICTION_MULTIPLIER: dict[str, float] = {
     "extreme_vol": 0.60,
 }
 
+# Hard ceiling on position_size itself, as a fraction of risk_limits.max_position_size —
+# added 2026-09-03 after run_regime_instructions_ablation.py's 90-debate A/B test found
+# the conviction multiplier above does NOT reliably keep position_size down: conviction is
+# derived from raw LLM confidence, and prescriptive prompt text (agents/context.py's
+# _REGIME_TRADING_INSTRUCTIONS) was found to *inflate* raw confidence in this project's own
+# data (see docs/RESULTS_AND_METHODOLOGY.md Section 11) enough to outrun the multiplier's
+# dampening. _REGIME_VOL_CONVICTION_MULTIPLIER only ever scales an input to a downstream
+# min(); it cannot guarantee an output ceiling. This dict is applied as an explicit min()
+# on position_size itself further down in synthesize(), so it holds regardless of how high
+# conviction climbs — and its values are deliberately set to match what
+# _REGIME_TRADING_INSTRUCTIONS's prompt text already promises the LLM ("reduce ~20%" /
+# "max 30% of normal risk budget"), which nothing previously enforced. Keeping this as a
+# separate dict from _REGIME_VOL_CONVICTION_MULTIPLIER rather than merging them: the
+# conviction multiplier still does useful work shaping the qualitative rationale/
+# regime_contradiction flag, and collapsing the two would make it unclear which one a
+# future change is meant to affect.
+_REGIME_VOL_MAX_POSITION_SCALE: dict[str, float] = {
+    "normal_vol": 1.00,
+    "elevated_vol": 0.80,
+    "extreme_vol": 0.30,
+}
+
 _CONSENSUS_MARGIN = 0.15
 _CONTRARIAN_WEIGHT = 0.5  # Contrarian votes count at half weight
 
@@ -165,6 +187,13 @@ class FundManagerAgent(BaseAgent):
             regime_override = True
 
         position_size = round(min(conviction * 0.8, risk_limits.max_position_size), 4)
+
+        # Hard vol-regime cap — see _REGIME_VOL_MAX_POSITION_SCALE docstring above. Applied
+        # after the conviction-based calculation so it's a true ceiling, not just another
+        # input to the same min() conviction already went through.
+        position_scale = _REGIME_VOL_MAX_POSITION_SCALE.get(vol_level, 1.0)
+        position_size = round(min(position_size, risk_limits.max_position_size * position_scale), 4)
+
         if final_action == "hold":
             position_size = 0.0
 

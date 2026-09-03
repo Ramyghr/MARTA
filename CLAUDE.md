@@ -832,7 +832,7 @@ similar) before the new Bull/Bear signal could be reflected in RL-side results.
 
 Deliberately not implemented this session — captured as a roadmap/future-work item only.
 
-## Regime trading-instructions A/B test (smoke test only, 2026-09-02)
+## Regime trading-instructions A/B test — full 90-debate result (2026-09-02/03)
 
 Added an opt-in, prescriptive alternative to the passive regime description agents get today.
 `agents/context.py`: new `RegimeContext.vol_level` field (computed once via
@@ -840,20 +840,36 @@ Added an opt-in, prescriptive alternative to the passive regime description agen
 multiplier already uses) and a new `_REGIME_TRADING_INSTRUCTIONS` dict (`normal_vol` /
 `elevated_vol` / `extreme_vol` → concrete position-sizing/confirmation rules).
 `serialize_context_for_prompt()` gained `include_instructions: bool = False` — default off, so
-every existing caller (production dashboard included) is byte-for-byte unchanged until this is
-validated.
+every existing caller (production dashboard included) is byte-for-byte unchanged.
 
 `run_regime_instructions_ablation.py` (new) A/B/C-tests `none` / `description_only` /
 `instructions` on the same (timestamp, asset) pairs, stratified by volatility bucket, pre-2025
-only (keeps the 2025 test split untouched). **Only run so far: `--n-per-bucket 1`, a 9-debate
-smoke test** — full detail and the honest "do not treat as a result" framing is
-`docs/RESULTS_AND_METHODOLOGY.md` Section 11. Headline of that smoke test: the `instructions`
-variant *increased* mean position size in `elevated_vol`/`extreme_vol` versus
-`description_only` (0.509 vs 0.352, 0.480 vs 0.279) — the opposite of what its own "reduce
-sizing" instruction text asks for — plus the highest mean conviction and the only non-zero
-Round-2 flip rate of the three variants. Hypothesis, not finding, at n=1/cell: a prescriptive
-prompt may read to the LLM as permission to be more confident rather than as an actual brake.
-Next step if pursued: the full 90-debate run (`--n-per-bucket 10`, default).
+only. A 9-debate smoke test (`--n-per-bucket 1`) confirmed the harness first; the full run
+(`--n-per-bucket 10`, 90 debates, n=30/variant) followed — full detail in
+`docs/RESULTS_AND_METHODOLOGY.md` Section 11.
+
+**Result: no directional-accuracy effect (all three variants 0.55-0.57 overall — consistent
+with Section 10's finding elsewhere that regime conditioning hasn't beaten a noise control
+anywhere in this project), and h2 (instructions should *shrink* position size in high-vol
+buckets) is not just unsupported but inverted, consistently across four metrics.** Mean position
+size, mean conviction, Round-2 flip rate, and agent agreement all rise monotonically with how
+much regime text is in the prompt (`none` < `description_only` < `instructions`), in every
+volatility bucket — the explicit "max 30% of normal risk budget" instruction did not produce
+smaller `extreme_vol` positions (0.350, the *largest* of the three variants there). Root cause is
+architectural, not a wording problem: `position_size` is computed deterministically from
+`conviction` in `FundManagerAgent.synthesize()`, and the instruction text is prose the agents
+read, not a value anything enforces — same lesson this project already encoded once in
+`_REGIME_VOL_CONVICTION_MULTIPLIER`.
+
+**Fixed same day:** `_REGIME_VOL_MAX_POSITION_SCALE` (new dict, `normal_vol`/`elevated_vol`/
+`extreme_vol` → 1.00/0.80/0.30 — matching what the prompt text already claimed) is now applied
+as a hard `min()` ceiling on `position_size` itself in `synthesize()`, after the existing
+conviction-based calculation, so it holds regardless of how high conviction climbs. Verified
+deterministically (mocked LLM call, no Ollama needed): a maximum-confidence unanimous scenario
+that previously produced `position_size=0.48` in `extreme_vol` (conviction-multiplier path only)
+now correctly caps at `0.30`; `normal_vol` is a byte-for-byte no-op (scale=1.0). Not yet
+re-verified against a real LLM run — the deterministic check proves the code path, not that it
+shifts the full 90-debate ablation's summary numbers.
 
 **Also fixed this session, unrelated:** `dashboard/backend/debate_stream.py`'s analytics
 agent-agreement panel used to have the frontend fetch every debate's full detail individually

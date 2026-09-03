@@ -944,7 +944,7 @@ some of it doesn't. **Consistent with, not overturning, Section 9's closed decis
 small and inconsistent structure, not a confirmed edge. Full detail:
 `data/results/weekly_reversed_signal_experiment.json`.
 
-## 11. Regime trading-instructions A/B test — smoke test only, not a result (2026-09-02)
+## 11. Regime trading-instructions A/B test — full 90-debate result (2026-09-02/03)
 
 Section 9/10 both test the RL execution layer's use of regime context. This is the first test
 of the *agent* layer's use of it: does turning the regime block from a passive description into
@@ -968,48 +968,105 @@ starve the buckets the hypotheses actually care about), restricted to pre-2025 t
 keep the 2025 test split untouched. Hypotheses were pre-registered before any debate ran
 (`data/results/regime_instructions_ablation_hypotheses.json`).
 
-**This run used `--n-per-bucket 1` — 9 debates total (3 variants × 3 buckets, n=3 per
-variant).** That is a smoke test to confirm the harness works end-to-end, not a sample size
-either the pre-registered hypotheses or this project's own block-bootstrap convention (Section
-9/10) would treat as decisive — one debate per (variant, bucket) cell. Numbers below are recorded
-for completeness and because two of them are directionally interesting enough to flag, not
-because either instructions hypothesis is confirmed:
+**A 9-debate smoke test (`--n-per-bucket 1`) confirmed the harness end-to-end first**
+(2026-09-02); the full run below is `--n-per-bucket 10` — 90 debates total (3 variants × 3
+volatility buckets × 10 timestamps/bucket, n=30 per variant), 2026-09-03. No formal block-bootstrap
+CI was computed for this run (unlike Section 9/10's RL ablations) — n=30/variant, and 8-10
+directional calls per (variant, bucket) cell, is still on the small side for that. What follows is
+reported as a directionally consistent pattern across four largely-independent metrics, not a
+significance-tested result:
 
 | Variant | n | Dir. acc. (overall) | Mean position size | Mean conviction | R2 flip rate | Mean agent agreement |
 |---|---|---|---|---|---|---|
-| `none` | 3 | 0.333 (1/3) | 0.4706 | 0.588 | 0.00 | 0.694 |
-| `description_only` | 3 | 0.000 (0/3) | 0.4770 | 0.596 | 0.00 | 0.778 |
-| `instructions` | 3 | 0.000 (0/3) | 0.5962 | 0.745 | 0.25 | 0.889 |
+| `none` | 30 | 0.556 (15/27) | 0.3772 | 0.536 | 0.009 | 0.678 |
+| `description_only` | 30 | 0.571 (16/28) | 0.4769 | 0.644 | 0.033 | 0.731 |
+| `instructions` | 30 | 0.552 (16/29) | 0.5079 | 0.691 | 0.132 | 0.783 |
 
-Mean position size by volatility bucket (this is what h2 predicted the instructions block would
-*shrink* in `elevated_vol`/`extreme_vol`, since the instruction text literally says "reduce
-position sizing ~20%" / "max 30% of normal risk budget"):
+Mean position size by volatility bucket (n=10 debates per variant per bucket; this is what h2
+predicted the instructions block would *shrink* in `elevated_vol`/`extreme_vol`, since the
+instruction text literally says "reduce position sizing ~20%" / "max 30% of normal risk budget"):
 
 | Variant | normal_vol | elevated_vol | extreme_vol |
 |---|---|---|---|
-| `none` | 0.4495 | 0.5384 | 0.4238 |
-| `description_only` | 0.8000 | 0.3522 | 0.2789 |
-| `instructions` | 0.8000 | 0.5085 | 0.4800 |
+| `none` | 0.4422 | 0.3774 | 0.3119 |
+| `description_only` | 0.6640 | 0.4654 | 0.3013 |
+| `instructions` | 0.7443 | 0.4291 | 0.3502 |
 
-**h2 pointed the wrong way at this sample size.** `instructions` produced a *larger* mean
-position size than `description_only` in both `elevated_vol` (0.509 vs 0.352) and `extreme_vol`
-(0.480 vs 0.279) — the opposite of what an explicit "reduce sizing" instruction would predict.
-`instructions` also had the highest mean conviction (0.745 vs 0.588–0.596) and the only non-zero
-Round-2 flip rate (0.25). One live hypothesis: telling the LLM agents a confident, structured
-rule set makes them argue more decisively even when instructed toward caution, rather than
-actually caution their output — a "prescriptive prompt reads as permission to be confident"
-effect rather than a risk-reduction one. That is a hypothesis a 9-debate smoke test cannot
-distinguish from noise; it is recorded here as the reason to prioritize a full run (10/bucket =
-90 debates, `python run_regime_instructions_ablation.py`) if this line of work continues, not as
-a finding. `h1` and `h3` are similarly untestable at n=1 per cell — every `by_vol_level` `n` is
-1, so any accuracy figure is either 0.0 or 1.0 with no way to distinguish signal from a coin
-flip.
+Directional accuracy by bucket (n=8-10 per cell — small, and non-monotonic across buckets for
+every variant, consistent with §10's broader finding that regime conditioning hasn't
+distinguished itself from noise anywhere in this project):
 
-Full detail: `data/debates/regime_instructions_ablation.json` (9 raw debate records),
+| Variant | normal_vol | elevated_vol | extreme_vol |
+|---|---|---|---|
+| `none` | 0.625 | 0.556 | 0.500 |
+| `description_only` | 0.444 | 0.800 | 0.444 |
+| `instructions` | 0.400 | 0.778 | 0.500 |
+
+**Directional accuracy: no effect from either regime-context variant.** All three cluster at
+0.55-0.57 overall; the per-bucket numbers swing by whole debates in either direction with no
+consistent ordering by how much regime information is in the prompt. `h1` (instructions should
+specifically raise `extreme_vol` accuracy) is not supported — `extreme_vol` accuracy is
+0.500/0.444/0.500 across `none`/`description_only`/`instructions`, a one-debate swing. `h3` holds:
+`none` is not meaningfully worse than `description_only` on accuracy.
+
+**`h2` is not just unsupported — it is inverted, and the inversion is consistent across four
+metrics, not one.** Mean position size, mean conviction, Round-2 flip rate, and mean agent
+agreement all increase *monotonically* with how much regime text is in the prompt
+(`none` < `description_only` < `instructions`) — holding across every volatility bucket, including
+`normal_vol` where no size reduction was ever requested. The explicit "max 30% of normal risk
+budget" / "reduce ~20%" instructions did not produce smaller positions in `elevated_vol` or
+`extreme_vol`; if anything `instructions` produced the largest `normal_vol` position of the three
+(0.744) and the largest `extreme_vol` position of the three (0.350).
+
+**Mechanism, not just correlation:** `position_size = min(conviction * 0.8,
+risk_limits.max_position_size)` in `FundManagerAgent.synthesize()` is a deterministic function of
+`conviction`; the instruction text is prose the R1/R2 agents *read*, not a value anything in that
+function enforces. Nothing computes "30% of normal" as an actual cap. The consistent
+cross-metric pattern (more structured/prescriptive prompt content correlates with *higher*
+conviction and *more* Round-2 position-flipping, not less) is more informative than any one metric
+in isolation, and points at a plausible, reportable mechanism: giving the LLM an explicit
+checklist of risk rules seems to read as permission to sound more decisive ("I checked the risk
+boxes, therefore I'm confident") rather than as an actual brake on output. This is the same lesson
+this project already encoded once before in `agents/fund_manager.py`'s
+`_REGIME_VOL_CONVICTION_MULTIPLIER`: a numeric risk constraint that needs to actually bind should
+be computed in code, not left to the LLM to self-apply from prose. If regime-conditioned position
+sizing at the agent layer is pursued further, the next step is extending that existing multiplier
+mechanism to gate `position_size` directly (not just `conviction`) by `vol_level`, rather than
+iterating on prompt wording — this experiment is evidence prompt wording alone doesn't reliably
+produce the intended behavior, not evidence the underlying risk-management goal is wrong.
+
+Full detail: `data/debates/regime_instructions_ablation.json` (90 raw debate records),
 `data/results/regime_instructions_ablation_summary.json`,
-`data/results/regime_instructions_ablation_hypotheses.json`. All three are gitignored
-(`data/results/*.json`, `data/debates/*.json` — regenerable artifacts, not committed) — this
-section is the durable record of what the smoke test found.
+`data/results/regime_instructions_ablation_hypotheses.json` (pre-registered before either run).
+All three are gitignored (`data/results/*.json`, `data/debates/*.json` — regenerable artifacts,
+not committed) — this section is the durable record of what the full run found.
+
+### Follow-up: hard position-size cap implemented (2026-09-03)
+
+Acting on this section's own conclusion, `agents/fund_manager.py` gained
+`_REGIME_VOL_MAX_POSITION_SCALE` (`normal_vol`→1.00, `elevated_vol`→0.80, `extreme_vol`→0.30 —
+deliberately set to match the numbers `_REGIME_TRADING_INSTRUCTIONS`'s prompt text already
+promised the LLM, which nothing previously enforced), applied as an explicit
+`min(position_size, risk_limits.max_position_size * scale)` in `synthesize()`, *after* the
+existing conviction-based calculation — a true output ceiling, not another input to the same
+`min()` conviction already passes through. Kept separate from the pre-existing
+`_REGIME_VOL_CONVICTION_MULTIPLIER` (still governs the qualitative conviction/rationale/
+`regime_contradiction` flag) rather than merged into it, so each dict has one clear job.
+
+Verified deterministically (mocked `_call_llm`, no LLM calls) rather than by re-running the
+ablation: with two unanimous, maximum-confidence (0.95) bullish theses and
+`risk_limits.max_position_size=1.0`, `extreme_vol` position size was **0.48 under the
+conviction-multiplier-only path (0.6×0.8), reduced to exactly 0.30 once the hard cap is
+applied** — a real, previously-unenforced gap between the prompt's claim and the code's actual
+behavior, now closed. `normal_vol` behavior is unchanged (scale=1.0 is a no-op on top of the
+existing `risk_limits.max_position_size` bound) — confirmed bit-identical before/after for that
+bucket. `hold` actions still force `position_size=0.0` regardless of the cap. `tests/
+test_crypto5_panel.py` (15 tests, includes `FundManagerAgent` coverage) passes unchanged.
+
+Not yet done: re-running `run_regime_instructions_ablation.py` at full scale to confirm the cap
+holds up against real (not mocked) LLM output distributions — the deterministic check above
+proves the code path is correct, not that it changes the full 90-debate summary numbers, which
+would need a fresh LLM run to observe.
 
 ### Unrelated fix landed alongside this experiment
 
