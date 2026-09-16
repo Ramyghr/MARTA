@@ -1,8 +1,8 @@
-import { fetchApi, API_URL } from "./websocket";
+import { fetchApi } from "./websocket";
 import type {
   AssetInfo, RegimeState, Candle, Portfolio, Scenario, PositionState,
   TradeReasoning, TradeWithReasoning, TradeOutcomeStats, Notification,
-  LiveSignal, TradeEntry, PendingTrade, AccountState,
+  LiveSignal, TradeEntry, PendingTrade, AccountState, TestSetResults,
   StockTwitsMessage, FearGreedIndex, AlpacaOrder, LatestIndicators,
 } from "./types";
 
@@ -21,6 +21,8 @@ export interface AblationResults {
   // Raw passthrough of ablation_results.json — a dict keyed "marta_full_vs_<variant>",
   // NOT the pre-flattened array /api/rl/results produces under the same field name.
   bootstrap_ci: Record<string, { delta_sharpe: number; ci_lower_95: number; ci_upper_95: number }>;
+  // Added by GET /api/ablation itself (file mtime), not present in the raw json on disk.
+  last_updated?: string;
 }
 
 export interface RegimeStreamRow {
@@ -226,6 +228,8 @@ export const api = {
   getDebatesAgreement: () => fetchApi<{ agreement: AgentAgreement[] }>("/api/debates/agreement"),
   getDemoScenarios: () => fetchApi<{ scenarios: Scenario[] }>("/api/demo-scenarios"),
   getAblation: () => fetchApi<AblationResults>("/api/ablation"),
+  // 404s if run_test_set.py hasn't been run yet — caller decides how to render that.
+  getTestSet: () => fetchApi<TestSetResults>("/api/test-set"),
   getRegimeStream: (asset: string, limit = 500) =>
     fetchApi<RegimeStreamRow[]>(`/api/regime-stream/${asset}?limit=${limit}`),
   getRegimeSemantics: () => fetchApi<RegimeSemantics>("/api/regime/semantics"),
@@ -247,7 +251,7 @@ export const api = {
   getLiveSignal: (asset: string, debateAction?: string) =>
     fetchApi<LiveSignal>(`/api/rl/live-signal?asset=${asset}${debateAction ? `&debate_action=${debateAction}` : ""}`),
   triggerSignal: (asset: string) =>
-    fetch(`${API_URL}/api/rl/trigger-signal?asset=${asset}`, { method: "POST" }).then((r) => r.json()),
+    fetchApi(`/api/rl/trigger-signal?asset=${asset}`, { method: "POST" }),
   getPaperTrades: (asset: string, limit = 50) =>
     fetchApi<{ asset: string; portfolio: Record<string, unknown>; trades_local: TradeEntry[]; trades_testnet: unknown[]; source: string }>(
       `/api/paper/trades?asset=${asset}&limit=${limit}`,
@@ -269,19 +273,21 @@ export const api = {
   getAccountState: () => fetchApi<AccountState>("/api/account"),
   getApprovalMode: () => fetchApi<{ approval_mode: boolean }>("/api/settings/approval-mode"),
   setApprovalMode: (enabled: boolean) =>
-    fetch(`${API_URL}/api/settings/approval-mode?enabled=${enabled}`, { method: "POST" }).then((r) => r.json()) as Promise<{ approval_mode: boolean }>,
+    fetchApi<{ approval_mode: boolean }>(`/api/settings/approval-mode?enabled=${enabled}`, { method: "POST" }),
   getRlExecution: () => fetchApi<{ rl_execution_enabled: boolean; warning: string }>("/api/settings/rl-execution"),
   setRlExecution: (enabled: boolean) =>
-    fetch(`${API_URL}/api/settings/rl-execution?enabled=${enabled}`, { method: "POST" }).then((r) => r.json()) as Promise<{ rl_execution_enabled: boolean }>,
+    fetchApi<{ rl_execution_enabled: boolean }>(`/api/settings/rl-execution?enabled=${enabled}`, { method: "POST" }),
   getWeeklyPpo: () => fetchApi<{ weekly_ppo_enabled: boolean; weekly_ppo_obs_mode: "raw" | "raw_regime" }>("/api/settings/weekly-ppo"),
   setWeeklyPpo: (enabled: boolean, obsMode?: "raw" | "raw_regime") =>
-    fetch(`${API_URL}/api/settings/weekly-ppo?enabled=${enabled}${obsMode ? `&obs_mode=${obsMode}` : ""}`, { method: "POST" }).then((r) => r.json()) as Promise<{ weekly_ppo_enabled: boolean; weekly_ppo_obs_mode: "raw" | "raw_regime" }>,
+    fetchApi<{ weekly_ppo_enabled: boolean; weekly_ppo_obs_mode: "raw" | "raw_regime" }>(
+      `/api/settings/weekly-ppo?enabled=${enabled}${obsMode ? `&obs_mode=${obsMode}` : ""}`, { method: "POST" },
+    ),
   getPendingTrades: (status: "pending" | "approved" | "rejected" = "pending") =>
     fetchApi<{ trades: PendingTrade[] }>(`/api/trades/pending?status=${status}`),
   approvePendingTrade: (id: number) =>
-    fetch(`${API_URL}/api/trades/pending/${id}/approve`, { method: "POST" }).then((r) => r.json()),
+    fetchApi(`/api/trades/pending/${id}/approve`, { method: "POST" }),
   rejectPendingTrade: (id: number) =>
-    fetch(`${API_URL}/api/trades/pending/${id}/reject`, { method: "POST" }).then((r) => r.json()),
+    fetchApi(`/api/trades/pending/${id}/reject`, { method: "POST" }),
   getStockTwits: (asset: string) =>
     fetchApi<{ asset: string; messages: StockTwitsMessage[]; count: number }>(`/api/news/stocktwits/${asset}`),
   getFearGreed: () => fetchApi<FearGreedIndex>("/api/market/fear-greed"),

@@ -185,7 +185,7 @@ function FMCard({ decision }: { decision: FundManagerDecision }) {
         {decision.regime_override && (
           <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase"
             style={{ background: "rgba(255,140,0,0.18)", color: "#ff8c00", border: "1px solid #ff8c0033" }}>
-            ⚠ REGIME OVERRIDE
+            ⚠ CONTRARIAN FLIP
           </span>
         )}
         <span className="ml-auto font-mono" style={{ color: actionColor }}>{convPct}% conviction</span>
@@ -297,7 +297,7 @@ export function renderDebateMessage(msg: DebateMessage, i: number) {
             {(msg.action as string).toUpperCase()}
           </span>
           <span className="text-[#555]"> {((msg.position_size as number) * 100).toFixed(1)}% position</span>
-          {Boolean(msg.regime_override) && <span className="ml-2 text-[#ff8c00]">⚠ regime override</span>}
+          {Boolean(msg.regime_override) && <span className="ml-2 text-[#ff8c00]">⚠ contrarian flip</span>}
         </div>
       );
     default:
@@ -512,7 +512,7 @@ export default function DebateStream({ scenarios, asset, dataRange, onDecision, 
             className="text-[10px] px-2 py-1 transition-colors border-l border-[#222]"
             style={{ background: mode === "custom" ? "rgba(74,158,255,0.1)" : "transparent", color: mode === "custom" ? "#4a9eff" : "#555" }}
           >
-            Live Debate
+            Run at Timestamp
           </button>
         </div>
 

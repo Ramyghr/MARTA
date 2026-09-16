@@ -8,11 +8,14 @@ import { Panel } from "@/components/ui/Panel";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ProvenanceTag } from "@/components/ui/ProvenanceTag";
 import { Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import { LearningPanel } from "@/components/LearningPanel";
 import { api } from "@/lib/api";
+import type { AblationResults } from "@/lib/api";
+import { VARIANT_LABELS, TEST_STRATEGY_ORDER } from "@/lib/ablation";
 import { useMARTAStore } from "@/lib/store";
-import type { Portfolio, TradeEntry, Candle } from "@/lib/types";
+import type { Portfolio, TradeEntry, Candle, TestSetResults } from "@/lib/types";
 import { REGIME_COLORS } from "@/lib/types";
 
 function fmtPct(x: number | null | undefined, digits = 1): string {
@@ -265,6 +268,92 @@ function AgentAgreementSection() {
   );
 }
 
+// ── Section 3b — Ablation & Out-of-Sample summary ─────────────────────────────
+//
+// The full breakdown (sortable table, bootstrap CI, caveats) lives on the Backtest
+// page — this is the compact version so a number on Analytics is never shown with
+// no way to tell which config produced it, without duplicating that whole table.
+// Every row's method is a visible caption here, not a hover-only tooltip.
+
+function AblationOosSummarySection() {
+  const [ablation, setAblation] = useState<AblationResults | null>(null);
+  const [testSet, setTestSet] = useState<TestSetResults | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.getAblation().catch(() => null),
+      api.getTestSet().catch(() => null),
+    ]).then(([a, t]) => {
+      setAblation(a);
+      setTestSet(t);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="p-1"><SkeletonRows rows={4} /></div>;
+
+  const ablationRows = ablation
+    ? Object.entries(ablation.variants)
+        .map(([key, v]) => ({ key, label: VARIANT_LABELS[key] ?? key, ...v }))
+        .sort((a, b) => b.sharpe - a.sharpe)
+    : [];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <div className="stat-label mb-2">Ablation (2024 validation)</div>
+        {ablationRows.length === 0 ? (
+          <EmptyState title="No ablation results" description="Run the RL ablation to populate this." />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {ablationRows.map((r) => {
+              const isBest = r.key === "marta_full";
+              return (
+                <div key={r.key} className="flex flex-col gap-0.5 px-2 py-1.5 rounded" style={{ background: isBest ? "rgba(0,255,127,0.05)" : undefined, borderLeft: isBest ? "2px solid #00ff7f" : "2px solid transparent" }}>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold" style={{ color: isBest ? "#00ff7f" : "#999" }}>{isBest && "🏆 "}{r.label}</span>
+                    <span className="font-mono" style={{ color: r.sharpe >= 0 ? "#00ff7f" : "#ff3737" }}>Sharpe {r.sharpe.toFixed(3)}</span>
+                  </div>
+                  <div className="text-[9px] text-[#555] leading-snug">{r.method}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="stat-label mb-2">Out-of-Sample (2025 test, never used in training)</div>
+        {!testSet ? (
+          <EmptyState title="Test set not yet evaluated" description="Run `python run_test_set.py`." />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {TEST_STRATEGY_ORDER.map(({ key, label }) => {
+              const m = testSet[key];
+              if (!m) return null;
+              const isMarta = key === "marta_ppo";
+              return (
+                <div key={key} className="flex flex-col gap-0.5 px-2 py-1.5 rounded" style={{ background: isMarta ? "rgba(0,255,127,0.05)" : undefined, borderLeft: isMarta ? "2px solid #00ff7f" : "2px solid transparent" }}>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-semibold" style={{ color: isMarta ? "#00ff7f" : "#999" }}>{isMarta && "🏆 "}{label}</span>
+                    <span className="font-mono" style={{ color: m.sharpe >= 0 ? "#00ff7f" : "#ff3737" }}>Sharpe {m.sharpe.toFixed(3)}</span>
+                  </div>
+                  {m.method && <div className="text-[9px] text-[#555] leading-snug">{m.method}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="md:col-span-2 text-[9px] text-[#444]">
+        Full sortable breakdown, bootstrap CI, and caveats on the{" "}
+        <a href="/backtest" className="text-[#4a9eff] hover:text-[#6db4ff] transition-colors">Backtest</a> page.
+      </div>
+    </div>
+  );
+}
+
 // ── Section 4 — Signal History Timeline ───────────────────────────────────────
 
 function TradeMarker(props: unknown) {
@@ -323,6 +412,13 @@ function SignalTimelineSection({ asset }: { asset: string }) {
 
   return (
     <div className="flex flex-col gap-1">
+      {asset !== "BTC_USDT" && (
+        <div className="text-[10px] text-[#ff8c00] bg-[#ff8c0012] border border-[#ff8c0033] rounded px-2 py-1.5">
+          Trade markers are only available for BTC_USDT — the asset the deployed PPO checkpoint
+          trades (GET /api/rl/positions has no per-asset breakdown). Price/regime history for{" "}
+          {asset.replace("_", "/")} is shown below without them.
+        </div>
+      )}
       <div style={{ height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
@@ -400,7 +496,11 @@ export default function AnalyticsPage() {
 
   return (
     <div className="flex flex-col gap-3 pb-4">
-      <PageHeader title="Analytics" description="Performance summary, regime-conditioned returns, agent agreement, and the signal timeline" />
+      <PageHeader
+        title="Analytics"
+        description="Performance summary, regime-conditioned returns, agent agreement, and the signal timeline"
+        actions={<ProvenanceTag portfolio={portfolio} />}
+      />
 
       <Panel title="Performance Summary">
         {loading ? <Skeleton className="h-64 w-full" /> : <PerformanceSummarySection portfolio={portfolio} stats={tradeStats} />}
@@ -408,6 +508,10 @@ export default function AnalyticsPage() {
 
       <Panel title="Regime Performance Heatmap">
         {loading ? <Skeleton className="h-48 w-full" /> : <RegimeHeatmapSection portfolio={portfolio} stats={tradeStats} />}
+      </Panel>
+
+      <Panel title="Ablation & Out-of-Sample — where these numbers come from">
+        <AblationOosSummarySection />
       </Panel>
 
       <Panel title="Agent Agreement with Final Decision">

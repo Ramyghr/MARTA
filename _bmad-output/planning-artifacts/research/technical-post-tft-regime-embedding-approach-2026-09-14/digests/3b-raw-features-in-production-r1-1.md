@@ -1,0 +1,34 @@
+# Digest: 3b — Practitioner evidence: raw features in production (round 1)
+
+## Findings
+
+- **Claim:** In a controlled ablation (fixed DDQN algorithm/environment, only market-feature state representation varied) on real day-ahead electricity trading data (2007-2025 Belgian prices + 39 ENTSO-E market zones), "absolute" price/calendar features validated strongest in-sample (78.9% of optimal profit) but transferred worst out-of-sample — dropping to 28.8% on a later same-market test set and a median 5.7% across 39 held-out market zones. Relative-only (normalized/z-scored) features were weak alone (10.3%, below a simple rolling price-score heuristic baseline). Only combining feature families (absolute+relative+forecast) generalized well (55.6% test-set / 47.5% cross-zone median).
+  **Source:** "State Representation Matters in Deep Reinforcement Learning: Application to Energy Trading" (Klicks, Vržina, François-Lavet) — **Publisher:** arXiv preprint — **Published:** 2026-06-25 — **Accessed:** 2026-09-14 — **Confidence:** high (primary source, read directly, real reported backtest numbers, code on GitHub) — **Class:** performance-number
+
+- **Claim:** The same authors explicitly frame the result as: state representation is "not a minor preprocessing choice" in RL trading policy design, but a central determinant of whether a policy generalizes to unseen market regimes/conditions versus overfitting to the price scale/regime it was trained on.
+  **Source:** same — **Published:** 2026-06-25 — **Accessed:** 2026-09-14 — **Confidence:** high — **Class:** practitioner-report (rigorous academic, not advocacy — reports a baseline heuristic beating several of their own RL feature variants)
+
+- **Claim:** A student project applying a CNN-LSTM-DQN architecture to stock trading used only engineered technical indicators (RSI, Momentum, PPO, etc.) as RL state input by design, and did not test or compare against raw price input — noted as an acknowledged limitation, not a tested finding.
+  **Source:** CS 7643 Project Report (arXiv 2505.03949) — **Publisher:** arXiv (course project, not peer-reviewed) — **Published:** 2025-05 — **Accessed:** 2026-09-14 — **Confidence:** low (confirms engineered-indicator state is a common practitioner default, not a tested comparison) — **Class:** other
+
+- **Claim:** In the Jane Street Market Prediction Kaggle competition (real, large-scale proprietary market data), the 1st-place solution used a supervised autoencoder + MLP to learn a representation from the (already-anonymized) raw feature set rather than feeding those features directly into a simple model, and this single model alone reportedly could hold first place.
+  **Source:** "Yirun's Solution (1st place): Training Supervised Autoencoder with MLP" — **Publisher:** Kaggle (competition writeup) — **Published:** ~2021 (historical) — **Accessed:** 2026-09-14 — **Confidence:** low (direction-only claim from a secondary summary, single-sourced, full writeup/ablation numbers not retrieved) — **Class:** failure-claim/performance-number (unverified magnitude) — a counter-example to "raw features suffice," worth flagging despite weak sourcing.
+
+- **Claim:** A 2024 academic paper (Imperial College London) proposes a Contrastive Predictive Coding-based Transformer ("CET") for trading around earnings releases, arguing self-supervised contrastive pretraining helps capture underlying temporal structure that raw/engineered continual features (price, volume, technical indicators) miss, especially around volatile event windows.
+  **Source:** "Trading through Earnings Seasons using Self-Supervised Contrastive Representation Learning" (Ye & Schuller) — **Publisher:** arXiv preprint, submitted to Elsevier — **Published:** 2024-09-25 — **Accessed:** 2026-09-14 — **Confidence:** low (advocacy register — authors promoting their own method; no raw-feature baseline comparison numbers retrieved) — **Class:** practitioner-report (weak/advocacy)
+
+## Leads worth chasing
+- **Source-attribution risk observed directly this session:** a WebSearch synthesized summary attributed a "raw data+complex nets vs. engineered indicators+simple nets" framing to a result set; when the CS 7643 paper was fetched directly, that comparison was NOT actually present in it. The claim likely belongs to a different paper (candidates: "PRUDEX-Compass," or arXiv 2411.07585 "Reinforcement Learning Framework for Quantitative Trading") — not re-verified before budget ran out. Follow-up should fetch these directly rather than trust the aggregated snippet.
+- Jane Street competition writeup deserves a full read (only page title retrieved this session) — one of the highest-signal real-money, real-data practitioner events for exactly this question; multiple public writeups/forum threads (Numerai forum) discuss autoencoder-vs-raw performance deltas with actual leaderboard numbers.
+- **No reversion story found either direction** (embedding→raw or raw→embedding) despite targeted queries — the single highest-value source class per the brief's craft notes, not located. Try: Two Sigma/Man AHL/QuantConnect/Hudson River Trading engineering blogs, QuantMinds/NeurIPS-workshop FinRL retrospectives, and more recent (2023-2024) Kaggle "Optiver Trading at the Close" / "Ubiquant Market Prediction" competition retrospective threads.
+- The energy-trading paper's finding — a single feature family (even well-validated) overfits to the training regime's price scale, combining families transfers better — is a generalizable mechanism worth mapping onto the crypto/forex/commodity case, even though not about contrastive embeddings per se. Suggests the decision-relevant axis practitioners actually report on may be less "raw vs. embedding" and more "single feature family vs. combined/diverse feature families" — worth widening the brief's framing to include this.
+
+## What was looked for and could not be found
+- No practitioner engineering blog, conference talk, or company post-mortem (vs. academic paper) discussing this exact tradeoff, within budget.
+- No documented case of a team explicitly trying a learned regime/market-state embedding first and reverting to raw/engineered features (or the reverse), despite two direct search attempts.
+- No two-source-confirmed, apples-to-apples performance number for "learned embedding state vs. raw/engineered feature state" in an RL trading agent specifically (energy-trading paper compares feature *families* to each other, not to a learned/contrastive embedding; Jane Street/CET point toward embeddings helping but neither has a clean, independently-confirmed baseline-vs-embedding delta).
+- No sample-efficiency-specific claims (training data/steps required) comparing raw vs. embedding state — entirely open.
+- Budget-limited: full Jane Street writeup, PRUDEX-Compass, arXiv 2411.07585, non-arXiv engineering blogs identified but not fetched.
+
+## Assistant self-report
+Budget used: 15 tool calls, ~duration 216s.

@@ -259,8 +259,7 @@ class SentimentAgent(BaseAgent):
         headlines = self._get_headlines(ctx.asset, ctx.timestamp)
         return self._score_sentiment(headlines, ctx.timestamp)
 
-    @staticmethod
-    async def _fetch_live_signals(live_feed: "LiveNewsFeed", asset: str) -> tuple[dict, dict | None, dict | None]:
+    async def _fetch_live_signals(self, live_feed: "LiveNewsFeed", asset: str) -> tuple[dict, dict | None, dict | None]:
         """Concurrently fetch FinBERT sentiment + StockTwits + Fear & Greed.
 
         StockTwits/Fear&Greed failures are independent of the primary FinBERT

@@ -43,7 +43,18 @@ _AGENT_NAME_ALIASES: dict[str, str | None] = {
 }
 
 
-_THREAD_POOL = ThreadPoolExecutor(max_workers=4)
+# Sized for worst-case zombie accumulation, not steady-state concurrency: a
+# ThreadPoolExecutor future can only be cancelled before it starts running (see
+# _call_llm below) — once an Ollama call is in flight, which it almost always is by
+# the time a 300s timeout fires, future.cancel() silently no-ops and the thread keeps
+# running in the background against this shared pool. A single debate can have up to
+# 6 LLM-calling agents (everything except RiskAgent, which is GARCH-only) x 2 attempts
+# each = 12 potential zombies in the worst case where every call times out once; the
+# old max_workers=4 could be fully starved by less than one debate's worst case,
+# stalling every subsequent LLM call project-wide until Ollama eventually responds (or
+# hangs indefinitely). No code here can force-kill a Python thread — this just gives
+# real work enough headroom that zombies from timed-out calls don't block it.
+_THREAD_POOL = ThreadPoolExecutor(max_workers=32)
 
 
 class BaseAgent:
@@ -108,6 +119,10 @@ class BaseAgent:
                 future = _THREAD_POOL.submit(_invoke)
                 return future.result(timeout=self._timeout_seconds)
             except FuturesTimeoutError:
+                # Best-effort only — a future can't be cancelled once it's running (see
+                # the pool-sizing comment above), so this is a no-op in the common case
+                # where the Ollama call is already in flight. The abandoned thread keeps
+                # running against _THREAD_POOL until Ollama actually responds or hangs.
                 future.cancel()
                 if attempt < self._max_attempts - 1:
                     logger.warning(

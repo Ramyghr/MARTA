@@ -32,8 +32,9 @@ socket.getaddrinfo = _ipv4_only_getaddrinfo
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -47,7 +48,10 @@ import debate_stream
 import live_feed
 import system_service
 import strategy_backtest
+import auth_db
 from auth import APIKeyMiddleware
+from session_auth import SessionAuthMiddleware
+from oauth_google import router as google_oauth_router, google_oauth_enabled
 from demo_scenarios import DEMO_SCENARIOS, SCENARIO_BY_ID
 
 limiter = Limiter(key_func=get_remote_address)
@@ -158,6 +162,13 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(APIKeyMiddleware)
+app.add_middleware(SessionAuthMiddleware)
+# Signs its own "session" cookie (distinct from the marta_session app-login cookie
+# above) — only used to hold the short-lived OAuth state/nonce between
+# /api/auth/google/login and .../callback (authlib's starlette integration
+# requires request.session to exist). SESSION_SECRET should be a random secret in
+# .env; the fallback below is fine for localhost-only dev, not for a real deployment.
+app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SESSION_SECRET", "dev-insecure-secret-change-me"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -171,6 +182,115 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(google_oauth_router)
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+# Real per-user accounts — SessionAuthMiddleware (session_auth.py) gates every other
+# /api/ route on the `marta_session` cookie this sets. auth_db.py holds the actual
+# users/sessions sqlite tables (same raw-sqlite3 convention as paper_db.py).
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    display_name: str = ""
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    display_name: Optional[str] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
+def _set_session_cookie(response, token: str) -> None:
+    response.set_cookie(
+        key=auth_db.SESSION_COOKIE_NAME,
+        value=token,
+        max_age=auth_db.SESSION_TTL_DAYS * 24 * 3600,
+        httponly=True,
+        samesite="lax",
+        # Not marked secure= — this dashboard is served over plain http on localhost/
+        # a LAN docker deployment (same assumption auth.py's MARTA_API_KEY docstring
+        # already makes). Revisit if this is ever put behind real TLS.
+        path="/",
+    )
+
+
+def _require_user(request: Request) -> dict:
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+@app.post("/api/auth/signup")
+@limiter.limit("10/minute")
+def signup(request: Request, body: SignupRequest):
+    import sqlite3
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    try:
+        user = auth_db.create_user(body.email, body.password, body.display_name)
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="An account with that email already exists")
+    token = auth_db.create_session(user["id"])
+    response = Response(content=json.dumps({"user": user}), media_type="application/json")
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/api/auth/login")
+@limiter.limit("20/minute")
+def login(request: Request, body: LoginRequest):
+    user = auth_db.authenticate(body.email, body.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = auth_db.create_session(user["id"])
+    response = Response(content=json.dumps({"user": user}), media_type="application/json")
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request):
+    token = request.cookies.get(auth_db.SESSION_COOKIE_NAME)
+    if token:
+        auth_db.delete_session(token)
+    response = Response(content=json.dumps({"ok": True}), media_type="application/json")
+    response.delete_cookie(auth_db.SESSION_COOKIE_NAME, path="/")
+    return response
+
+
+@app.get("/api/auth/me")
+def get_me(request: Request):
+    return {"user": _require_user(request)}
+
+
+@app.get("/api/auth/providers")
+def get_auth_providers():
+    """Lets the login/signup pages hide the Google button until GOOGLE_CLIENT_ID/
+    SECRET are actually configured, instead of showing a button that 500s."""
+    return {"google": google_oauth_enabled()}
+
+
+@app.patch("/api/auth/profile")
+def update_profile(request: Request, body: ProfileUpdateRequest):
+    user = _require_user(request)
+    if body.new_password is not None:
+        if not body.current_password:
+            raise HTTPException(status_code=400, detail="current_password is required to set a new password")
+        if auth_db.authenticate(user["email"], body.current_password) is None:
+            raise HTTPException(status_code=401, detail="Current password is incorrect")
+        if len(body.new_password) < 8:
+            raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    updated = auth_db.update_profile(user["id"], display_name=body.display_name, new_password=body.new_password)
+    return {"user": updated}
 
 
 # ── HTTP endpoints ─────────────────────────────────────────────────────────────
@@ -860,6 +980,22 @@ class PriceConnectionManager:
 price_manager = PriceConnectionManager()
 
 
+async def _ws_require_user(websocket: WebSocket) -> Optional[dict]:
+    """WebSocket routes bypass SessionAuthMiddleware entirely (BaseHTTPMiddleware
+    doesn't wrap the WS handshake — same caveat auth.py's APIKeyMiddleware already
+    documents), so every `@app.websocket` route checks the session cookie directly
+    before accepting the connection. The WS handshake is a regular HTTP GET under
+    the hood, so the browser still attaches the httpOnly `marta_session` cookie
+    (SameSite=Lax, same-site since frontend/backend are both on localhost just on
+    different ports) — no need to smuggle the token through a query param.
+    """
+    token = websocket.cookies.get(auth_db.SESSION_COOKIE_NAME)
+    user = auth_db.get_session_user(token) if token else None
+    if user is None:
+        await websocket.close(code=4401)
+    return user
+
+
 def _add_regime(candle: dict, asset: str, live: bool = False) -> dict:
     """Attach regime_label and regime_description to a candle dict.
 
@@ -880,8 +1016,39 @@ def _add_regime(candle: dict, asset: str, live: bool = False) -> dict:
         return {**candle, "regime_label": 0, "regime_description": ""}
 
 
+def _add_regime_batch(candles: list[dict], asset: str) -> list[dict]:
+    """Batch counterpart to _add_regime(..., live=False) for a whole history backfill.
+
+    Found 2026-09-16: the /ws/price live-mode history batch (below) was tagging each
+    candle with the plain _add_regime default, i.e. regime_service.get_regime() — a pure
+    nearest-neighbor lookup into the frozen regime_stream.parquet. Since that static
+    stream stops growing the moment run_regime.py last ran (2025-12-31 for the crypto5
+    causal stream), every candle timestamp after that boundary — which by now is the
+    entire visible 720h/30-day chart window — resolves via "nearest" to that exact same
+    last frozen row, so the whole chart showed one identical regime label. historical.py's
+    get_history()/_build_records() already avoided this via
+    regime_service.get_regime_series_live_aware (nearest hit in the incrementally-growing
+    regime_live_log.parquet past the frozen boundary, falling back to one shared fresh
+    get_live_regime() compute only if the log has no nearby entry) — this reuses the same
+    function so the live-mode WS history batch gets the same fix instead of a
+    reimplementation.
+    """
+    try:
+        import pandas as pd
+        timestamps = [pd.Timestamp(c["timestamp"], tz="UTC") for c in candles]
+        regimes = regime_service.get_regime_series_live_aware(asset, timestamps)
+        return [
+            {**c, "regime_label": r["regime_label"], "regime_description": r.get("regime_description", "")}
+            for c, r in zip(candles, regimes)
+        ]
+    except Exception:
+        return [{**c, "regime_label": 0, "regime_description": ""} for c in candles]
+
+
 @app.websocket("/ws/price/{asset}")
 async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
+    if await _ws_require_user(websocket) is None:
+        return
     await websocket.accept()
 
     if mode == "live":
@@ -891,7 +1058,7 @@ async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
         # same "chart only shows a week" fix.
         live_candles = await live_feed.fetch_live_candles(asset, limit=720)
         if live_candles:
-            enriched = [_add_regime(c, asset) for c in live_candles]
+            enriched = _add_regime_batch(live_candles, asset)
             await websocket.send_json({"type": "history", "candles": enriched})
         else:
             try:
@@ -952,6 +1119,8 @@ def _lookup_regime(asset: str, ts: "pd.Timestamp", explicit_timestamp: bool) -> 
 
 @app.websocket("/ws/regime/{asset}")
 async def ws_regime(websocket: WebSocket, asset: str, timestamp: Optional[str] = None):
+    if await _ws_require_user(websocket) is None:
+        return
     await websocket.accept()
     try:
         import pandas as pd
@@ -977,6 +1146,8 @@ async def ws_regime(websocket: WebSocket, asset: str, timestamp: Optional[str] =
 
 @app.websocket("/ws/notifications")
 async def ws_notifications(websocket: WebSocket):
+    if await _ws_require_user(websocket) is None:
+        return
     await websocket.accept()
     _notification_ws_clients.add(websocket)
     try:
@@ -999,6 +1170,8 @@ async def ws_debate(
     asset: Optional[str] = None,
     timestamp: Optional[str] = None,
 ):
+    if await _ws_require_user(websocket) is None:
+        return
     await websocket.accept()
     try:
         if scenario_id and scenario_id in SCENARIO_BY_ID:

@@ -81,7 +81,6 @@ class DebateGraph:
     def _node_round1(self, state: DebateState) -> dict:
         """Run Macro + Technical + Sentiment agents sequentially; Risk agent computes GARCH limits."""
         ctx = state["ctx"]
-        aligned_dfs = state["aligned_dfs"]
         theses: list[AgentThesis] = []
         tokens = state.get("total_tokens", 0)
 
@@ -94,8 +93,7 @@ class DebateGraph:
             logger.error(f"MacroAgent R1 failed: {e}")
 
         try:
-            asset_df = aligned_dfs.get(ctx.asset)
-            tech_thesis = self._tech.post_thesis(ctx, aligned_df=asset_df)
+            tech_thesis = self._tech.post_thesis(ctx)
             theses.append(tech_thesis)
             tokens += self._tech.tokens_used
             logger.info(f"TechnicalAgent R1: {tech_thesis.directional_bias} ({tech_thesis.confidence:.2f})")
@@ -179,8 +177,19 @@ class DebateGraph:
 
         # Main agents rebut the strongest opposing thesis (Contrarian's if active, else each other)
         for agent in [self._macro, self._tech, self._sentiment]:
+            my_r1 = next((t for t in theses if t.agent_name == agent.name), None)
+            if my_r1 is None:
+                # This agent's R1 call failed (caught in _node_round1, never added to
+                # theses) — skip its rebuttal rather than let base.py's post_rebuttal
+                # silently make a fresh R1-style call to fill in my_r1_thesis. That call
+                # would produce a Round-2 record for an agent with no Round-1 thesis
+                # (looks like corrupted data in debate_results.json) and be pure wasted
+                # latency anyway: FundManagerAgent._compute_weighted_consensus only
+                # counts a rebuttal if the agent is already in final_conf, which it never
+                # is when R1 failed.
+                logger.warning(f"{agent.name} has no R1 thesis (R1 call failed) — skipping R2 rebuttal")
+                continue
             try:
-                my_r1 = next((t for t in theses if t.agent_name == agent.name), None)
                 others = [t for t in all_theses if t.agent_name != agent.name]
                 rebuttal = agent.post_rebuttal(ctx, others, my_r1_thesis=my_r1)
                 if rebuttal is not None:

@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ComposedChart, BarChart, AreaChart, Bar, Line, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
+  BarChart, AreaChart, Bar, Area,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell,
 } from "recharts";
+import PriceChart from "@/components/PriceChart";
 import RegimePanel from "@/components/RegimePanel";
 import { Panel } from "@/components/ui/Panel";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -45,20 +46,41 @@ function decimate<T>(rows: T[], maxPoints = 2000): T[] {
   return rows.filter((_, i) => i % step === 0);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function RegimeBandShape(props: any) {
-  const { x, width, regime_label } = props;
-  if (x === undefined || !width) return null;
-  return <rect x={x} y={-9999} width={width} height={99999} fill={REGIME_COLORS[regime_label] ?? "#444"} fillOpacity={0.1} />;
-}
-
-function RegimeFullTimeline({ candles, streamRows, onPick }: {
+function RegimeFullTimeline({ asset, candles, streamRows, dataRange, onPick }: {
+  asset: string;
   candles: Candle[];
   streamRows: RegimeStreamRow[];
+  dataRange: DataRange | null;
   onPick: (ts: string) => void;
 }) {
-  const regimeNames = useMARTAStore((s) => s.regimeNames);
   const priceData = useMemo(() => candles.filter((c) => c.close != null && c.close > 0), [candles]);
+
+  // `candles` (the "ALL" view) is already server-decimated to ~2000 points across the
+  // *entire* history (historical.py's get_history_range steps down anything over 2000
+  // rows) — picking a narrower range is therefore a real refetch, not a client-side
+  // slice of the same sparse points: a 1-month window has far fewer than 2000 hourly
+  // bars, so the backend returns it at full resolution. This is what makes zooming in
+  // actually reveal more detail, same as a real trading-view chart.
+  const [chartRange, setChartRange] = useState<{ start: string; end: string } | null>(null);
+  const [rangeCandles, setRangeCandles] = useState<Candle[]>([]);
+
+  useEffect(() => {
+    if (!chartRange || !asset) return;
+    let cancelled = false;
+    fetch(
+      `${API_URL}/api/history/${asset}/range?start=${encodeURIComponent(chartRange.start)}&end=${encodeURIComponent(chartRange.end)}`,
+      { credentials: "include" },
+    )
+      .then((r) => r.json())
+      .then((d: { candles: Candle[] }) => {
+        if (cancelled) return;
+        setRangeCandles(d.candles.filter((c) => c.close != null && c.close > 0));
+      })
+      .catch(() => { if (!cancelled) setRangeCandles([]); });
+    return () => { cancelled = true; };
+  }, [asset, chartRange]);
+
+  const displayedCandles = chartRange ? rangeCandles : priceData;
 
   const regimeKeys = useMemo(() => {
     const row = streamRows[0];
@@ -69,9 +91,9 @@ function RegimeFullTimeline({ candles, streamRows, onPick }: {
       .sort((a, b) => a - b);
   }, [streamRows]);
 
-  const priceEvents = useMemo(
-    () => EVENTS.map((e) => ({ ...e, ts: findNearestTs(e.date, priceData) })).filter((e) => e.ts),
-    [priceData],
+  const priceMarkers = useMemo(
+    () => EVENTS.map((e) => ({ time: e.date, label: e.label })),
+    [],
   );
   const areaEvents = useMemo(
     () => EVENTS.map((e) => ({ ...e, ts: findNearestTs(e.date, streamRows) })).filter((e) => e.ts),
@@ -85,69 +107,18 @@ function RegimeFullTimeline({ candles, streamRows, onPick }: {
   return (
     <div className="flex flex-col gap-1">
       {priceData.length > 0 && (
-        <div style={{ height: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart
-              data={priceData}
-              margin={{ top: 16, right: 8, bottom: 0, left: 4 }}
-              onClick={(ev) => {
-                const ts = (ev?.activePayload?.[0]?.payload as Candle | undefined)?.timestamp;
-                if (ts) onPick(ts);
-              }}
-              style={{ cursor: "crosshair" }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#141414" vertical={false} />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={(ts) => new Date(ts).getFullYear().toString()}
-                tick={{ fill: "#444", fontSize: 10 }}
-                axisLine={{ stroke: "#1a1a1a" }}
-                tickLine={false}
-                minTickGap={60}
-              />
-              <YAxis
-                scale="log"
-                domain={["auto", "auto"]}
-                allowDataOverflow
-                tickFormatter={(v) => `$${Number(v) >= 1000 ? (Number(v) / 1000).toFixed(0) + "k" : v}`}
-                tick={{ fill: "#444", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                width={48}
-                orientation="right"
-              />
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const c = payload[0].payload as Candle;
-                  return (
-                    <div className="bg-[#111] border border-[#333] rounded p-2 text-[10px] font-mono">
-                      <div className="text-[#666]">{new Date(c.timestamp).toLocaleDateString()}</div>
-                      <div style={{ color: c.close >= c.open ? "#00ff7f" : "#ff3737" }}>${c.close?.toFixed(0)}</div>
-                      <div className="text-[#555]">R{c.regime_label} {c.regime_description || regimeNames[c.regime_label] || ""}</div>
-                    </div>
-                  );
-                }}
-              />
-              <Bar
-                dataKey="close"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                shape={(props: any) => <RegimeBandShape {...props} regime_label={priceData[props.index]?.regime_label} />}
-                isAnimationActive={false}
-              />
-              <Line type="monotone" dataKey="close" stroke="#00ff7f" strokeWidth={1.25} dot={false} isAnimationActive={false} />
-              {priceEvents.map((e) => (
-                <ReferenceLine
-                  key={e.label}
-                  x={e.ts!}
-                  stroke="#e0e0e0"
-                  strokeDasharray="4 3"
-                  strokeOpacity={0.6}
-                  label={{ value: e.label, position: "top", fill: "#e0e0e0", fontSize: 9 }}
-                />
-              ))}
-            </ComposedChart>
-          </ResponsiveContainer>
+        <div style={{ height: 340 }}>
+          <PriceChart
+            candles={displayedCandles}
+            asset={asset}
+            dataRange={dataRange}
+            onRangeChange={setChartRange}
+            onGoLive={() => setChartRange(null)}
+            liveMode={chartRange === null}
+            onCandleClick={onPick}
+            markers={priceMarkers}
+            logScale
+          />
         </div>
       )}
 
@@ -262,7 +233,13 @@ function TsneSection() {
             title="Click to zoom"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt="t-SNE projection of contrastive regime embeddings" className="max-w-full h-auto" onError={() => setError(true)} />
+            <img
+              src={src}
+              alt="t-SNE projection of contrastive regime embeddings"
+              className="max-w-full h-auto"
+              onError={() => setError(true)}
+              crossOrigin="use-credentials"
+            />
           </div>
           <p className="text-[11px] text-[#666] leading-relaxed max-w-3xl">
             Each point is one 60-candle window, projected from its 128-dim TFT + InfoNCE embedding down to 2D.
@@ -295,7 +272,7 @@ function TsneSection() {
           onClick={() => setZoomed(false)}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt="t-SNE projection (zoomed)" className="max-w-full max-h-full object-contain" />
+          <img src={src} alt="t-SNE projection (zoomed)" className="max-w-full max-h-full object-contain" crossOrigin="use-credentials" />
         </div>
       )}
     </Panel>
@@ -371,6 +348,7 @@ export default function RegimePage() {
 
   const [btcCandles, setBtcCandles] = useState<Candle[]>([]);
   const [btcStream, setBtcStream] = useState<RegimeStreamRow[]>([]);
+  const [timelineDataRange, setTimelineDataRange] = useState<DataRange | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(true);
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
@@ -396,25 +374,34 @@ export default function RegimePage() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
-      const rangeRes = await fetch(`${API_URL}/api/data-range/${asset}`, { signal: controller.signal });
+      const rangeRes = await fetch(`${API_URL}/api/data-range/${asset}`, { signal: controller.signal, credentials: "include" });
       if (!rangeRes.ok) throw new Error(`HTTP ${rangeRes.status}`);
       const range: DataRange = await rangeRes.json();
       const [histRes, streamRes] = await Promise.all([
         fetch(
           `${API_URL}/api/history/${asset}/range?start=${encodeURIComponent(range.start)}&end=${encodeURIComponent(range.end)}`,
-          { signal: controller.signal },
+          { signal: controller.signal, credentials: "include" },
         ),
-        fetch(`${API_URL}/api/regime-stream/${asset}?limit=200000`, { signal: controller.signal }),
+        fetch(`${API_URL}/api/regime-stream/${asset}?limit=200000`, { signal: controller.signal, credentials: "include" }),
       ]);
       if (!histRes.ok) throw new Error(`HTTP ${histRes.status}`);
       if (!streamRes.ok) throw new Error(`HTTP ${streamRes.status}`);
       const history: { candles: Candle[] } = await histRes.json();
       const stream: RegimeStreamRow[] = await streamRes.json();
-      setBtcCandles(decimate(history.candles, 2000));
+      // No client-side decimation here anymore — historical.py's get_history_range
+      // already server-decimates anything over 2000 rows (the whole point of "ALL"
+      // spanning years), and PriceChart (canvas/lightweight-charts) doesn't need the
+      // extra client-side pass the old Recharts/SVG chart did. Zooming into a narrower
+      // range re-fetches at full resolution (RegimeFullTimeline's own effect) rather
+      // than just slicing this already-sparse array. The probability AreaChart below
+      // is still Recharts/SVG, so it keeps its own decimation.
+      setBtcCandles(history.candles);
       setBtcStream(decimate(stream, 2000));
+      setTimelineDataRange(range);
     } catch (err) {
       setBtcCandles([]);
       setBtcStream([]);
+      setTimelineDataRange(null);
       if (err instanceof DOMException && err.name === "AbortError") {
         setTimelineError("Timeline data timed out — backend may be processing. Try refreshing.");
       } else {
@@ -454,7 +441,13 @@ export default function RegimePage() {
             </button>
           </div>
         ) : (
-          <RegimeFullTimeline candles={btcCandles} streamRows={btcStream} onPick={setSelectedTimestamp} />
+          <RegimeFullTimeline
+            asset={selectedAsset}
+            candles={btcCandles}
+            streamRows={btcStream}
+            dataRange={timelineDataRange}
+            onPick={setSelectedTimestamp}
+          />
         )}
       </Panel>
 

@@ -46,6 +46,16 @@ class FundManagerDecision(BaseModel):
     consensus_direction: Literal["bullish", "bearish", "neutral", "split"]
     dissenting_agents: list[str]
     rationale: str = Field(max_length=600)
+    # Legacy name — originally fired on regime-contradicts-consensus OR Contrarian-
+    # flipped-an-agent. The regime-direction condition was removed after the 2026-09-01
+    # zigzag test found regime labels don't reliably track price direction (49%, a coin
+    # flip) — see fund_manager.py's synthesize(). Now True means ONLY "the Contrarian
+    # challenged and it flipped another agent's position," nothing regime-related.
+    # Kept as-is rather than renamed: this field is part of the persisted debate JSON
+    # schema (data/debates/debate_results.json, ~1,861 real records) and is read
+    # directly by rl/obs_builder.py and dashboard/backend/ppo_inference.py to build the
+    # RL observation vector — renaming it would need back-compat handling for every
+    # historical record and both readers, not just this schema.
     regime_override: bool
     regime_penalty_applied: float = 1.0
     regime_contradiction: bool = False

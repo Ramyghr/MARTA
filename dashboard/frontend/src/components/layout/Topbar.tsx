@@ -16,9 +16,11 @@ const TYPE_COLORS: Record<string, string> = {
 
 const BREADCRUMB_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
+  trading: "Trading",
   debates: "Debates",
   regime: "Regime",
   portfolio: "Portfolio",
+  analytics: "Analytics",
   backtest: "Backtest",
   settings: "Settings",
 };
@@ -36,12 +38,8 @@ function useUtcClock() {
 
 export function Topbar() {
   const pathname = usePathname();
-  const mode = useMARTAStore((s) => s.mode);
-  const setMode = useMARTAStore((s) => s.setMode);
   const selectedAsset = useMARTAStore((s) => s.selectedAsset);
   const setSelectedAsset = useMARTAStore((s) => s.setSelectedAsset);
-  const selectedTimestamp = useMARTAStore((s) => s.selectedTimestamp);
-  const setSelectedTimestamp = useMARTAStore((s) => s.setSelectedTimestamp);
   const setDemoMode = useMARTAStore((s) => s.setDemoMode);
   const sidebarCollapsed = useMARTAStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useMARTAStore((s) => s.toggleSidebar);
@@ -62,7 +60,7 @@ export function Topbar() {
       className="app-shell-topbar h-12 shrink-0 px-4 flex items-center gap-4 border-b"
       style={{
         background: "linear-gradient(180deg, #0f0f0f 0%, #0a0a0a 100%)",
-        borderColor: mode === "live" ? "rgba(255,55,55,0.3)" : "rgba(0,255,127,0.18)",
+        borderColor: "rgba(0,255,127,0.18)",
       }}
     >
       {/* Sidebar toggle */}
@@ -107,43 +105,14 @@ export function Topbar() {
           </span>
         )}
 
-        {/* Historical replay timestamp picker */}
-        {mode === "historical" && (
-          <input
-            type="datetime-local"
-            value={selectedTimestamp ?? ""}
-            onChange={(e) => setSelectedTimestamp(e.target.value || null)}
-            className="ml-2 bg-[#111] border border-[#2a2a2a] rounded px-2 py-1 text-[10px] text-[#999] outline-none"
-          />
-        )}
-        {mode === "live" && (
-          <span className="ml-2 text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider bg-[#ff3737]/15 text-[#ff3737] animate-pulse-dot">
-            ● Live
-          </span>
-        )}
+        <span className="ml-2 text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider bg-[#00ff7f]/10 text-[#00ff7f] animate-pulse-dot">
+          ● Live
+        </span>
       </div>
 
       {/* Right cluster */}
       <div className="flex items-center gap-3 shrink-0">
         <span className="text-[10px] text-[#333] hidden lg:inline font-mono tabular-nums">{utcTime} UTC</span>
-
-        {/* Mode pill toggle */}
-        <div className="flex rounded-full overflow-hidden border border-[#222] p-0.5 bg-[#0d0d0d]">
-          {(["historical", "live"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className="px-3 py-1 rounded-full text-[10px] uppercase tracking-wider transition-all"
-              style={{
-                background: mode === m ? (m === "live" ? "#ff3737" : "#00ff7f") : "transparent",
-                color: mode === m ? "#0a0a0a" : "#555",
-                fontWeight: mode === m ? 700 : 400,
-              }}
-            >
-              {m === "live" ? "Live" : "Historical"}
-            </button>
-          ))}
-        </div>
 
         <NotificationBell />
 

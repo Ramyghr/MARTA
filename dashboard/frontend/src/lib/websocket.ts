@@ -94,8 +94,11 @@ export class MartaWebSocket {
   }
 }
 
-export async function fetchApi<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`);
+export async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
+  // credentials: "include" — the session cookie set by /api/auth/login must ride
+  // along on every request; fetch's default ("same-origin") drops it since the
+  // frontend/backend run on different ports (cross-origin, even both on localhost).
+  const res = await fetch(`${API_URL}${path}`, { credentials: "include", ...init });
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }

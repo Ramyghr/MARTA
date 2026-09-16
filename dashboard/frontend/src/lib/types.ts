@@ -128,6 +128,16 @@ export interface DebateMessage {
   [key: string]: unknown;
 }
 
+// Which run produced these numbers — checkpoint/obs_mode/eval window, straight from
+// ppo_evaluation.json's own `_provenance`/`val_window` fields (rl/evaluate.py already
+// writes these; nothing new to compute). Surfaced on Portfolio/Analytics so a number
+// is never shown without a way to answer "which config produced this".
+export interface EvalProvenance {
+  generated_at_utc: string;
+  checkpoint: { path: string; mtime_utc: string };
+  env_config: { obs_mode: string; benchmark_relative: boolean };
+}
+
 export interface Portfolio {
   sharpe: number;
   sortino: number;
@@ -146,6 +156,8 @@ export interface Portfolio {
     avg_position_size: number;
     avg_return: number;
   }>;
+  val_window?: { start: string; end: string };
+  provenance?: EvalProvenance | null;
 }
 
 export interface Scenario {
@@ -176,6 +188,29 @@ export interface BootstrapCI {
   ci_lower_95: number;
   ci_upper_95: number;
   significant: boolean;
+}
+
+// Out-of-sample (2025 test set, never used during training/validation) — GET /api/test-set.
+export interface TestSetMetrics {
+  sharpe: number;
+  sortino: number;
+  max_drawdown: number;
+  calmar: number;
+  total_return: number;
+  method?: string;
+}
+
+export interface TestSetResults {
+  test_period: { start: string; end: string };
+  n_steps: number;
+  warning: string;
+  caveats?: string[];
+  key_finding?: string | null;
+  marta_ppo: TestSetMetrics;
+  buy_hold: TestSetMetrics;
+  rsi_strategy: TestSetMetrics;
+  ma_crossover: TestSetMetrics;
+  momentum: TestSetMetrics;
 }
 
 export interface CurriculumPhase {

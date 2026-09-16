@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post-TFT Regime Embedding</title>
+<style>
+  :root{
+    --bg:#F3F4F0; --surface:#FFFFFF; --surface-2:#EAEBE5; --line:#DBDED6;
+    --ink:#1B221E; --ink-dim:#5B655D; --ink-faint:#838C84;
+    --accent:#B5651D; --accent-ink:#7A430F; --accent-bg:#F2E3D2;
+    --ok:#1F7A4D; --ok-bg:#E1F0E7;
+    --med:#9A6E0A; --med-bg:#F5EAD2;
+    --low:#8A7355; --low-bg:#EFEAE1;
+    --warn:#B23D0E; --warn-bg:#F7E2D6;
+    --bad:#A32430; --bad-bg:#F6DEE0;
+    --font-display: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "SF Mono", "Cascadia Code", "Consolas", "Liberation Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14181A; --surface:#1B2023; --surface-2:#20262A; --line:#2B3439;
+      --ink:#E7EAE5; --ink-dim:#9AA39B; --ink-faint:#6C756E;
+      --accent:#DE9350; --accent-ink:#F0B679; --accent-bg:#3A2A18;
+      --ok:#49B182; --ok-bg:#183227;
+      --med:#D8B24A; --med-bg:#332A12;
+      --low:#B7A488; --low-bg:#2A2620;
+      --warn:#E17A4A; --warn-bg:#3A2417;
+      --bad:#E5717C; --bad-bg:#3A1C20;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14181A; --surface:#1B2023; --surface-2:#20262A; --line:#2B3439;
+    --ink:#E7EAE5; --ink-dim:#9AA39B; --ink-faint:#6C756E;
+    --accent:#DE9350; --accent-ink:#F0B679; --accent-bg:#3A2A18;
+    --ok:#49B182; --ok-bg:#183227;
+    --med:#D8B24A; --med-bg:#332A12;
+    --low:#B7A488; --low-bg:#2A2620;
+    --warn:#E17A4A; --warn-bg:#3A2417;
+    --bad:#E5717C; --bad-bg:#3A1C20;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--font-body); font-size:16px; line-height:1.6;
+    padding:0 20px;
+  }
+  h1,h2,h3{font-family:var(--font-display); text-wrap:balance; font-weight:600; color:var(--ink);}
+  a{color:var(--accent-ink);}
+  .wrap{max-width:1180px; margin:0 auto; padding-block:32px 80px;}
+
+  /* ---------- Header ---------- */
+  .masthead{
+    border-bottom:2px solid var(--ink); padding-bottom:22px; margin-bottom:28px;
+  }
+  .eyebrow{
+    font-family:var(--font-mono); font-size:12px; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--accent-ink); margin:0 0 10px;
+  }
+  .masthead h1{font-size:clamp(28px,4vw,40px); line-height:1.15; margin:0 0 14px; max-width:820px;}
+  .decision-line{
+    font-size:16px; color:var(--ink-dim); max-width:760px; margin:0 0 18px; font-style:italic;
+  }
+  .meta-grid{
+    display:flex; flex-wrap:wrap; gap:10px 26px;
+    font-family:var(--font-mono); font-size:12.5px; color:var(--ink-dim);
+  }
+  .meta-grid span b{color:var(--ink); font-weight:600;}
+
+  /* ---------- Layout ---------- */
+  .layout{display:grid; grid-template-columns: 210px 1fr; gap:44px; align-items:start;}
+  @media (max-width:860px){ .layout{grid-template-columns:1fr;} }
+
+  nav.toc{position:sticky; top:20px; font-size:13.5px;}
+  nav.toc ol{list-style:none; margin:0; padding:0; border-left:2px solid var(--line);}
+  nav.toc li{margin:0;}
+  nav.toc a{
+    display:block; padding:6px 0 6px 14px; color:var(--ink-dim); text-decoration:none;
+    border-left:2px solid transparent; margin-left:-2px;
+  }
+  nav.toc a:hover{color:var(--ink); border-left-color:var(--accent);}
+  @media (max-width:860px){
+    nav.toc{position:static;}
+    nav.toc ol{border-left:none; display:flex; flex-wrap:wrap; gap:4px 14px;}
+    nav.toc a{padding:2px 0; border-left:none;}
+  }
+
+  main{min-width:0;}
+  section{margin-bottom:46px; scroll-margin-top:16px;}
+  section h2{
+    font-size:22px; margin:0 0 16px; padding-bottom:8px; border-bottom:1px solid var(--line);
+  }
+  section h3{font-size:16px; margin:22px 0 8px;}
+  p{max-width:74ch; margin:0 0 14px;}
+  ul,ol{max-width:74ch; padding-left:22px;}
+  li{margin-bottom:10px;}
+
+  /* ---------- Executive summary card ---------- */
+  .exec{
+    background:var(--surface); border:1px solid var(--line); border-radius:4px;
+    padding:26px 28px; position:relative;
+  }
+  .exec::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--accent);
+    border-radius:4px 0 0 4px;
+  }
+  .exec .verdict{
+    font-family:var(--font-display); font-size:19px; font-weight:600; margin:0 0 16px; max-width:70ch;
+  }
+  .exec ol{margin:0 0 16px;}
+  .exec .caveat{
+    margin-top:18px; padding-top:14px; border-top:1px dashed var(--line);
+    font-size:14.5px; color:var(--ink-dim); max-width:74ch;
+  }
+  .exec .caveat b{color:var(--ink);}
+
+  /* ---------- Citations & badges ---------- */
+  a.cite{
+    font-family:var(--font-mono); font-size:12px; color:var(--accent-ink);
+    text-decoration:none; border-bottom:1px dotted var(--accent-ink); padding:0 1px;
+  }
+  a.cite:hover{background:var(--accent-bg);}
+  .badge{
+    display:inline-flex; align-items:center; gap:5px; font-family:var(--font-mono);
+    font-size:11px; letter-spacing:.03em; text-transform:uppercase; font-weight:600;
+    padding:2px 8px; border-radius:99px; border:1px solid transparent; white-space:nowrap;
+  }
+  .badge::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor;}
+  .badge-high, .badge-verified{color:var(--ok); background:var(--ok-bg); border-color:var(--ok);}
+  .badge-medium, .badge-medium-high, .badge-low-medium{color:var(--med); background:var(--med-bg); border-color:var(--med);}
+  .badge-low{color:var(--low); background:var(--low-bg); border-color:var(--low);}
+  .badge-unverified{color:var(--warn); background:var(--warn-bg); border-color:var(--warn); font-weight:700;}
+  .badge-disputed{color:var(--bad); background:var(--bad-bg); border-color:var(--bad); font-weight:700;}
+
+  /* ---------- Findings blocks ---------- */
+  .finding{
+    background:var(--surface); border:1px solid var(--line); border-radius:4px;
+    padding:16px 18px; margin:14px 0;
+  }
+  .finding .label{
+    font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-faint); margin-bottom:6px;
+  }
+
+  /* ---------- Recommendations ---------- */
+  .rec{
+    background:var(--surface); border:1px solid var(--line); border-radius:4px;
+    padding:16px 18px; margin:14px 0; display:flex; gap:14px; align-items:flex-start;
+  }
+  .rec .num{
+    font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--accent);
+    flex:0 0 auto; width:30px; text-align:center;
+  }
+  .rec .body p{margin:0 0 6px;}
+  .rec .conf{margin-top:8px;}
+
+  /* ---------- Tables (source appendix + staleness) ---------- */
+  .table-scroll{overflow-x:auto; border:1px solid var(--line); border-radius:4px;}
+  table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:640px;}
+  table th, table td{
+    text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top;
+  }
+  table thead th{
+    font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--ink-faint); background:var(--surface-2); white-space:nowrap;
+  }
+  table tbody tr:hover{background:var(--surface-2);}
+  table.sources td:first-child{font-family:var(--font-mono); color:var(--ink-faint); white-space:nowrap;}
+  table td:nth-child(4), table td:nth-child(5){font-variant-numeric:tabular-nums; white-space:nowrap; font-family:var(--font-mono); font-size:12.5px; color:var(--ink-dim);}
+
+  details.appendix{
+    background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:4px 0;
+  }
+  details.appendix > summary{
+    cursor:pointer; padding:14px 18px; font-family:var(--font-display); font-size:16px; font-weight:600;
+    list-style:none; display:flex; justify-content:space-between; align-items:center;
+  }
+  details.appendix > summary::-webkit-details-marker{display:none;}
+  details.appendix > summary::after{content:"+"; font-size:20px; color:var(--accent);}
+  details.appendix[open] > summary::after{content:"–";}
+  details.appendix .table-scroll{border:none; border-top:1px solid var(--line); border-radius:0;}
+
+  .stale-flag{color:var(--warn); font-weight:600;}
+
+  footer.colophon{
+    margin-top:60px; padding-top:18px; border-top:1px solid var(--line);
+    font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce){ *{scroll-behavior:auto !important;} }
+  html{scroll-behavior:smooth;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Technical Research · Deep Recon</p>
+    <h1>Post-TFT Regime Embedding: Build or Stay Raw?</h1>
+    <p class="decision-line">Decision this research serves: should MARTA revisit a learned regime/state-embedding layer (replacing the abandoned contrastive TFT+InfoNCE encoder), or is raw-feature-driven HMM/RL state representation the right call to stick with — and if an embedding layer is worth revisiting, what current approaches would actually beat the raw-feature baseline?</p>
+    <div class="meta-grid">
+      <span><b>Type</b> Technical</span>
+      <span><b>Date</b> 2026&#8209;09&#8209;14</span>
+      <span><b>Depth</b> Deep — 2 rounds, 10 research assistants, 37 sources</span>
+      <span><b>Validation</b> Normal (load-bearing claims spot-checked)</span>
+      <span><b>Claims</b> 8 verified / 7 unverified / 0 disputed</span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="toc" aria-label="Table of contents">
+      <ol>
+        <li><a href="#exec">Executive summary</a></li>
+        <li><a href="#landscape">Landscape</a></li>
+        <li><a href="#collapse">Collapse failure modes</a></li>
+        <li><a href="#headtohead">Head-to-head evidence</a></li>
+        <li><a href="#architecture">Architecture patterns</a></li>
+        <li><a href="#cross">Cross-dimension insights</a></li>
+        <li><a href="#contrary">Contrary evidence</a></li>
+        <li><a href="#recommendations">Recommendations</a></li>
+        <li><a href="#open">Open questions</a></li>
+        <li><a href="#sources">Source appendix</a></li>
+        <li><a href="#staleness">Staleness map</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <section id="exec">
+        <h2>Executive summary</h2>
+        <div class="exec">
+          <p class="verdict">Keep raw/engineered features as the state representation; do not revisit a contrastive-embedding layer as the next move.</p>
+          <ol>
+            <li><b>No head-to-head evidence exists.</b> Two dedicated search rounds, using multiple query framings, found zero studies that directly compare a learned/contrastive embedding against raw or engineered features on the same task feeding a downstream HMM-style regime detector or RL trading policy <a class="cite" href="#src-12">[12]</a><a class="cite" href="#src-25">[25]</a><a class="cite" href="#src-36">[36]</a><a class="cite" href="#src-37">[37]</a>. This absence held even after chasing the two closest structural candidates (DeepTrader, an MDPI cluster-embedding paper), both blocked by paywalls. Plain, engineered-feature-driven HMM/GMM/clustering is the actively-published, CFA-endorsed <b>mainstream</b> approach for market-regime detection as of 2025 — not a legacy stopgap <a class="cite" href="#src-1">[1]</a><a class="cite" href="#src-2">[2]</a><a class="cite" href="#src-3">[3]</a><a class="cite" href="#src-4">[4]</a><a class="cite" href="#src-6">[6]</a>. <span class="badge badge-medium">medium confidence</span></li>
+            <li><b>The collapse/signal-loss failure class is real and generic, not an implementation bug.</b> Dimensional collapse and the temperature-driven uniformity-tolerance dilemma are established contrastive-SSL theory <a class="cite" href="#src-16">[16]</a><a class="cite" href="#src-17">[17]</a><a class="cite" href="#src-18">[18]</a>; augmentation choice destroying discriminative signal in time-series contrastive learning is confirmed by two independent papers <a class="cite" href="#src-19">[19]</a><a class="cite" href="#src-20">[20]</a>; a financial-domain contrastive embedding was directly shown, by its own authors, to add nothing over existing engineered features (0.9205 vs. 0.9245 AUC) <a class="cite" href="#src-21">[21]</a>. Where finance-specific embeddings <i>do</i> show gains (Kronos, Dolphin), they rest on billions of records of domain pretraining and non-trivial extra engineering to beat baselines <a class="cite" href="#src-7">[7]</a><a class="cite" href="#src-8">[8]</a><a class="cite" href="#src-12">[12]</a>. <span class="badge badge-high">high confidence</span></li>
+            <li><b>A separate, higher-confidence finding applies regardless of the embedding decision:</b> three independent papers, spanning trading-specific and general contextual-RL research, converge — a nonstationary/regime signal degrades or destabilizes a downstream model when concatenated directly into its inputs, but is measurably more stable when restricted to modulating a gating/mixture-of-experts layer <a class="cite" href="#src-30">[30]</a><a class="cite" href="#src-31">[31]</a><a class="cite" href="#src-32">[32]</a>. Route any future regime signal through gating, not raw concatenation — gating itself is not automatically safe either <a class="cite" href="#src-33">[33]</a>. <span class="badge badge-high">high confidence</span></li>
+          </ol>
+          <div class="caveat"><b>Biggest caveat:</b> practitioner/production evidence on both sides of the raw-vs-embedding question is thin — public content skews toward launch-style success stories (survivorship bias, confirmed independently in both research rounds) <a class="cite" href="#src-27">[27]</a><a class="cite" href="#src-28">[28]</a><a class="cite" href="#src-15">[15]</a>. No source, anywhere, documents contrastive pretraining specifically ahead of an HMM regime detector — the exact architecture in question appears untested in the public literature. This report answers "what does the evidence say to do" as of 2026&#8209;09; it cannot rule out that the specific combination would work, only that nobody has published it working or failing.</div>
+        </div>
+      </section>
+
+      <section id="landscape">
+        <h2>Landscape: embedding/SSL vs. classical/raw-feature approaches</h2>
+        <p><b>Classical remains mainstream, not declining.</b> HMM and GMM fit directly on engineered features (returns, volatility, technical indicators) are an actively-published 2025 research area, including ensemble-HMM voting frameworks <a class="cite" href="#src-2">[2]</a> and HMM+Random-Forest hybrids <a class="cite" href="#src-4">[4]</a>, and an explicit HMM-then-RL portfolio-management pipeline — the exact "raw features → HMM → RL" shape, minus any embedding step — published in 2025 conference proceedings <a class="cite" href="#src-3">[3]</a>. CFA Institute's own 2025 practitioner brief names k-means/spectral/hierarchical clustering as standard, mainstream tools that "augment rather than replace existing models" and can be "adopted incrementally" <a class="cite" href="#src-1">[1]</a>. Two Sigma's own published regime-detection methodology uses a Gaussian Mixture Model over 17 hand-engineered macro/equity/style factors — no learned embedding, no indication one was ever tried <a class="cite" href="#src-6">[6]</a>. Recurring, named failure modes of the classical approach: detection lag, overfitting via too many hidden states, and Gaussian-emission misspecification during tail events <span class="badge badge-low">low, single-source</span> <a class="cite" href="#src-5">[5]</a>.</p>
+        <p><b>Embedding/SSL approaches are active but still research-stage in finance</b>, skewing toward forecasting/classification rather than regime detection specifically. Kronos, a decoder-only foundation model pretrained on &gt;12 billion OHLCV "K-line" records across 45 exchanges, is the most credible large-scale example — confirmed peer-reviewed at AAAI-26, not merely an arXiv preprint <a class="cite" href="#src-8">[8]</a> — reporting large relative gains over prior time-series foundation models, though those gains are statistical-loss metrics (RankIC, MAE), not backtested economic returns, and remain self-reported <span class="badge badge-low-medium">low-medium</span> <a class="cite" href="#src-8">[8]</a><a class="cite" href="#src-9">[9]</a>. Dolphin, a contrastive asset-embedding framework, reports outperformance on industry classification and portfolio optimization, magnitude unverified <a class="cite" href="#src-7">[7]</a>. A 2025 re-evaluation study is the most balanced source found: domain-pretrained financial embeddings <i>do</i> achieve real improvements over strong benchmarks, but only after substantial extra investment — larger datasets, synthetic augmentation, hyperparameter tuning <a class="cite" href="#src-12">[12]</a>. A separate contrastive approach for earnings-release trading required task-specific fine-tuning on top of the contrastive stage before results were usable — the same "not a drop-in win" pattern <a class="cite" href="#src-14">[14]</a>. An emerging 2026 direction argues fixed pretraining objectives break under regime non-stationarity and proposes RL agents discover their own auxiliary SSL tasks end-to-end instead — a <i>replacement</i> for, not an addition to, the embed-then-downstream pattern <a class="cite" href="#src-10">[10]</a>. A non-financial (traffic-forecasting) study warns foundation-model benchmarks can hide regime-dependent failure behind strong aggregate metrics — plausible but unconfirmed for finance specifically <a class="cite" href="#src-11">[11]</a>.</p>
+        <p><b>No source directly compares the two families on the same task</b> — see "Head-to-head evidence" below.</p>
+      </section>
+
+      <section id="collapse">
+        <h2>Contrastive-collapse failure modes and mitigation patterns</h2>
+        <p>This is the failure class most relevant to why a prior embedding effort might be abandoned, and it is well-grounded in established, peer-reviewed theory — not a one-off bug.</p>
+        <div class="finding">
+          <div class="label">Established theory <span class="badge badge-high">verified</span></div>
+          <p style="margin:0">Dimensional/representation collapse (embeddings spanning only a low-dimensional subspace) arises from strong/implicit-regularizing augmentation and network over-parameterization <a class="cite" href="#src-16">[16]</a>. The InfoNCE/NT-Xent temperature parameter τ drives a "uniformity-tolerance dilemma" — low τ sharpens separation toward uniformity, but excessive uniformity destroys tolerance for genuinely similar samples <a class="cite" href="#src-17">[17]</a>. Alignment and uniformity are the standard diagnostic metrics for both, formally established by Wang &amp; Isola (2020, ICML) <a class="cite" href="#src-18">[18]</a>.</p>
+        </div>
+        <div class="finding">
+          <div class="label">Augmentation destroys signal <span class="badge badge-high">verified, 2 independent sources</span></div>
+          <p style="margin:0">Jittering, channel permutation, and masking all risk producing "faulty positive pairs" whose augmented view no longer shares the original's discriminative content <a class="cite" href="#src-19">[19]</a><a class="cite" href="#src-20">[20]</a>. A deterministic, structurally-defined view (fixed temporal shift) empirically outperformed standard stochastic augmentation on time-series evaluation (81.49% vs. 78.84% linear-probe, larger gap on 1-NN) <a class="cite" href="#src-19">[19]</a> — validated on activity-recognition/sensor data, not financial data.</p>
+        </div>
+        <div class="finding">
+          <div class="label">Financial embedding shown redundant <span class="badge badge-medium">medium, directly confirmed</span></div>
+          <p style="margin:0">A financial-domain contrastive embedding was directly shown to add nothing over existing engineered features: standalone AUC 0.8644 vs. 0.9245 engineered-only, no improvement combined. Authors' own interpretation: the learned representation "largely overlap[ped] with existing feature abstractions" <a class="cite" href="#src-21">[21]</a>.</p>
+        </div>
+        <p>Established mitigation architectures exist — SimCLR-style in-batch negatives, BYOL/SimSiam, VICReg, DINO — none finance-specific, all well-established (2020-2021). A 2024 survey adds a relevant open problem: non-stationary/drifting data streams break standard contrastive-loss assumptions and require ad hoc fixes, not a settled solution <a class="cite" href="#src-13">[13]</a>.</p>
+        <p><b>Two sub-questions remain unresolved by the literature:</b> no source directly ties mean-pooling specifically (vs. augmentation choice generally) to short-horizon signal loss in a contrastive time-series encoder — closest evidence is by analogy from unrelated domains <a class="cite" href="#src-22">[22]</a><a class="cite" href="#src-23">[23]</a><a class="cite" href="#src-24">[24]</a>. And no source anywhere documents contrastive pretraining used specifically ahead of an HMM-style regime detector — this exact pipeline shape appears absent from the public literature.</p>
+      </section>
+
+      <section id="headtohead">
+        <h2>Direct head-to-head evidence</h2>
+        <p>This is the single most decision-relevant question, and it was searched for explicitly, twice, with different query framings each time. <b>The literature does not contain a controlled, same-task, same-dataset comparison of a learned/contrastive embedding against raw or engineered features</b> feeding either an HMM-style regime detector or an RL trading policy, in crypto/forex/commodity or any comparable multi-asset context. <span class="badge badge-medium">confirmed absence, medium confidence</span></p>
+        <p>The two closest structural candidates both exist but were inaccessible: <b>DeepTrader</b> (AAAI-21) embeds macro "market conditions" alongside an RL portfolio manager, but its ablation detail is locked behind full-PDF access not obtained <a class="cite" href="#src-36">[36]</a>. An <b>MDPI Symmetry paper</b> proposes a clustering-ratio ablation that structurally <i>is</i> the requested comparison, but returned HTTP 403 on both direct fetch and DOI redirect — numbers known only via search-engine synthesis, unverified <a class="cite" href="#src-37">[37]</a>.</p>
+        <p>A tangential but real controlled ablation exists in <b>energy trading</b> (Belgian day-ahead electricity, DDQN, fixed algorithm/environment, only state features varied): a single feature family — even the strongest in-sample performer (78.9% of optimal profit) — generalized worst out-of-sample (28.8% same-market test, 5.7% median across 39 zones); only combining feature families reached 55.6%/47.5% <a class="cite" href="#src-25">[25]</a>. This suggests <i>feature-family diversity</i>, not "raw vs. learned," is the axis practitioners have actually validated to matter for RL trading generalization. It does not include a learned-embedding condition. Using engineered indicators (not raw price) as RL state by design, with no comparison attempted, is confirmed as a common practitioner default elsewhere too <a class="cite" href="#src-26">[26]</a>.</p>
+        <p><b>Practitioner reversion stories — the highest-value source class for this question — do not appear to exist in public content, in either direction.</b> Two dedicated search passes found no team stating they tried a learned embedding and reverted to raw features, or vice versa, with a stated reason. Two Sigma uses engineered features, never tried an embedding <a class="cite" href="#src-6">[6]</a>; Jane Street's 2021 Kaggle 1st-place solution used a supervised autoencoder successfully, numbers unverified <a class="cite" href="#src-27">[27]</a>; one competitor's own repository reports an autoencoder beating XGBoost (8358.763 vs. 5557.170) <a class="cite" href="#src-28">[28]</a>; an independent blogger reports a positive embedding backtest (Sharpe 2.59) with no baseline <a class="cite" href="#src-15">[15]</a>. Every example points toward embeddings succeeding where tried — consistent with, and not ruling out, survivorship bias.</p>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture patterns for multi-consumer regime signals</h2>
+        <p>The most robust finding in this entire research run, and the one with the best source convergence: <b>route a regime/state signal through gating or modulation, never concatenate it directly into a downstream model's raw inputs.</b> <span class="badge badge-high">high confidence, 3 independent sources</span></p>
+        <ul>
+          <li>A cross-sectional volatility-forecasting study at real scale (1,027 US equities 2018-2025, ~1.9M forecasts, plus a 1,552-stock Japanese replication, 30 seeds × 2 markets) found concatenating regime variables directly into model inputs caused training to collapse in 30/30 runs (vs. 3/30 baseline); restricting the same signal to a gating role collapsed in 0/30 runs <a class="cite" href="#src-31">[31]</a>.</li>
+          <li>A separate paper found LLM-derived regime features, despite real standalone predictive validity (IC &gt; 0.15), degraded an RL policy's actual performance specifically at regime-transition boundaries when appended directly to the observation <a class="cite" href="#src-30">[30]</a>.</li>
+          <li>A third, independent, <i>non-trading</i> source (general contextual RL under discontinuous shifts) confirms the same mechanism in a different domain: concatenation is representationally weaker than hypernetwork/modulation-based conditioning, worth 11.5% average improvement in zero-shot generalization <a class="cite" href="#src-32">[32]</a>.</li>
+        </ul>
+        <p>These three sources are methodologically independent (different authors, institutions, domains) and converge on the identical structural recommendation — unusually strong corroboration for a single research run. <b>Caveat: gating is not automatically safe either</b> — a single-author paper on mixture-of-experts state-space models found even oracle regime routing can hurt, because soft routing induces temporal smoothing that destroys underlying dynamics; synthetic-data evidence only, not finance-specific <span class="badge badge-low-medium">low-medium</span> <a class="cite" href="#src-33">[33]</a>.</p>
+        <p>A separate "Market Regime Council" pattern decouples regime detection entirely from agent weighting, evaluated at moderate scale (1,037 trading days, 13 crypto assets) but flagged by its own authors as vulnerable to "cold-start dominance under regime shifts" <a class="cite" href="#src-29">[29]</a>. TradingAgents, a widely-cited multi-agent LLM trading framework, was confirmed to exist and be well-regarded, but its shared-state/memory design was not retrievable beyond the abstract in this run <a class="cite" href="#src-34">[34]</a>.</p>
+        <p><b>Cadence mismatch</b> (a fast decision layer reading a slow layer's signal) is only partially addressed. The closest source, a 2026 survey on LLM-agent trading pipelines, names the general failure mode explicitly and proposes mitigations (time-aware retrieval, "outcome embargo") <a class="cite" href="#src-35">[35]</a>. No source addresses the specific case of a fast (hourly) and slow (weekly) <i>decision</i> layer sharing one <i>regime</i> signal — open question.</p>
+      </section>
+
+      <section id="cross">
+        <h2>Cross-dimension insights</h2>
+        <ul>
+          <li>The two strongest findings point in different directions on complexity, and both should inform the same decision: don't add a contrastive-embedding layer (landscape/head-to-head), but if a regime signal <i>is</i> threaded to multiple consumers — which any multi-layer regime-conditioned system already does, independent of whether that signal is learned or raw-feature-derived — the <i>way</i> it's threaded matters more than whether it's learned. Gate it, don't concatenate it.</li>
+          <li>The one financial-domain source that directly tested "does a contrastive embedding add value over engineered features" answered no <a class="cite" href="#src-21">[21]</a> — and it is also the only source in the entire run testing something structurally close to a genuine embedding-vs-raw ablation. Everything else on the "embeddings win" side (Kronos, Dolphin, Jane Street) compares a learned representation against <i>no</i> representation, not against a well-engineered feature set — an easier bar than the comparison this decision actually needs.</li>
+          <li>The energy-trading paper's finding — feature-<i>family</i> diversity, not representation-learning sophistication, is what generalizes — combined with CFA Institute's "augment, don't replace" framing <a class="cite" href="#src-1">[1]</a>, suggests the higher-leverage question may not be "raw vs. learned" at all, but "is the current feature set diverse enough across families to generalize out-of-sample."</li>
+        </ul>
+      </section>
+
+      <section id="contrary">
+        <h2>Contrary evidence</h2>
+        <p>Red-team pass was not run (<code>red_team = off</code>, not requested this run). Genuine counter-evidence is already surfaced inline above (Kronos/Dolphin/energy-trading results favoring learned or diverse representations) rather than in a separate adversarial pass — see "Landscape" and "Head-to-head evidence."</p>
+      </section>
+
+      <section id="recommendations">
+        <h2>Recommendations</h2>
+        <div class="rec">
+          <div class="num">1</div>
+          <div class="body">
+            <p><b>Do not revisit a contrastive-embedding layer as the next engineering priority.</b> No evidence found — across two dedicated search rounds — that it would beat a well-engineered raw-feature baseline on this exact pipeline shape (embedding → HMM → RL), and the collapse/signal-loss failure class that ended a prior attempt is a documented, generic risk of contrastive SSL on noisy/non-stationary data, not an isolated implementation error.</p>
+            <div class="conf"><span class="badge badge-medium">medium confidence</span> — confirmed absence of contrary evidence after real search effort, not a confirmed negative result; a positive result may simply be unpublished.</div>
+          </div>
+        </div>
+        <div class="rec">
+          <div class="num">2</div>
+          <div class="body">
+            <p><b>If a regime signal is ever threaded into multiple downstream consumers again</b> (RL policy, LLM agents, risk layer), route it through a gating/modulation mechanism, not direct concatenation — the best-supported finding in the run.</p>
+            <div class="conf"><span class="badge badge-high">high confidence</span> on the pattern; <span class="badge badge-low">low</span> on the "gating alone is safe" caveat — monitor for the smoothing/degradation failure mode in <a class="cite" href="#src-33">[33]</a>.</div>
+          </div>
+        </div>
+        <div class="rec">
+          <div class="num">3</div>
+          <div class="body">
+            <p><b>If a learned embedding is revisited later, budget for the engineering investment the literature says is required</b> — not a lightweight retrofit: large-scale domain pretraining (Kronos: &gt;12B records), augmentation strategies validated to preserve the specific signal needed, active collapse monitoring via alignment/uniformity metrics rather than temperature-floor clamping alone.</p>
+            <div class="conf"><span class="badge badge-medium">medium confidence</span> — inferred from <a class="cite" href="#src-12">[12]</a>'s honest ablation, not a controlled study of minimum viable investment.</div>
+          </div>
+        </div>
+        <div class="rec">
+          <div class="num">4</div>
+          <div class="body">
+            <p><b>Consider feature-family diversity as a cheaper, better-evidenced lever than representation learning.</b> The one real controlled ablation found in this run rewarded combining feature families over any single family, including the strongest raw one.</p>
+            <div class="conf"><span class="badge badge-low">low confidence</span> — single preprint, different asset class (energy, not crypto/forex/commodity), not yet validated for this decision's actual domain.</div>
+          </div>
+        </div>
+        <p style="font-size:13.5px; color:var(--ink-dim); max-width:74ch;"><i>Feeds: architecture spine — candidate state-representation approach and its operational constraints; roadmap risk — whether to re-open encoder work this cycle.</i></p>
+      </section>
+
+      <section id="open">
+        <h2>Open questions</h2>
+        <ul>
+          <li><b>Does a contrastive embedding beat raw features on the exact pipeline (embedding → HMM → RL) in a crypto/forex/commodity setting?</b> Not answered by any accessible source. Would require finding a paywalled source (MDPI, DeepTrader full text) or a first-party ablation.</li>
+          <li><b>Does mean-pooling specifically discard short-horizon signal in a contrastive time-series encoder?</b> No direct evidence; only analogous evidence from unrelated domains.</li>
+          <li><b>Does the gating-vs-concatenation risk apply to a genuinely mismatched fast/slow decision cadence (hourly vs. weekly)?</b> No source found addressing this framing specifically.</li>
+          <li><b>Do real production trading systems actually use any of these patterns, and with what results?</b> No non-academic engineering account was found for any pattern despite two dedicated search attempts — most likely survivorship/publication bias, not evidence the patterns are untested in practice.</li>
+        </ul>
+      </section>
+
+      <section id="sources">
+        <h2>Source appendix</h2>
+        <details class="appendix" open>
+          <summary>37 sources <span style="font-family:var(--font-mono); font-size:12px; color:var(--ink-dim); font-weight:400;">— click a row's title to open the original</span></summary>
+          <div class="table-scroll" id="sources-table-mount">
+<table class="sources"><thead><tr><th>#</th><th>Source</th><th>Publisher</th><th>Published</th><th>Accessed</th><th>Confidence</th></tr></thead><tbody><tr id="src-1"><td>[1]</td><td><a href="https://rpc.cfainstitute.org/" target="_blank" rel="noopener">CFA Institute — &quot;Unsupervised Learning I: Overview of Techniques&quot;</a></td><td>CFA Institute Research &amp; Policy Center</td><td>2025</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-2"><td>[2]</td><td><a href="https://www.aimspress.com/" target="_blank" rel="noopener">&quot;A forest of opinions: A multi-model ensemble-HMM voting framework for market regime shift detection&quot;</a></td><td>AIMS Press</td><td>2025-10</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-3"><td>[3]</td><td><a href="https://www.cloud-conf.net/" target="_blank" rel="noopener">&quot;HMM-Based Market Regime Detection with RL for Portfolio Management&quot;</a></td><td>IDS2025 proceedings</td><td>2025</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-4"><td>[4]</td><td><a href="https://blog.quantinsti.com/" target="_blank" rel="noopener">&quot;Step-by-Step Python Guide for Regime-Specific Trading Using HMM and Random Forest&quot;</a></td><td>QuantInsti blog</td><td>2025</td><td>2026-09-14</td><td>low</td></tr><tr id="src-5"><td>[5]</td><td>&quot;Filtering vs. Smoothing: Why Backtests Lie About Regime Detection&quot;</td><td>mathandmarkets.com (Substack)</td><td>2025</td><td>2026-09-14</td><td>low (unverified, snippet only)</td></tr><tr id="src-6"><td>[6]</td><td><a href="https://www.twosigma.com/articles/a-machine-learning-approach-to-regime-modeling/" target="_blank" rel="noopener">&quot;A Machine Learning Approach to Regime Modeling&quot;</a></td><td>Two Sigma</td><td>undated</td><td>2026-09-14</td><td>high</td></tr><tr id="src-7"><td>[7]</td><td><a href="https://arxiv.org/" target="_blank" rel="noopener">&quot;Contrastive Learning of Asset Embeddings from Financial Time Series&quot;</a> (Dolphin)</td><td>arXiv / ACM ICAIF&#x27;24</td><td>2024-07</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-8"><td>[8]</td><td><a href="https://ojs.aaai.org/index.php/AAAI/article/view/39730" target="_blank" rel="noopener">&quot;Kronos: A Foundation Model for the Language of Financial Markets&quot;</a></td><td>AAAI-26 (arXiv 2508.02739)</td><td>2026-03 (AAAI) / 2025-08 (arXiv)</td><td>2026-09-14</td><td>high (peer-review status); low-medium (performance numbers, self-reported)</td></tr><tr id="src-9"><td>[9]</td><td>Kronos commentary</td><td>jonathankinlay.com</td><td>2026-02</td><td>2026-09-14</td><td>low</td></tr><tr id="src-10"><td>[10]</td><td><a href="https://arxiv.org/abs/2608.15841" target="_blank" rel="noopener">&quot;QUESTrader: Self-Supervised Auxiliary Task Discovery for Stable RL in Stock Trading&quot;</a></td><td>arXiv</td><td>2026-08</td><td>2026-09-14</td><td>low-medium</td></tr><tr id="src-11"><td>[11]</td><td><a href="https://arxiv.org/abs/2606.18367" target="_blank" rel="noopener">&quot;Do Time Series Foundation Model Benchmarks Hide Regime-Dependent Failures?&quot;</a></td><td>arXiv</td><td>2026-06</td><td>2026-09-14</td><td>medium (non-financial domain)</td></tr><tr id="src-12"><td>[12]</td><td><a href="https://arxiv.org/abs/2511.18578" target="_blank" rel="noopener">&quot;Re(Visiting) Time Series Foundation Models in Finance&quot;</a></td><td>arXiv</td><td>2025-11</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-13"><td>[13]</td><td><a href="https://arxiv.org/abs/2401.00031" target="_blank" rel="noopener">&quot;Self-supervised Pretraining for Decision Foundation Model: Formulation, Pipeline and Challenges&quot;</a></td><td>arXiv</td><td>2024-01</td><td>2026-09-14</td><td>low-medium</td></tr><tr id="src-14"><td>[14]</td><td><a href="https://arxiv.org/abs/2409.17392" target="_blank" rel="noopener">&quot;Trading through Earnings Seasons using Self-Supervised Contrastive Representation Learning&quot;</a></td><td>arXiv</td><td>2024-09</td><td>2026-09-14</td><td>low (advocacy)</td></tr><tr id="src-15"><td>[15]</td><td><a href="https://www.quantitativo.com/p/asset-embeddings" target="_blank" rel="noopener">&quot;Asset Embeddings&quot;</a></td><td>Quantitativo (Substack)</td><td>~2025</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-16"><td>[16]</td><td>&quot;Understanding Dimensional Collapse in Contrastive Self-supervised Learning&quot; (Jing, Vincent, LeCun, Tian)</td><td>arXiv / ICLR 2022</td><td>2021-10</td><td>2026-09-14</td><td>high</td></tr><tr id="src-17"><td>[17]</td><td>&quot;Understanding the Behaviour of Contrastive Loss&quot; (Wang &amp; Liu)</td><td>arXiv / CVPR 2021</td><td>2020-12</td><td>2026-09-14</td><td>high</td></tr><tr id="src-18"><td>[18]</td><td><a href="https://arxiv.org/abs/2005.10242" target="_blank" rel="noopener">&quot;Understanding Contrastive Representation Learning through Alignment and Uniformity on the Hypersphere&quot;</a> (Wang &amp; Isola)</td><td>arXiv / ICML 2020</td><td>2020-05</td><td>2026-09-14</td><td>high</td></tr><tr id="src-19"><td>[19]</td><td><a href="https://arxiv.org/abs/2606.21957" target="_blank" rel="noopener">&quot;Learning by Shifting: Temporal View Construction for Time Series Contrastive Learning&quot;</a> (ShiFT)</td><td>arXiv</td><td>2026-06</td><td>2026-09-14</td><td>high</td></tr><tr id="src-20"><td>[20]</td><td><a href="https://arxiv.org/abs/2302.03357" target="_blank" rel="noopener">&quot;Towards Enhancing Time Series Contrastive Learning: A Dynamic Bad Pair Mining Approach&quot;</a></td><td>arXiv</td><td>2023-02</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-21"><td>[21]</td><td><a href="https://arxiv.org/abs/2605.21490" target="_blank" rel="noopener">&quot;Temporal Contrastive Transformer for Financial Crime Detection&quot;</a></td><td>arXiv</td><td>2026-05</td><td>2026-09-14</td><td>medium (single-sourced, directly confirmed)</td></tr><tr id="src-22"><td>[22]</td><td><a href="https://arxiv.org/abs/2306.12086" target="_blank" rel="noopener">&quot;What Constitutes Good Contrastive Learning in Time-Series Forecasting?&quot;</a></td><td>arXiv</td><td>2023 (v2 2024)</td><td>2026-09-14</td><td>high (as absence finding)</td></tr><tr id="src-23"><td>[23]</td><td>Dynamic temporal pooling for TSC</td><td>AAAI</td><td>2021</td><td>2026-09-14</td><td>medium (analogous domain)</td></tr><tr id="src-24"><td>[24]</td><td><a href="https://arxiv.org/abs/2604.07385" target="_blank" rel="noopener">&quot;Playing DOOM with 1.3M Parameters&quot;</a></td><td>arXiv</td><td>2026</td><td>2026-09-14</td><td>medium (analogous domain)</td></tr><tr id="src-25"><td>[25]</td><td><a href="https://arxiv.org/abs/2606.27032" target="_blank" rel="noopener">&quot;State Representation Matters in Deep Reinforcement Learning: Application to Energy Trading&quot;</a></td><td>arXiv</td><td>2026-06-25</td><td>2026-09-14</td><td>medium (single preprint, concrete numbers)</td></tr><tr id="src-26"><td>[26]</td><td>CS 7643 Project Report</td><td>arXiv (course project)</td><td>2025-05</td><td>2026-09-14</td><td>low</td></tr><tr id="src-27"><td>[27]</td><td><a href="https://www.kaggle.com/competitions/jane-street-market-prediction/writeups/" target="_blank" rel="noopener">&quot;Yirun&#x27;s Solution (1st place): Training Supervised Autoencoder with MLP&quot;</a></td><td>Kaggle</td><td>~2021</td><td>2026-09-14</td><td>low-medium (unverified numbers)</td></tr><tr id="src-28"><td>[28]</td><td><a href="https://github.com/scaomath/kaggle-jane-street" target="_blank" rel="noopener">scaomath/kaggle-jane-street README</a></td><td>GitHub (individual competitor)</td><td>~2021</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-29"><td>[29]</td><td><a href="https://arxiv.org/abs/2605.24490" target="_blank" rel="noopener">&quot;Market Regime Council for Dynamic Credit Assignment in Multi-Agent LLM Decision Systems&quot;</a></td><td>arXiv</td><td>2026-05</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-30"><td>[30]</td><td><a href="https://arxiv.org/abs/2604.10996" target="_blank" rel="noopener">&quot;When Valid Signals Fail: Regime Boundaries Between LLM Features and RL Trading Policies&quot;</a></td><td>arXiv</td><td>2026-04</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-31"><td>[31]</td><td><a href="https://arxiv.org/abs/2608.12251" target="_blank" rel="noopener">&quot;Regime-Gated Residual Mixture-of-Experts for Cross-Sectional Volatility Forecasting&quot;</a></td><td>arXiv</td><td>2026-08</td><td>2026-09-14</td><td>high</td></tr><tr id="src-32"><td>[32]</td><td><a href="https://arxiv.org/abs/2602.06550" target="_blank" rel="noopener">&quot;Dynamics-Aligned Shared Hypernetworks for Contextual RL under Discontinuous Shifts&quot;</a></td><td>arXiv</td><td>2026-05</td><td>2026-09-14</td><td>medium-high</td></tr><tr id="src-33"><td>[33]</td><td><a href="https://arxiv.org/abs/2608.21840" target="_blank" rel="noopener">&quot;More Experts, Worse Dynamics: Inverse Scaling and Spectral Bias in Mixture-of-Experts State-Space Models&quot;</a></td><td>arXiv</td><td>2026</td><td>2026-09-14</td><td>low-medium</td></tr><tr id="src-34"><td>[34]</td><td><a href="https://arxiv.org/abs/2412.20138" target="_blank" rel="noopener">&quot;TradingAgents: Multi-Agents LLM Financial Trading Framework&quot;</a></td><td>arXiv</td><td>2024-12</td><td>2026-09-14</td><td>low (abstract only)</td></tr><tr id="src-35"><td>[35]</td><td><a href="https://arxiv.org/abs/2605.19337" target="_blank" rel="noopener">&quot;Agentic Trading: When LLM Agents Meet Financial Markets&quot;</a></td><td>arXiv</td><td>2026-05</td><td>2026-09-14</td><td>medium</td></tr><tr id="src-36"><td>[36]</td><td><a href="https://ojs.aaai.org/index.php/AAAI/article/view/16144" target="_blank" rel="noopener">DeepTrader</a></td><td>AAAI-21</td><td>2021</td><td>2026-09-14</td><td>medium (abstract only)</td></tr><tr id="src-37"><td>[37]</td><td><a href="https://www.mdpi.com/2073-8994/18/1/112" target="_blank" rel="noopener">&quot;Deep Reinforcement Learning for Financial Trading: Enhanced by Cluster Embedding and Zero-Shot Prediction&quot;</a></td><td>MDPI Symmetry</td><td>2026-01</td><td>2026-09-14</td><td>low (403&#x27;d, unverified)</td></tr></tbody></table>
+          </div>
+        </details>
+      </section>
+
+      <section id="staleness">
+        <h2>Staleness map</h2>
+        <p>Computed via <code>recon_kit.py staleness</code> (13 load-bearing claims; foundational-theory claims <a class="cite" href="#src-16">[16]</a><a class="cite" href="#src-17">[17]</a><a class="cite" href="#src-18">[18]</a> excluded — cited as established, not current-state). Windows per the pack's freshness bars: AI-adjacent performance/failure claims → 3 months, landscape → 12 months, patterns → 24 months, practitioner reports → 6 months.</p>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Claim</th><th>Class</th><th>Published</th><th>Recheck by</th></tr></thead>
+          <tbody>
+            <tr><td>Dolphin embeddings outperform baselines <a class="cite" href="#src-7">[7]</a></td><td>performance-number</td><td>2024-07</td><td class="stale-flag">2024-10-01 (overdue)</td></tr>
+            <tr><td>Kronos RankIC gains self-reported <a class="cite" href="#src-8">[8]</a></td><td>performance-number</td><td>2025-08</td><td class="stale-flag">2025-11-01 (overdue)</td></tr>
+            <tr><td>TSFM re-evaluation: extra engineering needed <a class="cite" href="#src-12">[12]</a></td><td>failure-claim</td><td>2025-11</td><td class="stale-flag">2026-02-01 (overdue)</td></tr>
+            <tr><td>Two Sigma engineered-feature practice <a class="cite" href="#src-6">[6]</a></td><td>practitioner-report</td><td>2025-06</td><td class="stale-flag">2025-12-01 (overdue)</td></tr>
+            <tr><td>CFA Institute mainstream-clustering claim <a class="cite" href="#src-1">[1]</a></td><td>landscape</td><td>2025-06</td><td>2026-06-01</td></tr>
+            <tr><td>Financial-crime embedding redundancy <a class="cite" href="#src-21">[21]</a></td><td>failure-claim</td><td>2026-05</td><td class="stale-flag">2026-08-01 (overdue)</td></tr>
+            <tr><td>Augmentation destroys TS signal <a class="cite" href="#src-19">[19]</a><a class="cite" href="#src-20">[20]</a></td><td>failure-claim</td><td>2026-06</td><td class="stale-flag">2026-09-01 (overdue)</td></tr>
+            <tr><td>RL state-representation ablation <a class="cite" href="#src-25">[25]</a></td><td>performance-number</td><td>2026-06</td><td class="stale-flag">2026-09-01 (overdue)</td></tr>
+            <tr><td>Gating/MoE not automatically safe <a class="cite" href="#src-33">[33]</a></td><td>failure-claim</td><td>2026-06</td><td class="stale-flag">2026-09-01 (overdue)</td></tr>
+            <tr><td>No reversion story found</td><td>practitioner-report</td><td>2026-09</td><td>2027-03-01</td></tr>
+            <tr><td>Kronos AAAI-26 peer-review status <a class="cite" href="#src-8">[8]</a></td><td>landscape</td><td>2026-03</td><td>2027-03-01</td></tr>
+            <tr><td>Gating-beats-concatenation, 3-source <a class="cite" href="#src-30">[30]</a><a class="cite" href="#src-31">[31]</a><a class="cite" href="#src-32">[32]</a></td><td>pattern</td><td>2026-05</td><td>2028-05-01</td></tr>
+            <tr><td>No head-to-head found</td><td>other</td><td>2026-09</td><td>2028-09-01</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <p style="margin-top:14px;"><b>Earliest re-check due: 2024-10-01</b> (Dolphin's performance claim — already well past its 3-month AI-adjacent freshness bar at time of writing; reported as known-stale on landing, per the pack's freshness discipline, not overlooked). Six of the nine overdue claims cluster in the last 3 months (2026-05 to 2026-08 publications) and share one driver: this research area moves fast enough that a 3-month AI-adjacent bar makes almost everything published this year nominally due for recheck by the time a report ships — read the overdue flags as "re-verify before citing further out," not as a sign the findings are wrong today.</p>
+      </section>
+
+      <footer class="colophon">
+        MARTA deep-recon research run · technical-post-tft-regime-embedding-approach-2026-09-14 · preset: deep · validation: normal · red-team: off · generated 2026-09-14
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  // Wrap the confidence column's plain text into a badge span, matching the same
+  // vocabulary used elsewhere on the page. Reads only text already present in the
+  // escaped, safely-generated source table — no untrusted HTML is introduced.
+  var KEYWORDS = ["high","medium-high","low-medium","medium","low"];
+  function classify(text){
+    var t = text.toLowerCase();
+    for (var i=0;i<KEYWORDS.length;i++){
+      if (t.indexOf(KEYWORDS[i]) === 0) return KEYWORDS[i].replace(/\s+/g,"-");
+    }
+    return null;
+  }
+  var table = document.querySelector("#sources-table-mount table");
+  if (table) {
+    var rows = table.querySelectorAll("tbody tr");
+    rows.forEach(function(row){
+      var cell = row.lastElementChild;
+      if (!cell) return;
+      var full = cell.textContent.trim();
+      var cls = classify(full);
+      if (!cls) return;
+      cell.textContent = "";
+      var badge = document.createElement("span");
+      badge.className = "badge badge-" + cls;
+      var label = document.createElement("span");
+      label.textContent = full;
+      badge.appendChild(label);
+      cell.appendChild(badge);
+    });
+  }
+})();
+</script>
+</body>
+</html>

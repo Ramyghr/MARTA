@@ -1128,3 +1128,34 @@ predates `TEST_START` (2025-01-01), rendered as a visible amber banner in the St
 Tester UI (`backtest/page.tsx`). Non-PPO rule-based strategies are exempt (never
 "trained" on anything, so no window is invalid for them). Verified end-to-end in a real
 browser: banner renders for a 2022-08-15 start, absent for a 2025-01-01 start.
+
+## Live price chart stuck on one frozen regime label — fixed (2026-09-16)
+
+User report: the BTC price chart had shown the same regime, "R3 Low Volatility /
+Range-bound (XRP-dominant)," for the entire visible window (Aug 17 2026 → today, i.e.
+the full 30-day/720h default chart range) — not literally every candle since Aug 17
+historically, just every candle currently on screen.
+
+**Root cause:** `dashboard/backend/main.py`'s `/ws/price/{asset}` `mode="live"` branch
+fetches its initial history batch via `live_feed.fetch_live_candles()`, then tagged each
+candle with `_add_regime(c, asset)` — default `live=False`, i.e.
+`regime_service.get_regime()`, a pure nearest-neighbor lookup into the frozen crypto5
+causal `regime_stream_causal.parquet` (last row: 2025-12-31, BTC label 3). Nearest-lookup
+has no upper bound check, so *every* query timestamp after 2025-12-31 resolves to that
+same last row — and since it's now September 2026, that covers the entire 30-day visible
+window. `historical.py`'s `get_history()`/`_build_records()` had already been fixed for
+this exact failure mode (the "Dashboard bug sweep" 2026-09-03 section, `_add_regime`'s
+own docstring, and `regime_service.get_regime_series_live_aware`'s docstring all describe
+it) via `get_regime_series_live_aware()` — nearest hit in the incrementally-growing
+`regime_live_log.parquet` past the frozen boundary, falling back to one shared fresh
+`get_live_regime()` compute only if the log has no entry within 14 days. The live-mode WS
+history batch was a separate code path that never got the same fix.
+
+**Fixed:** added `_add_regime_batch()` in `main.py`, thin wrapper around the same
+`regime_service.get_regime_series_live_aware()` `historical.py` already uses, and swapped
+it in for the per-candle `_add_regime()` loop in `/ws/price`'s live-mode history branch.
+The per-tick `forward()` callback (genuinely real-time single candles) is unchanged —
+still correctly uses `_add_regime(candle, asset, live=True)`. Verified directly against
+`get_regime_series_live_aware('BTC_USDT', ...)` over the same 30-day window: now returns
+a real 6-way regime distribution (counts 32/104/305/151/67/62 across labels 0-5) instead
+of one repeated label. Redeployed via `docker compose up -d --force-recreate backend`.

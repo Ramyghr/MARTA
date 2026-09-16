@@ -14,14 +14,14 @@ from agents.schemas import AgentThesis
 from utils.logger import logger
 
 _MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).parent.parent)))
-# Kept at the old production regime_stream.parquet — dashboard/backend/debate_stream.py
-# constructs ContrarianAgent() with no arguments and hardcodes that same production
-# stream elsewhere, so this default must keep matching it or live dashboard debates
-# would silently search the wrong (crypto5) stream for historical analogues. Was
-# previously ALWAYS this hardcoded path with no way to override — that part was the
-# real bug (it ignored whatever regime_stream_df the rest of a given debate was using).
-# Pass regime_stream_df to __init__ to inject the exact stream in use (preferred — also
-# avoids a redundant second parquet read); crypto-only callers (run_debate.py) do this.
+# Kept at the old production regime_stream.parquet as a legacy default. Historically,
+# dashboard/backend/debate_stream.py constructed ContrarianAgent() with no arguments and
+# hardcoded that same production stream elsewhere — silently ignoring whatever
+# regime_stream_df the rest of a given debate was using — which was the real bug this
+# constructor param fixed. debate_stream.py's live debate path now always passes
+# regime_stream_df=... explicitly (as does run_debate.py), so this default is not
+# currently exercised by any real caller — kept only as a safe fallback for a caller
+# that doesn't override it.
 _REGIME_STREAM_PATH = _MARTA_ROOT / "data/processed/regime_stream.parquet"
 _ACTIVATION_THRESHOLD = 0.60  # Mistral 7B confident theses typically land at 0.60-0.70
 _HIGH_REGIME_PROB = 0.80

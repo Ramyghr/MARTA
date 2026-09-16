@@ -31,6 +31,10 @@ data/processed/
 data/validated/
 data/results/*.json
 data/debates/*.json
+# Holds bcrypt password hashes + session tokens (dashboard/backend/auth_db.py) — unlike
+# chat_history.db/paper_trading.db (tracked, existing project practice), this one must
+# never land in git regardless of that precedent.
+data/auth.db
 # dashboard/backend/data/ — stray runtime cache/live-bridge artifacts written from inside
 # the docker container when a MARTA_ROOT-anchored path was missing (fixed 2026-09-03).
 # The repo-root data/processed/ rule above doesn't cover this nested path (gitignore
@@ -58,3 +62,7 @@ dashboard/frontend/.next/
 # (kaggle_upload/marta-processed-data-v2/v3/ are pre-existing tracked snapshots — not ignored)
 kaggle_upload/marta-debate-coverage-pkg/
 kaggle_upload/marta-debate-coverage-pkg.zip
+# Same reasoning — see kaggle_weekly_ppo_grid_instructions.md's Step 0 for how to
+# regenerate this from a clean checkout (a handful of `cp` commands, no script needed).
+kaggle_upload/marta-weekly-ppo-pkg/
+kaggle_upload/marta-weekly-ppo-pkg.zip

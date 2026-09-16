@@ -129,6 +129,7 @@ export function MARTAChat() {
       const resp = await fetch(`${apiUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ message, session_id: sessionId, asset: selectedAsset }),
       })
       const data = await resp.json()
@@ -144,7 +145,7 @@ export function MARTAChat() {
   }
 
   const clearChat = async () => {
-    if (sessionId) await fetch(`${apiUrl}/api/chat/${sessionId}`, { method: 'DELETE' })
+    if (sessionId) await fetch(`${apiUrl}/api/chat/${sessionId}`, { method: 'DELETE', credentials: 'include' })
     newChat()
   }
 

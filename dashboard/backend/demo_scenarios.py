@@ -6,12 +6,16 @@
 # reasonable window) debate, and `timestamp` has been snapped to that debate's actual
 # timestamp so the regime badge and the replayed transcript are for the same moment.
 #
-# The debate cache only has 33 stored debates (32 BTC_USDT, 1 GOLD) spanning 2018-09
-# to 2021-10 — there are NO ETH_USDT or EURUSD debates, and nothing near March 2020.
-# Scenarios for those have no valid debate to replay and omit `debate_index` entirely
-# (rather than pointing at an unrelated asset's debate); the frontend already handles
-# a missing debate_index gracefully (no "Replay Debate" data, no crash). Generating
-# real debates for these gaps requires running the live LLM debate pipeline.
+# STALE as of the 2026-07 audit: the debate cache only had 33 stored debates (32
+# BTC_USDT, 1 GOLD) at the time these debate_index values were assigned — there were NO
+# ETH_USDT or EURUSD debates, and nothing near March 2020. Scenarios for those omitted
+# `debate_index` entirely (rather than pointing at an unrelated asset's debate); the
+# frontend already handles a missing debate_index gracefully (no "Replay Debate" data,
+# no crash). The cache has since grown to 1,861 debates across all 5 crypto5 assets
+# (BTC/ETH/BNB/LTC/XRP) via the Kaggle debate-coverage runs — the scenarios below have
+# NOT been re-audited against that larger cache, so gaps noted here may no longer be
+# real gaps. Re-run the same re-verification pass described above if this file is
+# touched again.
 DEMO_SCENARIOS = [
     # ── BTC scenarios ──────────────────────────────────────────────────────────
     {
