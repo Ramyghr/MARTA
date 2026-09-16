@@ -41,6 +41,21 @@ _MOCK_REGIME_SERVICE.get_regime.return_value = {
     "regime_description": "Calm bull",
     "regime_probs": {"regime_1": 0.8},
 }
+# /api/regime/{asset} calls get_live_regime, not get_regime (see main.py) — this was
+# missing, so the mock silently returned a bare MagicMock (serializes to {}) instead of
+# a real response shape, making test_get_regime_has_label fail regardless of whether the
+# actual endpoint works. Confirmed separately (direct regime_service.get_live_regime_crypto5
+# call against real data) that the real endpoint returns a proper regime_label — this was a
+# test-mock gap, not a production bug.
+_MOCK_REGIME_SERVICE.get_live_regime.return_value = {
+    "regime_label": 1,
+    "regime_description": "Calm bull",
+    "probabilities": {"regime_1": 0.8},
+    "dominant_regime": 1,
+    "stale": False,
+    "age_hours": 0.0,
+    "live": True,
+}
 _MOCK_HISTORICAL.get_data_range.return_value = {
     "asset": "BTC_USDT",
     "start": "2021-01-01T00:00:00Z",
@@ -126,8 +141,8 @@ def test_get_assets_schema():
     assets = body["assets"]
     assert len(assets) == 5
     ids = [a["id"] for a in assets]
-    assert "BTC_USDT" in ids
-    assert "EURUSD" in ids
+    # crypto5 panel (2026-08 migration) — EURUSD/GOLD were dropped, not just deprioritized.
+    assert ids == ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 
 
 def test_get_assets_fields():

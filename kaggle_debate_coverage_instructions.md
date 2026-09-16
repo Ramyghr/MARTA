@@ -178,21 +178,33 @@ every timestamp already in the file and pick up where it left off.
 
 Kaggle → your notebook → Output tab → download `data/debates/debate_results.json`.
 
-Locally, merge it into the existing cache (append, dedup by timestamp — same pattern
-`run_weekly_debates.py` already uses):
+Locally, merge it into the existing cache (append, dedup by **(timestamp, asset)** — NOT
+timestamp alone):
 
 ```python
 import json
 
 existing = json.load(open("data/debates/debate_results.json"))
-existing_ts = {r["timestamp"] for r in existing}
+existing_keys = {(r["timestamp"], r["asset"]) for r in existing}
 
 new = json.load(open("~/Downloads/debate_results.json"))  # from Kaggle
-merged = existing + [r for r in new if r["timestamp"] not in existing_ts]
+merged = existing + [r for r in new if (r["timestamp"], r["asset"]) not in existing_keys]
 
 json.dump(merged, open("data/debates/debate_results.json", "w"), indent=2, default=str)
 print(f"{len(existing)} existing + {len(merged) - len(existing)} new = {len(merged)} total")
 ```
+
+**Dedup by timestamp alone is a trap once you run this for more than one asset.** Every
+asset uses the same daily-stride picks over the same 2024-01-01..2024-12-31 window, so
+timestamps collide across assets by construction — a timestamp-only key treats e.g. ETH's
+2024-01-01 debate as "already covered" by BTC's, silently dropping it. This is not
+hypothetical: it happened for real on 2026-09-15 and destroyed 363/366 of a completed ETH
+run and 365/366 of a completed XRP run before being caught (fixed in both this doc and
+`scripts/kaggle_debate_coverage.py`'s own `_load_existing()`, which had the identical bug).
+Each Kaggle output file is also always named `debate_results.json` regardless of
+`--asset` — rename it immediately on download (e.g. `debate_results_ETH.json`) before
+running another asset's notebook, or a second download will silently overwrite the first
+in your Downloads folder.
 
 That gives you the dense BTC coverage the debate-layer audit needs. The audit itself
 (rule-based sizing on this consensus vs. buy-hold/technical-rule baselines, block-

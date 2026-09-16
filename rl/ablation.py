@@ -110,9 +110,9 @@ def _load_no_regime_debates() -> list[dict] | None:
     return json.loads(_NO_REGIME_DEBATE_PATH.read_text())
 
 
-def _run_buy_hold(env: MARTATradingEnv) -> dict[str, np.ndarray]:
-    """Buy-and-hold BTC over the env's (validation) window."""
-    asset = "BTC_USDT"
+def _run_buy_hold(env: MARTATradingEnv, asset: str = "BTC_USDT") -> dict[str, np.ndarray]:
+    """Buy-and-hold ``asset`` over the env's (validation) window. Defaults to BTC_USDT
+    for backward compatibility with every existing single-asset caller."""
     starts = env._valid_starts[asset]
     if len(starts) == 0:
         return {"returns": np.array([]), "portfolio_values": np.array([env.initial_capital]),

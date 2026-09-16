@@ -173,8 +173,8 @@ export interface AblationVariant {
 export interface BootstrapCI {
   comparison: string;
   delta_sharpe: number;
-  ci_low: number;
-  ci_high: number;
+  ci_lower_95: number;
+  ci_upper_95: number;
   significant: boolean;
 }
 

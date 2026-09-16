@@ -4,6 +4,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -162,6 +163,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000", "http://127.0.0.1:3000",
         "http://localhost:3001", "http://127.0.0.1:3001",
+        # .claude/launch.json's marta-frontend-preview — separate ports so the preview
+        # tooling doesn't collide with a running docker compose stack on 3001/8001.
+        "http://localhost:3010", "http://127.0.0.1:3010",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -237,7 +241,10 @@ def get_regime_at(asset: str, timestamp: str = Query(...)):
 
 
 @app.get("/api/history/{asset}")
-def get_history(asset: str, n: int = 200):
+def get_history(asset: str, n: int = 720):
+    # 720h (30 days) — was 200h (~8 days), which read as "the chart only goes back a
+    # week" by default. tail(n) is a cheap slice regardless of n, no perf reason to
+    # keep it small; the user can still scrub/zoom further back via getHistoryRange.
     return {"candles": historical.get_history(asset, n)}
 
 
@@ -297,8 +304,8 @@ def refresh_ablation():
 
 
 @app.get("/api/backtest/strategies")
-def get_backtest_strategies():
-    return strategy_backtest.list_strategies()
+def get_backtest_strategies(asset: str | None = Query(None)):
+    return strategy_backtest.list_strategies(asset)
 
 
 @app.get("/api/backtest/run")
@@ -779,6 +786,17 @@ async def test_source(source: str = Query(...)):
         import news_live
         headlines = await news_live.get_live_news("BTC_USDT", max_items=5)
         return {"ok": bool(headlines), "message": f"Fetched {len(headlines)} headlines from RSS feeds" if headlines else "No headlines returned"}
+    if source == "newsapi":
+        api_key = os.environ.get("NEWSAPI_KEY") or os.environ.get("NEWS_API_KEY")
+        if not api_key:
+            return {"ok": False, "message": "NEWSAPI_KEY not set"}
+        # pipeline/ is mounted at MARTA_ROOT in the container, not on sys.path by
+        # default — same fix live_feature_bridge.py needed for the same reason.
+        if str(MARTA_ROOT) not in sys.path:
+            sys.path.insert(0, str(MARTA_ROOT))
+        from pipeline.live.news import _fetch_newsapi_sync
+        articles = await asyncio.to_thread(_fetch_newsapi_sync, "BTC_USDT")
+        return {"ok": bool(articles), "message": f"Fetched {len(articles)} articles from NewsAPI" if articles else "No articles returned (bad key, rate limit, or network)"}
     if source == "twelve_data":
         if not live_feed.TWELVE_DATA_KEY:
             return {"ok": False, "message": "TWELVE_DATA_KEY not set"}
@@ -867,14 +885,17 @@ async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
     await websocket.accept()
 
     if mode == "live":
-        # Try to pull real CCXT data first; fall back to historical parquet
-        live_candles = await live_feed.fetch_live_candles(asset, limit=300)
+        # Try to pull real CCXT data first; fall back to historical parquet.
+        # 720h (30 days) — was 300h (~12.5 days); Binance's fetch_ohlcv caps limit at
+        # 1000, so this is well within range. See /api/history's get_history for the
+        # same "chart only shows a week" fix.
+        live_candles = await live_feed.fetch_live_candles(asset, limit=720)
         if live_candles:
             enriched = [_add_regime(c, asset) for c in live_candles]
             await websocket.send_json({"type": "history", "candles": enriched})
         else:
             try:
-                candles = historical.get_history(asset, 300)
+                candles = historical.get_history(asset, 720)
                 await websocket.send_json({"type": "history", "candles": candles})
             except WebSocketDisconnect:
                 return
@@ -901,9 +922,9 @@ async def ws_price(websocket: WebSocket, asset: str, mode: str = "demo"):
             live_feed.unsubscribe(asset, forward)
 
     else:
-        # Historical / demo mode — serve from parquet
+        # Historical / demo mode — serve from parquet. 720h, same reasoning as above.
         try:
-            candles = historical.get_history(asset, 200)
+            candles = historical.get_history(asset, 720)
             await websocket.send_json({"type": "history", "candles": candles})
         except WebSocketDisconnect:
             return

@@ -430,8 +430,17 @@ function StrategyTesterPanel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getBacktestStrategies().then((d) => setStrategies(d.strategies)).catch(() => setStrategies([]));
-  }, []);
+    api.getBacktestStrategies(selectedAsset).then((d) => {
+      setStrategies(d.strategies);
+      // e.g. weekly_ppo_raw is BTC_USDT-only — if the asset just switched away from BTC
+      // while one of those was selected, it'd otherwise stay selected-but-disabled and
+      // still submit on Run, hitting the backend's 400 instead of being caught here.
+      setStrategy((current) => {
+        const entry = d.strategies.find((s) => s.id === current);
+        return entry && !entry.locked ? current : "ma_crossover";
+      });
+    }).catch(() => setStrategies([]));
+  }, [selectedAsset]);
 
   const byCategory = useMemo(() => {
     const groups: Record<string, BacktestStrategyInfo[]> = {};
@@ -543,6 +552,11 @@ function StrategyTesterPanel() {
 
       {result && !loading && (
         <div className="flex flex-col gap-3">
+          {result.data_leakage_warning && (
+            <div className="text-[10px] text-[#ffb020] border border-[#ffb020]/40 bg-[#ffb020]/10 rounded px-2 py-1.5 font-medium">
+              ⚠ {result.data_leakage_warning}
+            </div>
+          )}
           <div className="text-[10px] text-[#555]">
             {result.strategy_label} on <span className="text-[#ccc] font-mono">{result.asset.replace("_", "/")}</span>{" "}
             · {new Date(result.start).toLocaleDateString()} → {new Date(result.end).toLocaleDateString()}{" "}

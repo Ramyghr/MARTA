@@ -78,6 +78,8 @@ export default function DashboardPage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [equityCurve, setEquityCurve] = useState<EquityCurve | null>(null);
   const [chartRange, setChartRange] = useState<{ start: string; end: string } | null>(null);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const [noMoreHistory, setNoMoreHistory] = useState(false);
   const [lastDebateTimestamp, setLastDebateTimestamp] = useState<string | null>(null);
   const [lastDebateAsset, setLastDebateAsset] = useState<string | null>(null);
   const [noDebatesRecorded, setNoDebatesRecorded] = useState(false);
@@ -130,6 +132,8 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchApi<DataRange>(`/api/data-range/${selectedAsset}`).then(setDataRange).catch(() => {});
     setChartRange(null);
+    setNoMoreHistory(false);
+    setLoadingMoreHistory(false);
   }, [selectedAsset]);
 
   useEffect(() => {
@@ -206,6 +210,30 @@ export default function DashboardPage() {
   const handleRunDebate = useCallback(() => {
     router.push("/debates?autorun=1");
   }, [router]);
+
+  // Infinite-scroll-back: PriceChart calls this when the user pans/zooms to the oldest
+  // currently-loaded candle. Fetches another 720h (30 days) further back and prepends
+  // it — PriceChart's own dataset-swap detection (earliest timestamp changed) picks up
+  // the enlarged array and re-renders while preserving the user's scroll position.
+  const handleLoadMoreHistory = useCallback(() => {
+    if (loadingMoreHistory || noMoreHistory || candles.length === 0) return;
+    const earliestTs = candles[0].timestamp;
+    const newStart = new Date(new Date(earliestTs).getTime() - 720 * 3600_000).toISOString();
+    setLoadingMoreHistory(true);
+    api.getHistoryRange(selectedAsset, newStart, earliestTs)
+      .then((d) => {
+        // end= is inclusive on the backend, so filter out any overlap with what's
+        // already loaded rather than relying on exact boundary semantics.
+        const older = d.candles.filter((c) => new Date(c.timestamp).getTime() < new Date(earliestTs).getTime());
+        if (older.length === 0) {
+          setNoMoreHistory(true);
+          return;
+        }
+        setCandles((prev) => [...older, ...prev]);
+      })
+      .catch(() => setNoMoreHistory(true))
+      .finally(() => setLoadingMoreHistory(false));
+  }, [loadingMoreHistory, noMoreHistory, candles, selectedAsset]);
 
   // activeDebate can be left over from a previously selected asset (e.g. viewed on the
   // Debates page before switching here) — only trust it when it actually matches the
@@ -304,6 +332,9 @@ export default function DashboardPage() {
             dataRange={dataRange}
             onRangeChange={mode === "historical" ? setChartRange : () => {}}
             liveMode={mode === "live"}
+            onLoadMore={handleLoadMoreHistory}
+            loadingMore={loadingMoreHistory}
+            noMoreHistory={noMoreHistory}
           />
           <RegimePanel regime={regime} />
         </div>

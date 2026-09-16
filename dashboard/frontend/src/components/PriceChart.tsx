@@ -11,6 +11,8 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
   type MouseEventParams,
+  type LogicalRange,
+  type Logical,
 } from "lightweight-charts";
 import type { Candle, DataRange } from "@/lib/types";
 import { REGIME_COLORS } from "@/lib/types";
@@ -24,7 +26,16 @@ interface Props {
   onRangeChange: (range: { start: string; end: string } | null) => void;
   onCandleClick?: (timestamp: string) => void;
   liveMode?: boolean;
+  // Infinite-scroll-back: fires when the user pans/zooms to the oldest currently-loaded
+  // candle. Caller is expected to prepend older candles onto `candles`.
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
+  noMoreHistory?: boolean;
 }
+
+// How close to the left edge (in bar count) before triggering onLoadMore. Large enough
+// to start the fetch before the user actually hits blank space and notices a stall.
+const LOAD_MORE_EDGE_BARS = 50;
 
 type RangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 
@@ -86,7 +97,10 @@ interface RegimeBand {
   color: string;
 }
 
-export default function PriceChart({ candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false }: Props) {
+export default function PriceChart({
+  candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false,
+  onLoadMore, loadingMore = false, noMoreHistory = false,
+}: Props) {
   const regimeNames = useMARTAStore((s) => s.regimeNames);
   const [activeRange, setActiveRange] = useState<RangeKey>("ALL");
   const [customStart, setCustomStart] = useState("");
@@ -101,6 +115,11 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
   const prevPropRef = useRef<Candle[]>(candles);
   const prevAssetRef = useRef(asset);
   const historicalEndRef = useRef<string | null>(null);
+  // Count of candles prepended by the most recent "load more" fetch, consumed by the
+  // data-push effect right after setData() so the visible logical range can be shifted
+  // by the same amount — otherwise the user's current view jumps every time older bars
+  // are spliced onto the front of the array.
+  const pendingPrependRef = useRef(0);
 
   useEffect(() => {
     const prevProp = prevPropRef.current;
@@ -122,6 +141,17 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
       candles[0]?.timestamp !== prevProp[0]?.timestamp;
 
     if (!isBridgedAsset || datasetSwapped) {
+      // "Load more" prepends older candles onto the front: same asset, dataset grew,
+      // the last (live) candle is unchanged, but the first one is now older — the
+      // exact shape of a prepend, distinct from an asset switch or a genuinely fresh
+      // load, both of which should NOT try to preserve the previous scroll position.
+      const isPrepend =
+        !assetChanged &&
+        prevProp.length > 0 &&
+        candles.length > prevProp.length &&
+        candles.at(-1)?.timestamp === prevProp.at(-1)?.timestamp;
+      pendingPrependRef.current = isPrepend ? candles.length - prevProp.length : 0;
+
       historicalEndRef.current = candles.length ? candles[candles.length - 1].timestamp : null;
       setLiveCandles(candles);
       return;
@@ -171,7 +201,10 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
   // render loop (setBands inside the effect -> re-render -> new displayCandles
   // reference -> effect fires again). Recharts never had a useEffect keyed on this,
   // so the same unmemoized .slice() didn't loop there — introduced by this rewrite.
-  const displayCandles = useMemo(() => liveCandles.slice(-2000), [liveCandles]);
+  // Cap raised 2000 -> 20000 (was silently discarding "load more" history once loaded
+  // history exceeded 2000 bars — the whole point of infinite-scroll-back is to keep
+  // growing this past that); lightweight-charts handles datasets this size natively.
+  const displayCandles = useMemo(() => liveCandles.slice(-20000), [liveCandles]);
 
   const latestClose = displayCandles.at(-1)?.close;
   const prevClose = displayCandles.at(-2)?.close;
@@ -237,6 +270,12 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
   const liveBoundarySecRef = useRef<number | null>(null);
   const onCandleClickRef = useRef(onCandleClick);
   onCandleClickRef.current = onCandleClick;
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  const loadingMoreRef = useRef(loadingMore);
+  loadingMoreRef.current = loadingMore;
+  const noMoreHistoryRef = useRef(noMoreHistory);
+  noMoreHistoryRef.current = noMoreHistory;
 
   const [bands, setBands] = useState<RegimeBand[]>([]);
   const [liveBoundaryX, setLiveBoundaryX] = useState<number | null>(null);
@@ -328,9 +367,21 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
       const c = candleByTimeRef.current.get(param.time as number);
       setHoverInfo(c ? { candle: c, x: param.point.x, y: param.point.y } : null);
     };
+    // Fires on both pan and zoom (same event recomputeOverlays uses). Triggers
+    // onLoadMore once the visible range's left edge gets within LOAD_MORE_EDGE_BARS
+    // of the start of currently-loaded data — guarded by refs (not state) since this
+    // subscription is set up once at chart creation and must always see the latest
+    // loading/exhausted flags without re-subscribing on every prop change.
+    const checkLoadMore = (range: LogicalRange | null) => {
+      if (!range || !onLoadMoreRef.current) return;
+      if (loadingMoreRef.current || noMoreHistoryRef.current) return;
+      if (range.from < LOAD_MORE_EDGE_BARS) onLoadMoreRef.current();
+    };
+
     chart.subscribeClick(handleClick);
     chart.subscribeCrosshairMove(handleCrosshair);
     chart.timeScale().subscribeVisibleLogicalRangeChange(recomputeOverlays);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(checkLoadMore);
 
     // Measure wrapperRef (never mutated by the chart library), not containerRef
     // (resize() sets an explicit inline width/height directly on it — measuring that
@@ -374,6 +425,7 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
       chart.unsubscribeClick(handleClick);
       chart.unsubscribeCrosshairMove(handleCrosshair);
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(recomputeOverlays);
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(checkLoadMore);
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -386,7 +438,16 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
   useEffect(() => {
     const candleSeries = candleSeriesRef.current;
     const volumeSeries = volumeSeriesRef.current;
-    if (!candleSeries || !volumeSeries) return;
+    const chart = chartRef.current;
+    if (!candleSeries || !volumeSeries || !chart) return;
+
+    // Prepending older bars shifts every existing bar's logical index up by however
+    // many were added — capture the pre-update visible range so it can be restored
+    // (shifted) after setData(), or a "load more" would yank the view back to the far
+    // left/right instead of leaving the user looking at the same candles as before.
+    const prepended = pendingPrependRef.current;
+    pendingPrependRef.current = 0;
+    const priorRange = prepended > 0 ? chart.timeScale().getVisibleLogicalRange() : null;
 
     const byTime = new Map<number, Candle>();
     const candleData = displayCandles.map((c) => {
@@ -404,6 +465,13 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
         color: c.close >= c.open ? "rgba(0,255,127,0.45)" : "rgba(255,55,55,0.45)",
       }))
     );
+
+    if (priorRange) {
+      chart.timeScale().setVisibleLogicalRange({
+        from: (priorRange.from + prepended) as Logical,
+        to: (priorRange.to + prepended) as Logical,
+      });
+    }
 
     regimeRunsRef.current = regimeRuns;
     liveBoundarySecRef.current = liveBridgeBoundarySec;
@@ -533,6 +601,17 @@ export default function PriceChart({ candles, asset, dataRange, onRangeChange, o
                 >
                   live ›
                 </span>
+              </div>
+            )}
+            {(loadingMore || noMoreHistory) && (
+              <div
+                style={{
+                  position: "absolute", top: 4, left: 4, fontSize: 9, fontWeight: 600,
+                  color: loadingMore ? "#4a9eff" : "#444", whiteSpace: "nowrap",
+                  padding: "1px 5px", borderRadius: 3, background: "#0a0a0acc",
+                }}
+              >
+                {loadingMore ? "‹ loading more…" : "‹ start of history"}
               </div>
             )}
           </div>

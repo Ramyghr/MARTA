@@ -70,8 +70,8 @@ def get_full_results() -> dict:
             ci_data.append({
                 "comparison": name,
                 "delta_sharpe": round(float(v.get("delta_sharpe", 0)), 3),
-                "ci_low": round(float(v.get("ci_lower_95", 0)), 3),
-                "ci_high": round(float(v.get("ci_upper_95", 0)), 3),
+                "ci_lower_95": round(float(v.get("ci_lower_95", 0)), 3),
+                "ci_upper_95": round(float(v.get("ci_upper_95", 0)), 3),
                 "significant": float(v.get("ci_lower_95", 0)) > 0,
             })
 
