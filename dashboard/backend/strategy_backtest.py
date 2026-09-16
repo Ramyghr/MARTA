@@ -13,6 +13,9 @@ applying it to that bar's return, so every strategy is decided from data availab
 
 from __future__ import annotations
 
+import os
+import sys
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -20,6 +23,13 @@ import pandas as pd
 
 import historical
 import ppo_strategy_backtest
+
+# configs/ lives at the repo root, not on sys.path by default in this process — same
+# fix pipeline/live/news.py needed (see main.py's newsapi test-connection branch).
+_MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).resolve().parent.parent.parent)))
+if str(_MARTA_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MARTA_ROOT))
+from configs.splits import TEST_START as _TEST_START
 
 TRANSACTION_COST = 0.001  # 10 bps per unit of position turnover — matches rl/env.py's default
 ANNUALIZE_HOURLY = np.sqrt(24 * 365)
@@ -261,16 +271,22 @@ _LOCKED_STRATEGIES: list[dict[str, str]] = [
 ]
 
 
-def list_strategies() -> dict:
+def list_strategies(asset: str | None = None) -> dict:
+    """``asset`` is optional so this endpoint still works unscoped (e.g. a first page
+    load before any asset is known), but when provided, the weekly-PPO strategies —
+    BTC_USDT-only by training, see the run_backtest() check below — are locked for any
+    other asset. Without this, the frontend would let a user select+run them for e.g.
+    ETH_USDT and only find out via a 400 from /api/backtest/run after clicking Run."""
     strategies = [
         {"id": sid, "label": s["label"], "category": s["category"], "description": s["description"], "locked": False}
         for sid, s in _STRATEGIES.items()
     ]
     checkpoints_available = ppo_strategy_backtest.available()
+    asset_ok = asset is None or asset == "BTC_USDT"
     strategies += [
         {
             "id": sid, "label": s["label"], "category": s["category"], "description": s["description"],
-            "locked": not checkpoints_available.get(s["obs_mode"], False),
+            "locked": not checkpoints_available.get(s["obs_mode"], False) or not asset_ok,
         }
         for sid, s in _PPO_STRATEGIES.items()
     ]
@@ -376,7 +392,7 @@ def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) 
     bh_total_return = float(bh_values[-1] - 1.0)
     sharpe = float(strat_returns.mean() / (strat_returns.std() + 1e-8) * ANNUALIZE_HOURLY)
 
-    return {
+    result = {
         "asset": asset,
         "strategy": strategy,
         "strategy_label": spec["label"],
@@ -395,3 +411,22 @@ def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) 
         "equity_curve": _downsample_equity_curve(window.index, strat_values, bh_values),
         "trades": trades[-_MAX_TRADES_RETURNED:],
     }
+
+    # weekly_ppo_raw/weekly_ppo_raw_regime are trained checkpoints, not hand-specified
+    # rules — a window starting before TEST_START overlaps data the model was trained
+    # or validated on, so the reported metrics partly reflect in-sample fit rather than
+    # genuine generalization. Confirmed 2026-09-15: a 2022-08-15..2026-09-15 backtest
+    # showed a dramatic regime-aware edge (Sharpe 1.39 vs 0.24) driven almost entirely
+    # by the 2022-2023 in-sample segment (Sharpe 1.12 vs 0.53 there) — on the genuine
+    # 2025 test split and on 2026 live data neither variant beats the other or buy-hold
+    # (both Sharpe roughly -0.2 to -0.3 on each held-out segment). Non-PPO strategies
+    # have no train/test distinction (never "trained" on anything) so this doesn't apply.
+    if is_ppo and start_ts < pd.Timestamp(_TEST_START, tz="UTC"):
+        result["data_leakage_warning"] = (
+            f"This window starts before {_TEST_START}, the model's true out-of-sample "
+            "boundary — it includes data the checkpoint was trained or validated on. "
+            "Metrics here are inflated by in-sample fit, not evidence of real "
+            "generalization. Re-run with a start date on or after 2025-01-01 for a "
+            "genuine result."
+        )
+    return result

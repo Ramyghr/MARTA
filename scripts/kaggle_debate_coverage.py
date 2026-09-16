@@ -126,13 +126,22 @@ def _select_timestamps(
     return picks
 
 
-def _load_existing() -> tuple[list[dict], set[str]]:
+def _load_existing() -> tuple[list[dict], set[tuple[str, str]]]:
     if not _OUTPUT_PATH.exists():
         return [], set()
     with open(_OUTPUT_PATH) as f:
         records = json.load(f)
-    existing_ts = {_normalize_ts(r["timestamp"]) for r in records if r.get("timestamp") is not None}
-    return records, existing_ts
+    # Keyed on (timestamp, asset), not timestamp alone — every asset here uses the same
+    # daily-stride picks over the same 2024-01-01..2024-12-31 window, so timestamps
+    # collide across assets by construction. A timestamp-only key silently treated
+    # e.g. ETH's 2024-01-01 debate as "already covered" by BTC's, dropping it. Found
+    # 2026-09-15 after it had already destroyed 363/366 of a completed ETH run and
+    # 365/366 of a completed XRP run in data/debates/debate_results.json.
+    existing_keys = {
+        (_normalize_ts(r["timestamp"]), r.get("asset"))
+        for r in records if r.get("timestamp") is not None
+    }
+    return records, existing_keys
 
 
 def _normalize_ts(ts: str | pd.Timestamp) -> str:
@@ -185,7 +194,7 @@ def main() -> None:
     targets = _select_timestamps(regime_stream, args.asset, args.stride_hours, args.all_regimes)
     logger.info(f"Selected {len(targets)} timestamps in the validation window")
 
-    existing_records, existing_ts = _load_existing()
+    existing_records, existing_keys = _load_existing()
     logger.info(f"Existing debate cache: {len(existing_records)} debates")
 
     new_count = 0
@@ -202,7 +211,7 @@ def main() -> None:
         for i, (ts, label) in enumerate(targets):
             progress.update(task, description=f"[cyan]{ts.date()} R{label}[/cyan]")
 
-            if _normalize_ts(ts) in existing_ts:
+            if (_normalize_ts(ts), args.asset) in existing_keys:
                 progress.advance(task)
                 continue
 
@@ -213,7 +222,7 @@ def main() -> None:
                 progress.advance(task)
                 continue
 
-            existing_ts.add(_normalize_ts(ts))
+            existing_keys.add((_normalize_ts(ts), args.asset))
             d = result.model_dump()
             d["scenario_description"] = f"kaggle_{ts.year} {ts.date()} R{result.regime_label}"
             existing_records.append(d)

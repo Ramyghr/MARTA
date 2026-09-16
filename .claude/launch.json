@@ -23,6 +23,29 @@
         "NEXT_PUBLIC_WS_URL": "ws://localhost:8001"
       },
       "port": 3000
+    },
+    {
+      "name": "marta-backend-preview",
+      "runtimeExecutable": "/home/ramy/miniconda3/envs/marta/bin/uvicorn",
+      "runtimeArgs": ["main:app", "--host", "0.0.0.0", "--port", "8010"],
+      "cwd": "dashboard/backend",
+      "env": {
+        "PYTHONPATH": "/home/ramy/Documents/MARTA/marta:/home/ramy/Documents/MARTA/marta/dashboard/backend",
+        "MARTA_ROOT": "/home/ramy/Documents/MARTA/marta",
+        "OLLAMA_HOST": "http://localhost:11434"
+      },
+      "port": 8010
+    },
+    {
+      "name": "marta-frontend-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3010"],
+      "cwd": "dashboard/frontend",
+      "env": {
+        "NEXT_PUBLIC_API_URL": "http://localhost:8010",
+        "NEXT_PUBLIC_WS_URL": "ws://localhost:8010"
+      },
+      "port": 3010
     }
   ]
 }

@@ -156,6 +156,10 @@ export interface BacktestResult {
   };
   equity_curve: BacktestEquityPoint[];
   trades: BacktestTrade[];
+  // Present only for weekly_ppo_raw/weekly_ppo_raw_regime when the selected start date
+  // predates the model's true test-split boundary — the result reflects in-sample fit,
+  // not genuine generalization. See strategy_backtest.py's run_backtest().
+  data_leakage_warning?: string;
 }
 
 export interface GpuStatus {
@@ -281,7 +285,10 @@ export const api = {
   getStockTwits: (asset: string) =>
     fetchApi<{ asset: string; messages: StockTwitsMessage[]; count: number }>(`/api/news/stocktwits/${asset}`),
   getFearGreed: () => fetchApi<FearGreedIndex>("/api/market/fear-greed"),
-  getBacktestStrategies: () => fetchApi<{ strategies: BacktestStrategyInfo[] }>("/api/backtest/strategies"),
+  getBacktestStrategies: (asset?: string) =>
+    fetchApi<{ strategies: BacktestStrategyInfo[] }>(
+      `/api/backtest/strategies${asset ? `?asset=${asset}` : ""}`,
+    ),
   runBacktest: (asset: string, strategy: string, start?: string, end?: string) => {
     const params = new URLSearchParams({ asset, strategy });
     if (start) params.set("start", start);

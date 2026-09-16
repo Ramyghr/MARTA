@@ -45,6 +45,18 @@ services:
       - MLFLOW_ALLOW_FILE_STORE=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # Found 2026-09-15: every external integration (Alpaca, Binance, NewsAPI, StockTwits,
+    # RSS feeds, Fear & Greed) was failing with identical DNS NameResolutionErrors — the
+    # host's /etc/resolv.conf points at systemd-resolved's stub resolver (127.0.0.53),
+    # a loopback address that means nothing inside the container's own network namespace.
+    # Docker's embedded resolver (127.0.0.11) is supposed to filter loopback nameservers
+    # out of the host's resolv.conf before using it upstream, but that didn't happen here
+    # (older Docker version / stale network config) — every external hostname failed
+    # identically. Pin real public resolvers explicitly rather than depend on that
+    # filtering behavior.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:

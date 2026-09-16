@@ -1080,3 +1080,108 @@ frontend now makes one request instead of N. Registered before the `/api/debates
 route in `main.py` — FastAPI/Starlette match routes in registration order, so an unqualified
 `{debate_id}` path parameter would otherwise capture the literal string `"agreement"` before its
 `int` type validation ever runs.
+
+## 12. Debate-layer audit — full 5-asset coverage (2026-09-15)
+
+Every prior debate-layer result in this document (Section 6's LLM/agent layer audit,
+Section "Dense BTC debate coverage" in `CLAUDE.md`) was BTC_USDT-only — either a
+~1%-coverage sparse cache or, after the Kaggle dense-coverage run, ~384 real BTC debates.
+The other four crypto5 assets had no comparable coverage until this pass: ETH/BNB/LTC/
+XRP_USDT each got their own 366-debate Kaggle run (same recipe:
+`kaggle_debate_coverage_instructions.md`, daily stride, all 6 regimes, full 2024 window),
+merged into `data/debates/debate_results.json` (1,855 records total across all 5 assets).
+
+A real bug was caught and fixed during that merge: the dedup logic (both the instructions
+doc's merge snippet and `scripts/kaggle_debate_coverage.py`'s own resume logic) keyed on
+`timestamp` alone. Since every asset uses identical daily-stride timestamps over the same
+2024 window, this silently discarded almost all of a completed ETH run (366 → 3 survivors)
+and XRP run (366 → 1 survivor) before being noticed. Fixed to key on `(timestamp, asset)`;
+the original per-asset downloads were still on disk and re-merged correctly with the fixed
+logic. Worth remembering as a general lesson: **a dedup key that was sufficient for a
+single-entity dataset silently breaks once the dataset gains a second dimension** — the
+same class of bug this project has hit multiple times in the live-data-bridge code
+(`MARTA_ROOT` bare-path pattern, asset-name aliasing), now confirmed in an offline batch
+pipeline too, not just live services.
+
+**`scripts/backtest_llm_agents_vs_buyhold_5asset.py`** generalizes the BTC-only backtest
+(`scripts/backtest_llm_agents_vs_buyhold.py`) to run independently on all 5 assets, same
+method: `rl/ablation.py`'s `_run_agents_rule()` (nearest cached debate within 7 days drives
+direction/size, no PPO involved) vs `_run_buy_hold()`, block-bootstrap 95% CI (n=1000) on
+the Sharpe delta. Every debate carries full `RegimeContext` in its prompts, so this is "LLM
+agents WITH regime" by construction — no "without regime" counterpart exists from this
+cache. Required generalizing `_run_buy_hold()` (previously hardcoded to BTC_USDT) to accept
+an `asset` parameter; every existing single-asset caller is unaffected (default preserved).
+
+**Result: genuinely mixed — 2 of 5 assets significant, not a uniform effect in either
+direction:**
+
+| Asset | Buy-hold Sharpe | Agents Sharpe | Δ Sharpe | 95% CI | Significant |
+|---|---|---|---|---|---|
+| BTC_USDT | 1.498 | 1.088 | −0.381 | [−2.27, +1.54] | no |
+| ETH_USDT | 0.583 | 1.192 | +0.553 | [−1.42, +2.69] | no |
+| BNB_USDT | 1.287 | 3.214 | +1.944 | [+0.09, +3.83] | **yes** |
+| LTC_USDT | 0.427 | 2.787 | +2.445 | [+0.14, +4.95] | **yes** |
+| XRP_USDT | 1.346 | 0.402 | −0.880 | [−3.57, +1.92] | no |
+
+**Interpretation, matching this document's standard of not overselling a positive number:**
+the agents rule's Sharpe advantage comes from taking small, tightly risk-capped positions
+(~200-240 meaningful trades per asset, but only 1.1-2.9% max drawdown and 2.7-10.1% total
+return) against a buy-and-hold baseline running full exposure (36-58% max drawdown, 1.8-
+124.7% total return) — the same "wins risk-adjusted, gives up absolute return" shape
+already documented for BTC alone. BNB and LTC's significance is driven substantially by
+buy-hold performing unusually poorly on a risk-adjusted basis for those two specifically
+(LTC buy-hold: +1.8% return against 57.8% drawdown, Sharpe 0.427), not by the agents rule
+finding a distinct source of edge on those assets that it lacks elsewhere. Five independent
+95%-CI tests also means roughly one false positive is expected by chance alone even under a
+true global null — 2/5 is suggestive, not proof, and does not on its own overturn Section
+9's "RL execution layer closed" conclusion, since this measures the rule-based LLM-consensus
+layer directly, not the trained RL policy that consumes it. Saved:
+`data/results/llm_agents_only_backtest_5asset.json` (per-asset breakdown, trade counts,
+bootstrap CIs).
+
+**What this does and doesn't resolve:** it extends the debate layer's own standalone
+evaluation from one asset to five, with a real (if statistically thin) signal that the
+effect isn't asset-uniform — worth flagging honestly rather than either dismissing as pure
+noise or presenting as a confirmed edge. It does not, by itself, establish whether this
+rule-based sizing generalizes to a learned policy, nor does it re-run any of the encoder/RL
+investigation closed out in Sections 9-10.
+
+## 13. Dashboard-reported "regime-aware wins" traced to in-sample contamination (2026-09-15)
+
+A striking dashboard Strategy Tester result on BTC_USDT — `weekly_ppo_raw_regime` scoring
+Sharpe 1.39 (+241% return) against `weekly_ppo_raw`'s Sharpe 0.24 (+12% return) over a
+2022-08-15→2026-09-15 backtest window — looked like it might overturn Section 9/10's "RL
+execution layer closed, no measurable edge from regime conditioning" conclusion. It doesn't.
+
+Re-running the identical production backtest function (`dashboard/backend/
+strategy_backtest.py`'s `run_backtest()`) restricted to each genuine data segment isolates
+exactly where the apparent edge comes from:
+
+| Segment | raw Sharpe | regime-aware Sharpe |
+|---|---|---|
+| 2022-08→2023-12 (in-sample — inside the model's own training window) | 0.53 | 1.12 |
+| Validation 2024 | 2.07 | 1.90 |
+| Test 2025 (genuine out-of-sample, matches Section 10a's protocol) | -0.17 | -0.18 |
+| Live 2026 (postdates training entirely — could not have been seen) | -0.30 | -0.33 |
+
+The full-window number is dominated by ~1.5 years of in-sample data the checkpoint was
+directly trained on, which of course looks favorable regardless of whether regime
+conditioning generalizes. On both genuinely held-out segments, the two checkpoints are
+statistically indistinguishable from each other and both lose money on a risk-adjusted
+basis — this is Section 10a's "the lead does not replicate" finding, replicated a second
+time, now on 2026 data that did not exist at training time and therefore cannot be
+contaminated by any form of look-ahead. Nothing here justifies retraining, rebuilding, or
+re-running the ablation study — the apparent finding was a measurement artifact (a
+demo-oriented dashboard tool letting a date range reach into training data), not a new
+result.
+
+**Fixed the tool, not just the number:** the Strategy Tester's date pickers had no
+awareness of `configs/splits.py`'s `TEST_START` boundary for the two trained-checkpoint
+strategies (`weekly_ppo_raw`, `weekly_ppo_raw_regime`) — every other strategy on that page
+is a hand-specified rule with no train/test distinction, so this gap was specific to the
+two PPO-backed entries. `run_backtest()` now attaches a `data_leakage_warning` string to
+the response whenever one of those two strategies' start date precedes `TEST_START`,
+surfaced as a visible warning banner in the UI. This matters beyond just this one session:
+without it, anyone (including a defense committee member) poking at the live dashboard
+could reproduce the same misleading impression by picking an intuitive-looking wide date
+range.

@@ -127,7 +127,7 @@ function AblationChart({ rlResults }: { rlResults: RLResults }) {
               <div key={i} className="flex items-center gap-2">
                 <span className="text-[#555] w-28 shrink-0">{ci.comparison}</span>
                 <span className="text-[#e0e0e0] font-mono w-12">Δ{ci.delta_sharpe > 0 ? "+" : ""}{ci.delta_sharpe.toFixed(3)}</span>
-                <span className="text-[#444] font-mono">[{ci.ci_low.toFixed(2)}, {ci.ci_high.toFixed(2)}]</span>
+                <span className="text-[#444] font-mono">[{ci.ci_lower_95.toFixed(2)}, {ci.ci_upper_95.toFixed(2)}]</span>
                 <span className={`ml-auto text-[10px] ${ci.significant ? "text-[#00ff7f]" : "text-[#555]"}`}>
                   {ci.significant ? "significant" : "not sig."}
                 </span>
