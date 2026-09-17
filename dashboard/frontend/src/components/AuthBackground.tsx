@@ -1,4 +1,5 @@
 "use client";
+import { TickerTape } from "@/components/TickerTape";
 
 // Decorative only — synthetic, static values (same rationale as MartaBot's candle
 // stream: these pages are pre-auth, no backend/websocket dependency allowed here).
@@ -12,32 +13,15 @@ const TICKER_ITEMS = [
   { symbol: "GOLD", change: -0.28 },
 ];
 
-function TickerTape() {
-  const items = [...TICKER_ITEMS, ...TICKER_ITEMS];
-  return (
-    <div className="auth-ticker">
-      <div className="auth-ticker-track">
-        {items.map((item, i) => (
-          <span className="auth-ticker-item" key={i}>
-            <span className="auth-ticker-symbol">{item.symbol}</span>
-            <span className={item.change >= 0 ? "auth-ticker-up" : "auth-ticker-down"}>
-              {item.change >= 0 ? "+" : ""}
-              {item.change.toFixed(2)}%
-            </span>
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function AuthBackground() {
   return (
     <div className="auth-bg" aria-hidden="true">
       <div className="auth-bg-grid" />
       <div className="auth-bg-glow auth-bg-glow-1" />
       <div className="auth-bg-glow auth-bg-glow-2" />
-      <TickerTape />
+      <div className="auth-ticker">
+        <TickerTape items={TICKER_ITEMS} />
+      </div>
     </div>
   );
 }
