@@ -1159,3 +1159,48 @@ still correctly uses `_add_regime(candle, asset, live=True)`. Verified directly 
 `get_regime_series_live_aware('BTC_USDT', ...)` over the same 30-day window: now returns
 a real 6-way regime distribution (counts 32/104/305/151/67/62 across labels 0-5) instead
 of one repeated label. Redeployed via `docker compose up -d --force-recreate backend`.
+
+## GitHub OAuth login added alongside Google — complete (2026-09-20)
+
+Mirrors the existing "Sign in with Google" flow end-to-end, same session-cookie mechanism
+(`auth_db.create_session()` + `marta_session` cookie) — not a separate auth system.
+
+- `dashboard/backend/oauth_github.py` (new) — `/api/auth/github/login` +
+  `/api/auth/github/callback`, registered via authlib `OAuth().register()` the same way
+  `oauth_google.py` is, but plain OAuth2 endpoints (GitHub has no OIDC discovery document,
+  unlike Google). GitHub's `/user` endpoint omits email when the user has it set private
+  (common default) — falls back to `/user/emails` and picks the `primary` one.
+  `auth_db.get_or_create_oauth_user()` was already provider-generic (`provider` is a plain
+  string param), so no `auth_db.py` changes were needed for a second provider.
+- `main.py`'s `/api/auth/providers` now returns `{"google": ..., "github": ...}`.
+  `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` gate visibility, same pattern as Google.
+- **Gotcha that caused a real 401 in this session, worth checking on sight for any future
+  OAuth provider:** `session_auth.py`'s `SessionAuthMiddleware` gates every `/api/` path
+  behind a valid session cookie EXCEPT an explicit `_PUBLIC_API_PATHS` allowlist. Adding a
+  new provider's router in `main.py` is not enough by itself — its `/login`/`/callback`
+  paths must also be added to that allowlist, or the middleware 401s
+  (`{"detail":"Not authenticated"}`) before the request ever reaches the new route. This is
+  a separate gate from `auth.py`'s `APIKeyMiddleware` (that one's opt-in via `MARTA_API_KEY`
+  and wasn't the cause here).
+- Frontend: `GoogleLoginButton.tsx` replaced by `dashboard/frontend/src/components/SocialLoginButtons.tsx`
+  — fetches `/api/auth/providers` once and renders a single "or" divider plus whichever
+  provider buttons are actually enabled (avoids a double divider when both are configured).
+  `lib/auth.ts` gained `githubLoginUrl()`; `getAuthProviders()`'s return type now includes
+  `github`.
+- Verified end-to-end against the real docker deployment (not just the dev preview): a
+  direct `curl http://localhost:8001/api/auth/github/login` 302-redirects to
+  `github.com/login/oauth/authorize` with the real configured `client_id` and the correct
+  `redirect_uri` once `GITHUB_CLIENT_ID`/`SECRET` were filled into `.env` and the backend
+  container recreated.
+
+**Unrelated infra issue hit and fixed in the same session, not caused by this change but
+worth recording since it'll recur:** the host's Docker daemon had a corrupted container-store
+entry (a `Dead`-status container with no name, visible in `docker ps -a` but `docker
+inspect`/`docker rm` on the same ID both returned "No such container" — a genuine daemon-level
+inconsistency, not a compose-level one). `docker compose up`/`down -v` alone couldn't clear
+it and kept erroring. Fix required `sudo systemctl restart docker` (cleared it this time —
+survived at first, actually needed a second pass); if a zombie container ID survives even a
+daemon restart, the next step is stopping docker, deleting that specific container's
+directory under `/var/lib/docker/containers/<id>`, then starting docker again. Nothing else
+was running under Docker on this host at the time, so the restart's blast radius was
+confirmed limited to the dashboard stack before doing it.

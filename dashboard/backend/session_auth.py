@@ -31,6 +31,8 @@ _PUBLIC_API_PATHS = {
     "/api/auth/providers",
     "/api/auth/google/login",
     "/api/auth/google/callback",
+    "/api/auth/github/login",
+    "/api/auth/github/callback",
 }
 
 

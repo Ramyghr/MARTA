@@ -4,7 +4,7 @@ import Link from "next/link";
 import { login } from "@/lib/auth";
 import { MartaBot } from "@/components/MartaBot";
 import { AuthBackground } from "@/components/AuthBackground";
-import { GoogleLoginButton } from "@/components/GoogleLoginButton";
+import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -84,7 +84,7 @@ export default function LoginPage() {
             {submitting ? "Logging in…" : "Log in"}
           </button>
 
-          <GoogleLoginButton />
+          <SocialLoginButtons />
 
           <p className="text-[11px] text-[#555] text-center mt-1">
             No account?{" "}

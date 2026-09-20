@@ -52,6 +52,7 @@ import auth_db
 from auth import APIKeyMiddleware
 from session_auth import SessionAuthMiddleware
 from oauth_google import router as google_oauth_router, google_oauth_enabled
+from oauth_github import router as github_oauth_router, github_oauth_enabled
 from demo_scenarios import DEMO_SCENARIOS, SCENARIO_BY_ID
 
 limiter = Limiter(key_func=get_remote_address)
@@ -184,6 +185,7 @@ app.add_middleware(
 )
 
 app.include_router(google_oauth_router)
+app.include_router(github_oauth_router)
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -274,9 +276,10 @@ def get_me(request: Request):
 
 @app.get("/api/auth/providers")
 def get_auth_providers():
-    """Lets the login/signup pages hide the Google button until GOOGLE_CLIENT_ID/
-    SECRET are actually configured, instead of showing a button that 500s."""
-    return {"google": google_oauth_enabled()}
+    """Lets the login/signup pages hide the Google/GitHub buttons until the
+    corresponding CLIENT_ID/SECRET are actually configured, instead of showing
+    a button that 500s."""
+    return {"google": google_oauth_enabled(), "github": github_oauth_enabled()}
 
 
 @app.patch("/api/auth/profile")
@@ -576,11 +579,13 @@ async def get_fear_greed():
 
 @app.get("/api/rl/live-signal")
 def get_live_signal(
+    request: Request,
     asset: str = Query("BTC_USDT"),
     debate_action: Optional[str] = Query(None),
 ):
     import live_signal
-    return live_signal.get_live_signal(asset, debate_action)
+    user = _require_user(request)
+    return live_signal.get_live_signal(user["id"], asset, debate_action)
 
 
 @app.get("/api/rl/scheduler-status")
@@ -684,12 +689,13 @@ async def trigger_signal_now(asset: str = Query("BTC_USDT")):
 
 
 @app.get("/api/paper/trades")
-def get_paper_trades(asset: str = Query("BTC_USDT"), limit: int = Query(50)):
+def get_paper_trades(request: Request, asset: str = Query("BTC_USDT"), limit: int = Query(50)):
     """Return the paper trading ledger from SQLite (both simulated and testnet-sourced)."""
     import paper_db
     import paper_exchange
-    portfolio = paper_db.get_portfolio(asset)
-    trades_local = paper_db.get_trades(asset, limit=limit)
+    user = _require_user(request)
+    portfolio = paper_db.get_portfolio(user["id"], asset)
+    trades_local = paper_db.get_trades(user["id"], asset, limit=limit)
     trades_testnet = paper_exchange.get_trade_history(asset, limit=limit) if paper_exchange.is_live() else []
     return {
         "asset": asset,
@@ -701,44 +707,49 @@ def get_paper_trades(asset: str = Query("BTC_USDT"), limit: int = Query(50)):
 
 
 @app.delete("/api/paper/reset")
-def reset_paper_portfolio(asset: str = Query("BTC_USDT")):
+def reset_paper_portfolio(request: Request, asset: str = Query("BTC_USDT")):
     """Wipe the local paper portfolio for `asset` (dev / testing only)."""
     import paper_db
-    paper_db.reset(asset)
+    user = _require_user(request)
+    paper_db.reset(user["id"], asset)
     return {"status": "reset", "asset": asset}
 
 
 @app.get("/api/trades/reasoning/{trade_id}")
-def get_trade_reasoning(trade_id: int):
+def get_trade_reasoning(request: Request, trade_id: int):
     """Full agent/regime reasoning chain that produced a specific trade."""
     import paper_db
-    reasoning = paper_db.get_trade_reasoning(trade_id)
+    user = _require_user(request)
+    reasoning = paper_db.get_trade_reasoning(trade_id, user["id"])
     if reasoning is None:
         raise HTTPException(status_code=404, detail=f"No reasoning found for trade_id={trade_id}")
     return reasoning
 
 
 @app.get("/api/trades/history/{asset}")
-def get_trade_history(asset: str, limit: int = Query(50)):
+def get_trade_history(request: Request, asset: str, limit: int = Query(50)):
     """Last `limit` trades for `asset`, each with reasoning + outcome attached."""
     import paper_db
-    return {"asset": asset, "trades": paper_db.get_trades_with_reasoning(asset, limit=limit)}
+    user = _require_user(request)
+    return {"asset": asset, "trades": paper_db.get_trades_with_reasoning(user["id"], asset, limit=limit)}
 
 
 @app.get("/api/trades/outcomes/{asset}")
-def get_trade_outcomes(asset: str):
+def get_trade_outcomes(request: Request, asset: str):
     """Win rate, avg holding time, avg PnL from closed trade outcomes."""
     import paper_db
-    return paper_db.get_trade_outcome_stats(asset)
+    user = _require_user(request)
+    return paper_db.get_trade_outcome_stats(user["id"], asset)
 
 
 @app.get("/api/account")
-def get_account():
-    """The one shared capital pool live trading draws from, plus each asset's current
-    exposure as a fraction of it (see paper_db module docstring for why this replaced
-    independent per-asset balances)."""
+def get_account(request: Request):
+    """This user's own shared capital pool, plus each asset's current exposure as a
+    fraction of it (see paper_db module docstring — per-user since the multi-user
+    migration, previously one pool for the whole app)."""
     import paper_db
-    return paper_db.get_account_state()
+    user = _require_user(request)
+    return paper_db.get_account_state(user["id"])
 
 
 @app.get("/api/settings/approval-mode")
@@ -810,26 +821,29 @@ def set_weekly_ppo_setting(enabled: bool = Query(...), obs_mode: Optional[str] =
 
 
 @app.get("/api/trades/pending")
-def get_pending_trades(status: str = Query("pending")):
+def get_pending_trades(request: Request, status: str = Query("pending")):
     import paper_db
-    return {"trades": paper_db.get_pending_trades(status)}
+    user = _require_user(request)
+    return {"trades": paper_db.get_pending_trades(user["id"], status)}
 
 
 @app.post("/api/trades/pending/{pending_id}/approve")
-def approve_pending_trade(pending_id: int):
+def approve_pending_trade(request: Request, pending_id: int):
     import paper_db
+    user = _require_user(request)
     try:
-        result = paper_db.approve_pending_trade(pending_id)
+        result = paper_db.approve_pending_trade(pending_id, user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"status": "approved", "pending_id": pending_id, **result}
 
 
 @app.post("/api/trades/pending/{pending_id}/reject")
-def reject_pending_trade(pending_id: int):
+def reject_pending_trade(request: Request, pending_id: int):
     import paper_db
+    user = _require_user(request)
     try:
-        paper_db.reject_pending_trade(pending_id)
+        paper_db.reject_pending_trade(pending_id, user["id"])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"status": "rejected", "pending_id": pending_id}

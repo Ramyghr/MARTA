@@ -50,15 +50,20 @@ export function updateProfile(body: { display_name?: string; current_password?: 
   return authFetch<{ user: User }>("/api/auth/profile", { method: "PATCH", body: JSON.stringify(body) });
 }
 
-// Lets login/signup hide the "Continue with Google" button until the backend
-// actually has GOOGLE_CLIENT_ID/SECRET configured, instead of showing a dead button.
+// Lets login/signup hide the "Continue with Google/GitHub" buttons until the
+// backend actually has the corresponding CLIENT_ID/SECRET configured, instead
+// of showing a dead button.
 export function getAuthProviders() {
-  return authFetch<{ google: boolean }>("/api/auth/providers");
+  return authFetch<{ google: boolean; github: boolean }>("/api/auth/providers");
 }
 
-// Full navigation, not a fetch — this needs to leave the SPA and hit Google.
+// Full navigations, not fetches — these need to leave the SPA and hit the provider.
 export function googleLoginUrl() {
   return `${API_URL}/api/auth/google/login`;
+}
+
+export function githubLoginUrl() {
+  return `${API_URL}/api/auth/github/login`;
 }
 
 // Shared by the Sidebar profile widget and the AppShell auth guard — both need to

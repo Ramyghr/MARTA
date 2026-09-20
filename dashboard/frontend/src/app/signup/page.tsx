@@ -4,7 +4,7 @@ import Link from "next/link";
 import { signup } from "@/lib/auth";
 import { MartaBot } from "@/components/MartaBot";
 import { AuthBackground } from "@/components/AuthBackground";
-import { GoogleLoginButton } from "@/components/GoogleLoginButton";
+import { SocialLoginButtons } from "@/components/SocialLoginButtons";
 
 export default function SignupPage() {
   const [displayName, setDisplayName] = useState("");
@@ -99,7 +99,7 @@ export default function SignupPage() {
             {submitting ? "Creating account…" : "Sign up"}
           </button>
 
-          <GoogleLoginButton />
+          <SocialLoginButtons />
 
           <p className="text-[11px] text-[#555] text-center mt-1">
             Already have an account?{" "}
