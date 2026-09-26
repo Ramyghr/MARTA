@@ -19,6 +19,15 @@ Authorization: every update is checked against TELEGRAM_CHAT_ID (comma-separated
 for multiple allowed chats) before any command runs. /approve and /trigger can
 move (paper) capital, so an unauthorized sender is dropped silently rather than
 answered — no information leak about which commands exist.
+
+Per-user paper trading migration: every /api/paper|account|trades|rl endpoint now
+requires a valid session (SessionAuthMiddleware), which this bot's in-process client
+never had — every command would otherwise 401. Fixed by logging the bot in as the
+PRIMARY (first-registered) dashboard user via auth_db.create_session() directly (no
+password/HTTP round-trip needed, this is the same process). This is also exactly what
+makes "Telegram only ever touches the primary user's data" true with zero special-
+casing anywhere else — the bot is simply one more client logged into one fixed
+account, not a new multi-account-aware layer.
 """
 from __future__ import annotations
 
@@ -31,6 +40,8 @@ import httpx
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
+import auth_db
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -40,6 +51,21 @@ DEFAULT_ASSET = "BTC_USDT"
 _application: Optional[Application] = None
 _client: Optional[httpx.AsyncClient] = None
 _run_task: Optional[asyncio.Task] = None
+
+
+def _refresh_session() -> None:
+    """(Re-)authenticate the bot's client as the primary dashboard user. Called once at
+    start() and again on any 401 (see _get/_post) — session tokens last 30 days
+    (auth_db.SESSION_TTL_DAYS), so a long-running bot process needs the retry path, not
+    just the one-time login at startup."""
+    if _client is None:
+        return
+    primary_id = auth_db.get_primary_user_id()
+    if primary_id is None:
+        logger.warning("telegram_bot: no registered dashboard user yet — bot calls will 401 until one signs up")
+        return
+    token = auth_db.create_session(primary_id)
+    _client.cookies.set(auth_db.SESSION_COOKIE_NAME, token)
 
 
 def _normalize_asset(raw: str) -> str:
@@ -60,6 +86,9 @@ async def _reply(update: Update, text: str) -> None:
 
 async def _get(path: str, **params) -> tuple[int, dict]:
     r = await _client.get(path, params=params)
+    if r.status_code == 401:
+        _refresh_session()
+        r = await _client.get(path, params=params)
     try:
         return r.status_code, r.json()
     except Exception:
@@ -68,6 +97,9 @@ async def _get(path: str, **params) -> tuple[int, dict]:
 
 async def _post(path: str, **params) -> tuple[int, dict]:
     r = await _client.post(path, params=params)
+    if r.status_code == 401:
+        _refresh_session()
+        r = await _client.post(path, params=params)
     try:
         return r.status_code, r.json()
     except Exception:
@@ -342,6 +374,7 @@ def start(app) -> None:
         return
 
     _client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://internal")
+    _refresh_session()
 
     def _build_application() -> Application:
         application = Application.builder().token(TELEGRAM_TOKEN).build()

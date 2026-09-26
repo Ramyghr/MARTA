@@ -159,6 +159,22 @@ def get_user_by_id(user_id: int) -> Optional[dict]:
         return _user_public(row) if row else None
 
 
+def list_user_ids() -> list[int]:
+    """All user ids, ascending — the lowest is the primary/first account. Used by
+    paper_db.py's per-user migration backfill and by signal_scheduler.py's per-user
+    fan-out loop (paper_db.py and auth_db.py are separate SQLite files, so this is
+    the cross-file lookup point rather than a join)."""
+    with _conn() as con:
+        rows = con.execute("SELECT id FROM users ORDER BY id").fetchall()
+    return [int(r["id"]) for r in rows]
+
+
+def get_primary_user_id() -> Optional[int]:
+    """Lowest user id, or None if no users exist yet (fresh deployment)."""
+    ids = list_user_ids()
+    return ids[0] if ids else None
+
+
 def get_or_create_oauth_user(
     provider: str, oauth_id: str, email: str, display_name: str = "", avatar_url: str = ""
 ) -> dict:

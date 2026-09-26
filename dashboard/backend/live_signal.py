@@ -11,7 +11,20 @@ Signal priority:
      explicit override is supplied. Reads the most recent debate_results.json entry for
      this asset; if it's <=24h old and conviction > 0.7, its action AND position_size
      both drive the signal. This is the path "Run Debate & Execute" on the Trading page
-     relies on, since trigger-signal calls get_live_signal() with no explicit override.
+     relies on, since trigger-signal calls compute_signal() with no explicit override.
+
+Split into two phases (per-user paper trading migration) since the decision itself is
+asset-level (computed once per tick) but booking it is per-user:
+  - compute_signal(asset, ...)      — resolves the decision once, no paper_db writes.
+  - book_signal(user_id, asset, ...) — books that decision into one user's account.
+  - get_live_signal(user_id, asset, ...) — convenience wrapper doing both, for callers
+    that only ever need one user's view (e.g. a single browser session's manual trigger).
+
+The one exception: when the trained PPO checkpoint is the active source, its observation
+includes *this user's own* portfolio state (signed position, hours since last trade) —
+genuinely per-user input, not asset-level. compute_signal() can't resolve that branch, so
+it returns a `needs_per_user_ppo` marker instead, and book_signal() calls
+ppo_inference.predict(..., user_id=...) itself, once per user, before booking.
 
 Also tracks a running paper P&L against the live CCXT feed so the Execution panel
 can show a live equity line.
@@ -148,7 +161,7 @@ def _get_debate_override(asset: str, now, min_conviction: float = 0.7, max_age_h
     lighter-weight explicit `last_debate_action` param below (direction only).
 
     This is what makes "Run Debate & Execute" on the Trading page actually change the
-    resulting trade: /api/rl/trigger-signal calls get_live_signal() with no explicit
+    resulting trade: /api/rl/trigger-signal calls compute_signal() with no explicit
     debate_action, so this automatic lookup is the only path that can pick up a
     just-completed live debate (saved to debate_results.json by debate_stream.py).
     """
@@ -165,7 +178,7 @@ def _get_debate_override(asset: str, now, min_conviction: float = 0.7, max_age_h
     if not asset_debates:
         return None
 
-    def _ts(d: dict) -> pd.Timestamp:
+    def _ts(d: dict) -> "pd.Timestamp":
         try:
             ts = pd.Timestamp(d.get("timestamp"))
             return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
@@ -195,86 +208,143 @@ def _get_debate_override(asset: str, now, min_conviction: float = 0.7, max_age_h
     }
 
 
-def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dict:
-    """Return the best available action signal + running paper P&L for `asset`."""
+def compute_signal(asset: str, last_debate_action: Optional[str] = None) -> dict:
+    """Resolve the trading decision for `asset` right now — once per asset per tick,
+    independent of any user. No paper_db reads/writes here, EXCEPT the PPO branch
+    (priority 1) is deferred: its own signal depends on per-user portfolio state, so
+    this returns a `needs_per_user_ppo` marker instead of a resolved action/size for
+    that one case, and the caller-supplied/automatic debate override (priorities 3/4,
+    both asset-level) is pre-resolved into `override` so book_signal() can apply it
+    identically after resolving PPO per user.
+    """
     import pandas as pd
     import regime_service
-    import ppo_inference
+    import app_settings
 
     now = pd.Timestamp("now", tz="UTC")
     # Live, not the historical nearest-lookup — this drives the crisis-override guard
     # below, so it needs to reflect right now, not regime_stream.parquet's last
     # precomputed row (frozen at 2024-12-31 as of this fix). log=True here because
-    # get_live_signal() is the natural once-per-hour-per-asset cadence (the scheduler
+    # compute_signal() is the natural once-per-hour-per-asset cadence (the scheduler
     # tick) to grow the live regime audit log at — see regime_service.get_live_regime.
     regime_info = regime_service.get_live_regime(asset, now, log=True)
     regime_label = regime_info.get("regime_label", 0)
     regime_prob = regime_info.get("probabilities", {})
 
-    import app_settings
-
     # --- Signal priority 0: weekly-cadence PPO — opt-in, BTC_USDT only, takes over
     # completely for this asset (see weekly_ppo_live.py's module docstring for why the
     # debate-override priorities 3-4 below are deliberately skipped when this is
-    # active — they'd fight a policy that's only supposed to decide once a week). A
-    # different checkpoint from priority-1 "ppo" below (native decision_interval=168
-    # training, validated with a positive Sharpe, vs. the hourly checkpoint which
-    # isn't) — the two toggles are independent but only one can drive BTC_USDT at once.
-    ppo_override = False
-    ppo_result = None  # only ever set (possibly) in the priority-1 branch below; stays
-    # None on the weekly-PPO path too — "ppo_confidence" downstream specifically means
-    # the hourly checkpoint's confidence, not this one's position size.
-    if asset == "BTC_USDT" and app_settings.get_weekly_ppo_enabled():
+    # active — they'd fight a policy that's only supposed to decide once a week).
+    weekly_active = asset == "BTC_USDT" and app_settings.get_weekly_ppo_enabled()
+    needs_per_user_ppo = False
+
+    if weekly_active:
         import weekly_ppo_live
         weekly = weekly_ppo_live.get_weekly_signal(app_settings.get_weekly_ppo_obs_mode(), now)
         action = weekly["action"]
         size = weekly["position_size"]
         source = weekly["source"]
-    else:
+    elif app_settings.get_rl_execution_enabled():
         # --- Signal priority 1: trained PPO — opt-in only (see app_settings.py) ---
-        # Default off per docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete, controlled
-        # ablation found no crypto5 RL configuration with a defensible edge over
-        # buy-and-hold. Skipping the predict() call entirely when disabled (not just
-        # ignoring its result) so this behaves exactly like "no checkpoint loaded" already
-        # does below — no new code path, just gating the existing fallback earlier.
-        ppo_result = ppo_inference.predict(asset, now) if app_settings.get_rl_execution_enabled() else None
-        if ppo_result is not None:
-            action = ppo_result["action"]
-            size = ppo_result["position_size"]
-            source = "ppo"
-        else:
-            # --- Signal priority 2: rule-based fallback ---
-            action, size = _generate_regime_policy().get(regime_label, ("hold", 0.01))
-            source = "regime_policy"
+        # Default off per docs/RESULTS_AND_METHODOLOGY.md Section 9: a complete,
+        # controlled ablation found no crypto5 RL configuration with a defensible edge
+        # over buy-and-hold. The actual predict() call is deferred to book_signal()
+        # since it needs per-user portfolio state — action/size here are placeholders,
+        # never booked as-is.
+        needs_per_user_ppo = True
+        action, size, source = "hold", 0.0, "ppo"
+    else:
+        # --- Signal priority 2: rule-based fallback ---
+        action, size = _generate_regime_policy().get(regime_label, ("hold", 0.01))
+        source = "regime_policy"
 
-        # --- Signal priority 3: explicit caller-supplied debate override (direction only;
-        # stress/crisis stays flat) ---
+    # --- Signal priorities 3/4: debate override — asset-level, resolved once here
+    # regardless of the PPO branch's per-user deferral. Never applies in stress/crisis
+    # (regime_label == 2) or when weekly-cadence PPO owns this asset.
+    override: Optional[dict] = None
+    if not weekly_active and regime_label != 2:
         if last_debate_action and last_debate_action in ("long", "short", "hold"):
-            if regime_label != 2:  # never override flat in stress/crisis
-                if source == "ppo" and last_debate_action != action:
-                    ppo_override = True
-                action = last_debate_action
-                source = f"{source}+debate"
+            # Priority 3: explicit caller-supplied override (direction only).
+            override = {"action": last_debate_action, "position_size": None, "tag": "+debate"}
         else:
-            # --- Signal priority 4: automatic high-conviction debate override ---
-            # No explicit override was supplied — fall back to checking debate_results.json
-            # directly for a recent, high-conviction call for this asset. Overrides BOTH
-            # direction and size (the explicit path above only touches direction).
+            # Priority 4: automatic high-conviction debate override (direction + size).
             debate_override = _get_debate_override(asset, now)
-            if debate_override and regime_label != 2:  # never override flat in stress/crisis
-                if source == "ppo" and debate_override["action"] != action:
-                    ppo_override = True
-                action = debate_override["action"]
-                size = debate_override["position_size"]
-                source = f"{source}+debate_override"
+            if debate_override:
+                override = {
+                    "action": debate_override["action"],
+                    "position_size": debate_override["position_size"],
+                    "tag": "+debate_override",
+                }
+
+    ppo_override_flag = False
+    if not needs_per_user_ppo and override is not None:
+        if source == "ppo" and override["action"] != action:
+            ppo_override_flag = True
+        action = override["action"]
+        if override["position_size"] is not None:
+            size = override["position_size"]
+        source = f"{source}{override['tag']}"
 
     price = _fetch_latest_price(asset)
-
     debate_info = _load_most_recent_debate(asset, now) or {}
 
+    return {
+        "asset": asset,
+        "now": now,
+        "regime_label": regime_label,
+        "regime_description": regime_info.get("regime_description", ""),
+        "regime_prob": regime_prob,
+        "action": action,
+        "position_size": size,
+        "price": price,
+        "source": source,
+        "ppo_override": ppo_override_flag,
+        "needs_per_user_ppo": needs_per_user_ppo,
+        "override": override,
+        "debate_info": debate_info,
+    }
+
+
+def book_signal(user_id: int, asset: str, signal: dict) -> dict:
+    """Apply an already-computed signal (from compute_signal) to one user's paper
+    account. Called once per user per tick by signal_scheduler's fan-out loop, or once
+    for a single user by the get_live_signal() convenience wrapper below."""
     import paper_db
     import app_settings
+    import ppo_inference
+
+    action = signal["action"]
+    size = signal["position_size"]
+    source = signal["source"]
+    ppo_override = signal["ppo_override"]
+    price = signal["price"]
+    now = signal["now"]
+    regime_label = signal["regime_label"]
+    regime_description = signal["regime_description"]
+    regime_prob = signal["regime_prob"]
+    debate_info = signal["debate_info"]
     regime_at_decision = regime_label
+    ppo_ran = False
+
+    if signal["needs_per_user_ppo"]:
+        ppo_result = ppo_inference.predict(asset, now, user_id=user_id)
+        ppo_ran = ppo_result is not None
+        if ppo_ran:
+            action = ppo_result["action"]
+            size = ppo_result["position_size"]
+        else:
+            action, size = _generate_regime_policy().get(regime_at_decision, ("hold", 0.01))
+            source = "regime_policy"
+        override = signal["override"]
+        if override is not None:
+            if action != override["action"]:
+                ppo_override = True
+            action = override["action"]
+            if override["position_size"] is not None:
+                size = override["position_size"]
+            source = f"{source}{override['tag']}"
+
+    ppo_confidence = size if ppo_ran else None
 
     # Approval mode: a non-hold signal is parked as a pending trade instead of being
     # executed — no capital moves, no position opens, until a human approves it via
@@ -286,28 +356,34 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
             "asset": asset,
             "timestamp": now.isoformat(),
             "regime_label": regime_at_decision,
-            "regime_description": regime_info.get("regime_description", ""),
+            "regime_description": regime_description,
             "source": "debate_override" if "+debate" in source else source,
-            "ppo_confidence": size if ppo_result is not None else None,
+            "ppo_confidence": ppo_confidence,
             "debate_id": debate_info.get("debate_id"),
             "agent_theses": debate_info.get("agent_theses", []),
             "fund_manager_rationale": debate_info.get("fund_manager_rationale"),
             "ppo_override": ppo_override,
         }
         pending = paper_db.create_pending_trade(
-            asset, action, size, price, regime_label=regime_at_decision, source=source,
+            user_id, asset, action, size, price, regime_label=regime_at_decision, source=source,
             reasoning=pending_reasoning,
         )
-        import telegram_service
-        telegram_service.fire_and_forget(telegram_service.notify_pending_trade(
-            pending_id=pending["id"], asset=asset, action=action, position_size=size,
-            price=price, regime_label=regime_at_decision, source=source,
-        ))
-        current = paper_db.get_portfolio(asset)
+        # Telegram is scoped to the primary account only (see telegram_bot.py) — only
+        # notify for that one user's pending trade, not once per registered user, since
+        # every user's pending trade this tick shares the same underlying decision and
+        # there's only one Telegram chat to notify regardless of how many accounts exist.
+        import auth_db
+        if user_id == auth_db.get_primary_user_id():
+            import telegram_service
+            telegram_service.fire_and_forget(telegram_service.notify_pending_trade(
+                pending_id=pending["id"], asset=asset, action=action, position_size=size,
+                price=price, regime_label=regime_at_decision, source=source,
+            ))
+        current = paper_db.get_portfolio(user_id, asset)
         return {
             "asset": asset,
             "regime_label": regime_label,
-            "regime_description": regime_info.get("regime_description", ""),
+            "regime_description": regime_description,
             "regime_prob": regime_prob,
             "action": action,
             "position_size": size,
@@ -315,15 +391,15 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
             "paper_portfolio_value": current["portfolio_value"],
             "paper_total_return": current["total_return"],
             "paper_n_trades": current["n_trades"],
-            "paper_trades": paper_db.get_trades(asset, limit=50),
+            "paper_trades": paper_db.get_trades(user_id, asset, limit=50),
             "source": source,
             "ppo_loaded": ppo_inference.is_loaded(),
             "pending_approval": True,
             "pending_trade_id": pending["id"],
         }
 
-    paper = paper_db.update(asset, action, size, price, regime_label=regime_at_decision)
-    trades = paper_db.get_trades(asset, limit=50)
+    paper = paper_db.update(user_id, asset, action, size, price, regime_label=regime_at_decision)
+    trades = paper_db.get_trades(user_id, asset, limit=50)
 
     trade_id = paper.get("trade_id")
     if trade_id is not None:
@@ -331,20 +407,20 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
             "asset": asset,
             "timestamp": now.isoformat(),
             "regime_label": regime_at_decision,
-            "regime_description": regime_info.get("regime_description", ""),
+            "regime_description": regime_description,
             "source": "debate_override" if "+debate" in source else source,
-            "ppo_confidence": size if ppo_result is not None else None,
+            "ppo_confidence": ppo_confidence,
             "debate_id": debate_info.get("debate_id"),
             "agent_theses": debate_info.get("agent_theses", []),
             "fund_manager_rationale": debate_info.get("fund_manager_rationale"),
             "ppo_override": ppo_override,
         }
-        paper_db.save_trade_reasoning(trade_id, reasoning)
+        paper_db.save_trade_reasoning(trade_id, user_id, reasoning)
 
     return {
         "asset": asset,
         "regime_label": regime_label,
-        "regime_description": regime_info.get("regime_description", ""),
+        "regime_description": regime_description,
         "regime_prob": regime_prob,
         "action": action,
         "position_size": size,
@@ -359,6 +435,14 @@ def get_live_signal(asset: str, last_debate_action: Optional[str] = None) -> dic
     }
 
 
+def get_live_signal(user_id: int, asset: str, last_debate_action: Optional[str] = None) -> dict:
+    """Convenience wrapper for a single user: compute the signal then book it for just
+    this one account. The scheduler's per-user fan-out calls compute_signal()/
+    book_signal() directly instead (one shared computed signal, booked N times)."""
+    signal = compute_signal(asset, last_debate_action=last_debate_action)
+    return book_signal(user_id, asset, signal)
+
+
 _binance_client = None  # module-level cache — see _get_binance_client()
 
 
@@ -368,7 +452,7 @@ def _get_binance_client():
     Confirmed 2026-09-03: a fresh ccxt.binance() instance lazily calls load_markets()
     on its first API call (fetch_ticker included), fetching Binance's full exchange
     metadata — measured ~4s on this network. _fetch_latest_price is on the hot path of
-    every get_live_signal() call (every Trading-page mount, every manual trigger, every
+    every signal computation (every Trading-page mount, every manual trigger, every
     hourly scheduler tick), and previously constructed a brand-new client per call, so
     every single call paid that ~4s cold-start cost again instead of once. Restricting
     to spot markets (historical.py's _fetch_extension_binance found this already, same
@@ -402,5 +486,3 @@ def _fetch_latest_price(asset: str) -> float:
         return float(df.iloc[-1]["close"]) if not df.empty else 0.0
     except Exception:
         return 0.0
-
-

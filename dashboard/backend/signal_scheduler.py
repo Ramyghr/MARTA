@@ -7,7 +7,8 @@ Each tick:
   0. Refreshes all 4 assets' live-bridge normalized features (live_feature_bridge.py)
      so this hour's regime lookups — trading signal below, and every other
      get_live_regime() caller — read current data, not last hour's.
-  1. Calls live_signal.get_live_signal() for each active crypto asset.
+  1. Computes one signal per active crypto asset (live_signal.compute_signal()) and
+     books it into every registered user's own paper account (live_signal.book_signal()).
   2. If a real testnet exchange is connected (paper_exchange.is_live()):
        — cancels stale open orders
        — places a market order matching the PPO/regime action
@@ -154,10 +155,22 @@ def _log_live_regime_sync(asset: str) -> None:
 
 
 async def _tick_asset(asset: str) -> None:
+    """Compute one signal for `asset` and book it into every registered user's own
+    paper account (per-user paper trading migration — see live_signal.py's
+    compute_signal()/book_signal() split).
+
+    The PRIMARY (first-registered) user's booked result drives this tick's asset-level
+    notifications, status-bar display, and real order placement — Alpaca/testnet is one
+    external account belonging to the operator, not per-user, so there's no meaningful
+    per-user version of "place a real order." Every other user is booked the same way
+    (same underlying signal, independently evolving account) without re-triggering any
+    of that asset-level side-effect machinery a second time.
+    """
     import live_signal
     import paper_exchange
     import paper_db
     import alpaca_service
+    import auth_db
 
     previous = _last_signals.get(asset, {})
     previous_regime = previous.get("regime_label")
@@ -165,29 +178,53 @@ async def _tick_asset(asset: str) -> None:
 
     loop = asyncio.get_running_loop()
 
+    user_ids = await loop.run_in_executor(_tick_executor, auth_db.list_user_ids)
+    if not user_ids:
+        logger.warning(f"signal_scheduler: no registered users yet — skipping {asset} tick")
+        return
+    primary_id = user_ids[0]
+
     # Close out any open positions using this tick's price before opening a new signal,
-    # so an outcome never straddles the trade that's about to replace it.
+    # so an outcome never straddles the trade that's about to replace it. Per-user —
+    # each user's open trades are their own, closed against the same current price.
     price_now = await loop.run_in_executor(_tick_executor, live_signal._fetch_latest_price, asset)
     if price_now > 0:
-        _update_trade_outcomes(asset, price_now)
+        for user_id in user_ids:
+            await loop.run_in_executor(_tick_executor, _update_trade_outcomes, user_id, asset, price_now)
 
-    # Generate signal (runs PPO or regime_policy internally)
-    signal = await loop.run_in_executor(_tick_executor, live_signal.get_live_signal, asset)
-    _last_signals[asset] = {**signal, "scheduler_fired_at": datetime.now(timezone.utc).isoformat()}
+    # Generate the signal ONCE per asset (PPO/regime_policy/debate-override priority
+    # chain) — not user-specific, see live_signal.compute_signal()'s docstring.
+    signal = await loop.run_in_executor(_tick_executor, live_signal.compute_signal, asset)
 
-    action  = signal["action"]
-    size    = signal["position_size"]
-    price   = signal["price"]
-    regime  = signal["regime_label"]
-    regime_desc = signal.get("regime_description", "")
-    source  = signal["source"]
+    primary_result: Optional[dict] = None
+    for user_id in user_ids:
+        try:
+            result = await loop.run_in_executor(_tick_executor, live_signal.book_signal, user_id, asset, signal)
+        except Exception as exc:
+            logger.warning(f"signal_scheduler: booking failed for user={user_id} asset={asset} — {exc}")
+            continue
+        if user_id == primary_id:
+            primary_result = result
+
+    if primary_result is None:
+        logger.warning(f"signal_scheduler: primary user's booking failed for {asset} — skipping notifications/orders")
+        return
+
+    _last_signals[asset] = {**primary_result, "scheduler_fired_at": datetime.now(timezone.utc).isoformat()}
+
+    action  = primary_result["action"]
+    size    = primary_result["position_size"]
+    price   = primary_result["price"]
+    regime  = primary_result["regime_label"]
+    regime_desc = primary_result.get("regime_description", "")
+    source  = primary_result["source"]
 
     logger.info(
         f"signal_scheduler [{asset}]: {action.upper()} size={size:.4f} "
         f"price={price:.2f} regime={regime} source={source}"
     )
 
-    pending_approval = bool(signal.get("pending_approval"))
+    pending_approval = bool(primary_result.get("pending_approval"))
 
     _emit_notifications(
         asset=asset, action=action, size=size, regime=regime, regime_desc=regime_desc,
@@ -201,8 +238,8 @@ async def _tick_asset(asset: str) -> None:
     # fires from the /approve endpoint instead, once a person confirms the trade.
     # Alpaca takes priority over the Binance testnet when both are configured — it's the
     # dedicated paper-trading API, testnet is the fallback. paper_db is always updated by
-    # live_signal.get_live_signal() above regardless of which (if either) of these fire;
-    # it remains the dashboard's source of truth for portfolio value / trade log either way.
+    # live_signal.book_signal() above regardless of which (if either) of these fire; it
+    # remains the dashboard's source of truth for portfolio value / trade log either way.
     if not pending_approval and price > 0:
         if alpaca_service.is_configured():
             order = alpaca_service.place_order(asset, action, size, price)
@@ -210,7 +247,7 @@ async def _tick_asset(asset: str) -> None:
                 logger.info(f"signal_scheduler [{asset}]: Alpaca order placed — id={order.get('order_id')}")
         elif paper_exchange.is_live():
             paper_exchange.cancel_all_orders(asset)
-            portfolio = paper_db.get_portfolio(asset)
+            portfolio = paper_db.get_portfolio(primary_id, asset)
             order = paper_exchange.place_order(
                 asset=asset,
                 action=action,
@@ -222,7 +259,7 @@ async def _tick_asset(asset: str) -> None:
                 logger.info(f"signal_scheduler [{asset}]: testnet order placed — id={order.get('id')}")
 
     # MLflow logging (best-effort — never blocks the tick)
-    _log_mlflow(asset, signal)
+    _log_mlflow(asset, primary_result)
 
 
 def _emit_notifications(
@@ -279,8 +316,8 @@ def _emit_notifications(
         ))
 
 
-def _update_trade_outcomes(asset: str, current_price: float) -> None:
-    """Close out open paper trades whose price has moved >0.5% since entry.
+def _update_trade_outcomes(user_id: int, asset: str, current_price: float) -> None:
+    """Close out this user's open paper trades whose price has moved >0.5% since entry.
 
     Direction-aware: a "profit" for a short position means price fell, not rose.
     """
@@ -288,7 +325,7 @@ def _update_trade_outcomes(asset: str, current_price: float) -> None:
     import regime_service
     import pandas as pd
 
-    open_trades = paper_db.get_open_trades(asset)
+    open_trades = paper_db.get_open_trades(user_id, asset)
     if not open_trades:
         return
 
