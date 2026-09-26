@@ -1,0 +1,481 @@
+{
+  "marta_ppo": {
+    "sharpe": 2.5695702287602327,
+    "sortino": 3.7732609190421926,
+    "max_drawdown": 0.1336686199873886,
+    "calmar": 4.585305952600792,
+    "total_return": 0.8061258739185131,
+    "n_trades": 37,
+    "n_meaningful_trades": 36,
+    "mean_turnover": 0.24751361249103884,
+    "hold_ratio": 0.12962962962962962,
+    "mean_trade_duration_hours": 7.833333333333333,
+    "median_trade_duration_hours": 5.5
+  },
+  "per_regime": {
+    "regime_0": {
+      "n_steps": 5,
+      "n_meaningful_trades": 4,
+      "sharpe": 19.716767453570235,
+      "avg_position_size": 0.48883455704457557,
+      "avg_return": 0.02595118449159367
+    },
+    "regime_1": {
+      "n_steps": 11,
+      "n_meaningful_trades": 6,
+      "sharpe": 3.273341449462626,
+      "avg_position_size": 0.37472281672737817,
+      "avg_return": 0.012288271293105472
+    },
+    "regime_2": {
+      "n_steps": 9,
+      "n_meaningful_trades": 6,
+      "sharpe": 2.1768847189139797,
+      "avg_position_size": 0.4498885534462613,
+      "avg_return": 0.005859360545077067
+    },
+    "regime_3": {
+      "n_steps": 10,
+      "n_meaningful_trades": 5,
+      "sharpe": 1.1751824007627758,
+      "avg_position_size": 0.4271284371614456,
+      "avg_return": 0.006371269757932038
+    },
+    "regime_4": {
+      "n_steps": 16,
+      "n_meaningful_trades": 13,
+      "sharpe": 2.695252146432398,
+      "avg_position_size": 0.37209637182908095,
+      "avg_return": 0.015638847768704292
+    },
+    "regime_5": {
+      "n_steps": 2,
+      "n_meaningful_trades": 2,
+      "sharpe": -4.184652303428331,
+      "avg_position_size": 0.4230412105010536,
+      "avg_return": -0.004304295055248805
+    }
+  },
+  "trade_log": [
+    {
+      "timestamp": "2024-01-08 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.44791534543037415,
+      "turnover": 0.44791534543037415,
+      "decision_regime": 4,
+      "pnl_return_step": 0.011058215530257258,
+      "pnl_cumulative": 110.58215530257257,
+      "portfolio_value": 10110.582155302573
+    },
+    {
+      "timestamp": "2024-01-15 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.3507546502921157,
+      "turnover": 0.09716069513825842,
+      "decision_regime": 5,
+      "pnl_return_step": -0.011731740707826236,
+      "pnl_cumulative": -8.032572948612142,
+      "portfolio_value": 9991.967427051388
+    },
+    {
+      "timestamp": "2024-01-29 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.49532777070999146,
+      "turnover": 0.14457312041787573,
+      "decision_regime": 5,
+      "pnl_return_step": 0.0031231505973286266,
+      "pnl_cumulative": -30.6317693031433,
+      "portfolio_value": 9969.368230696857
+    },
+    {
+      "timestamp": "2024-02-05 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4770386517047882,
+      "turnover": 0.018289119005203247,
+      "decision_regime": 2,
+      "pnl_return_step": 0.00409580783724745,
+      "pnl_cumulative": 10.200847228550629,
+      "portfolio_value": 10010.20084722855
+    },
+    {
+      "timestamp": "2024-02-12 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4896714985370636,
+      "turnover": 0.01263284683227539,
+      "decision_regime": 4,
+      "pnl_return_step": 0.06927118493018933,
+      "pnl_cumulative": 703.6193213052575,
+      "portfolio_value": 10703.619321305257
+    },
+    {
+      "timestamp": "2024-02-19 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.5299563407897949,
+      "turnover": 0.04028484225273132,
+      "decision_regime": 4,
+      "pnl_return_step": 0.03772301033219234,
+      "pnl_cumulative": 1107.3920635547092,
+      "portfolio_value": 11107.39206355471
+    },
+    {
+      "timestamp": "2024-02-26 00:00:00+00:00",
+      "direction": "flat",
+      "position_size": 0.0,
+      "turnover": 0.5299563407897949,
+      "decision_regime": 4,
+      "pnl_return_step": -0.0005299563407897318,
+      "pnl_cumulative": 1101.5056307009909,
+      "portfolio_value": 11101.50563070099
+    },
+    {
+      "timestamp": "2024-03-04 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.5957593321800232,
+      "turnover": 0.5957593321800232,
+      "decision_regime": 4,
+      "pnl_return_step": 0.12793673989453644,
+      "pnl_cumulative": 2521.796069013715,
+      "portfolio_value": 12521.796069013715
+    },
+    {
+      "timestamp": "2024-03-11 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.34844244819459985,
+      "turnover": 0.24731688398542334,
+      "decision_regime": 2,
+      "pnl_return_step": 0.02396430586181481,
+      "pnl_cumulative": 2821.87221995083,
+      "portfolio_value": 12821.87221995083
+    },
+    {
+      "timestamp": "2024-04-01 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4307051455382008,
+      "turnover": 0.08226269734360092,
+      "decision_regime": 0,
+      "pnl_return_step": 0.028627851098407067,
+      "pnl_cumulative": 3069.4506475853905,
+      "portfolio_value": 13069.45064758539
+    },
+    {
+      "timestamp": "2024-04-08 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4876541197299957,
+      "turnover": 0.056948974191794954,
+      "decision_regime": 4,
+      "pnl_return_step": -0.013262011271260445,
+      "pnl_cumulative": 2896.123445787931,
+      "portfolio_value": 12896.12344578793
+    },
+    {
+      "timestamp": "2024-04-15 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.5088547468185425,
+      "turnover": 0.9965088665485382,
+      "decision_regime": 0,
+      "pnl_return_step": 0.027089671248728204,
+      "pnl_cumulative": 3245.475190317342,
+      "portfolio_value": 13245.475190317342
+    },
+    {
+      "timestamp": "2024-05-13 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.5422496795654297,
+      "turnover": 0.03767585754394531,
+      "decision_regime": 1,
+      "pnl_return_step": 0.022983714977127992,
+      "pnl_cumulative": 3650.086879960336,
+      "portfolio_value": 13650.086879960336
+    },
+    {
+      "timestamp": "2024-05-20 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4418676793575287,
+      "turnover": 0.9841173589229584,
+      "decision_regime": 3,
+      "pnl_return_step": 0.03347604538073699,
+      "pnl_cumulative": 4107.037807804891,
+      "portfolio_value": 14107.03780780489
+    },
+    {
+      "timestamp": "2024-06-17 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.4799406826496124,
+      "turnover": 0.9218083620071411,
+      "decision_regime": 0,
+      "pnl_return_step": 0.019913840297739516,
+      "pnl_cumulative": 4669.465101041316,
+      "portfolio_value": 14669.465101041316
+    },
+    {
+      "timestamp": "2024-07-01 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.41677016019821167,
+      "turnover": 0.06317052245140076,
+      "decision_regime": 2,
+      "pnl_return_step": 0.0006283500127399514,
+      "pnl_cumulative": 5061.0906249432865,
+      "portfolio_value": 15061.090624943286
+    },
+    {
+      "timestamp": "2024-07-15 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.42855367064476013,
+      "turnover": 0.8453238308429718,
+      "decision_regime": 1,
+      "pnl_return_step": 0.044716650851153984,
+      "pnl_cumulative": 6621.922809368807,
+      "portfolio_value": 16621.922809368807
+    },
+    {
+      "timestamp": "2024-07-29 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4990808367729187,
+      "turnover": 0.07052716612815857,
+      "decision_regime": 4,
+      "pnl_return_step": 0.0032871202342836863,
+      "pnl_cumulative": 7460.071603753793,
+      "portfolio_value": 17460.071603753793
+    },
+    {
+      "timestamp": "2024-08-12 00:00:00+00:00",
+      "direction": "flat",
+      "position_size": 0.0,
+      "turnover": 0.4990808367729187,
+      "decision_regime": 1,
+      "pnl_return_step": -0.0004990808367729442,
+      "pnl_cumulative": 5766.063457982416,
+      "portfolio_value": 15766.063457982416
+    },
+    {
+      "timestamp": "2024-08-19 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.4186585545539856,
+      "turnover": 0.4186585545539856,
+      "decision_regime": 1,
+      "pnl_return_step": -0.00036490804928841417,
+      "pnl_cumulative": 5760.310294521007,
+      "portfolio_value": 15760.310294521007
+    },
+    {
+      "timestamp": "2024-08-26 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.4318690001964569,
+      "turnover": 0.013210445642471313,
+      "decision_regime": 1,
+      "pnl_return_step": -0.0402341295997463,
+      "pnl_cumulative": 5126.207927599033,
+      "portfolio_value": 15126.207927599033
+    },
+    {
+      "timestamp": "2024-09-02 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.5336707830429077,
+      "turnover": 0.1018017828464508,
+      "decision_regime": 3,
+      "pnl_return_step": 0.0592625399178525,
+      "pnl_cumulative": 6022.625428714107,
+      "portfolio_value": 16022.625428714107
+    },
+    {
+      "timestamp": "2024-09-09 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.43744051456451416,
+      "turnover": 0.9711112976074219,
+      "decision_regime": 4,
+      "pnl_return_step": -0.020074834844883684,
+      "pnl_cumulative": 5700.973869451238,
+      "portfolio_value": 15700.973869451238
+    },
+    {
+      "timestamp": "2024-09-16 00:00:00+00:00",
+      "direction": "flat",
+      "position_size": 0.0,
+      "turnover": 0.43744051456451416,
+      "decision_regime": 4,
+      "pnl_return_step": -0.00043744051456447787,
+      "pnl_cumulative": 5694.105627362622,
+      "portfolio_value": 15694.105627362622
+    },
+    {
+      "timestamp": "2024-09-23 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.5158174633979797,
+      "turnover": 0.5158174633979797,
+      "decision_regime": 0,
+      "pnl_return_step": 0.04127979988210053,
+      "pnl_cumulative": 6341.955166988699,
+      "portfolio_value": 16341.955166988699
+    },
+    {
+      "timestamp": "2024-09-30 00:00:00+00:00",
+      "direction": "flat",
+      "position_size": 0.0,
+      "turnover": 0.5158174633979797,
+      "decision_regime": 4,
+      "pnl_return_step": -0.00051581746339799,
+      "pnl_cumulative": 6333.525701127499,
+      "portfolio_value": 16333.525701127499
+    },
+    {
+      "timestamp": "2024-10-14 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4706774055957794,
+      "turnover": 0.4706774055957794,
+      "decision_regime": 3,
+      "pnl_return_step": -0.009375482160848084,
+      "pnl_cumulative": 6180.391022292824,
+      "portfolio_value": 16180.391022292824
+    },
+    {
+      "timestamp": "2024-10-21 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.48220694065093994,
+      "turnover": 0.011529535055160522,
+      "decision_regime": 2,
+      "pnl_return_step": 0.049288895227937335,
+      "pnl_cumulative": 6977.904620137673,
+      "portfolio_value": 16977.904620137673
+    },
+    {
+      "timestamp": "2024-11-11 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.4177100658416748,
+      "turnover": 0.06449687480926514,
+      "decision_regime": 4,
+      "pnl_return_step": 0.06820102818350274,
+      "pnl_cumulative": 8067.8463039131675,
+      "portfolio_value": 18067.846303913168
+    },
+    {
+      "timestamp": "2024-11-18 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.46531763672828674,
+      "turnover": 0.8830277025699615,
+      "decision_regime": 4,
+      "pnl_return_step": -0.05161380295102919,
+      "pnl_cumulative": 7135.296045033512,
+      "portfolio_value": 17135.296045033512
+    },
+    {
+      "timestamp": "2024-11-25 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.44197148084640503,
+      "turnover": 0.9072891175746918,
+      "decision_regime": 4,
+      "pnl_return_step": 0.03590159369527969,
+      "pnl_cumulative": 7750.480481490638,
+      "portfolio_value": 17750.48048149064
+    },
+    {
+      "timestamp": "2024-12-02 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.499196857213974,
+      "turnover": 0.05722537636756897,
+      "decision_regime": 2,
+      "pnl_return_step": -0.001965240471455121,
+      "pnl_cumulative": 7715.596518860639,
+      "portfolio_value": 17715.59651886064
+    },
+    {
+      "timestamp": "2024-12-09 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.5590283274650574,
+      "turnover": 0.059831470251083374,
+      "decision_regime": 2,
+      "pnl_return_step": 0.01151987743400424,
+      "pnl_cumulative": 7919.6780194281855,
+      "portfolio_value": 17919.678019428186
+    },
+    {
+      "timestamp": "2024-12-16 00:00:00+00:00",
+      "direction": "long",
+      "position_size": 0.48630815744400024,
+      "turnover": 0.07272017002105713,
+      "decision_regime": 3,
+      "pnl_return_step": 0.027132474454115922,
+      "pnl_cumulative": 8405.883225516303,
+      "portfolio_value": 18405.883225516303
+    },
+    {
+      "timestamp": "2024-12-23 00:00:00+00:00",
+      "direction": "flat",
+      "position_size": 0.0,
+      "turnover": 0.48630815744400024,
+      "decision_regime": 1,
+      "pnl_return_step": -0.00048630815744404876,
+      "pnl_cumulative": 8396.932294358772,
+      "portfolio_value": 18396.932294358772
+    },
+    {
+      "timestamp": "2024-12-30 00:00:00+00:00",
+      "direction": "short",
+      "position_size": 0.43566420674324036,
+      "turnover": 0.43566420674324036,
+      "decision_regime": 3,
+      "pnl_return_step": 0.002919475409382857,
+      "pnl_cumulative": 8450.641685800234,
+      "portfolio_value": 18450.641685800234
+    }
+  ],
+  "baselines": {
+    "buy_and_hold_BTC_USDT": {
+      "sharpe": 1.5063152167189937,
+      "sortino": 1.9422258231162315,
+      "max_drawdown": 0.36002616266506154,
+      "calmar": 2.2004085971479,
+      "total_return": 0.9262132202392539,
+      "n_trades": 0,
+      "n_meaningful_trades": 0,
+      "mean_turnover": 0.0,
+      "hold_ratio": 0.0,
+      "mean_trade_duration_hours": 8785.0,
+      "median_trade_duration_hours": 8785.0
+    },
+    "ppo_no_regime": {
+      "sharpe": 2.5611809881765755,
+      "sortino": 3.7456358892052397,
+      "max_drawdown": 0.1343939455005621,
+      "calmar": 4.554448706228197,
+      "total_return": 0.8044284223545302,
+      "n_trades": 37,
+      "n_meaningful_trades": 36,
+      "mean_turnover": 0.24767805689329522,
+      "hold_ratio": 0.12962962962962962,
+      "mean_trade_duration_hours": 7.833333333333333,
+      "median_trade_duration_hours": 5.5
+    }
+  },
+  "n_val_steps": 53,
+  "final_portfolio_value": 18061.25873918513,
+  "val_window": {
+    "start": "2024-01-01",
+    "end": "2024-12-31"
+  },
+  "_provenance": {
+    "generated_at_utc": "2026-09-21T17:18:38.659347+00:00",
+    "mlflow_run_id": "73f971ed0e7440d6a1d001c89463bc2e",
+    "checkpoint": null,
+    "git": {
+      "commit": null,
+      "dirty": null,
+      "error": "Command '['git', 'rev-parse', 'HEAD']' returned non-zero exit status 128."
+    },
+    "env_config_hash": "45053f9df06ecac4",
+    "env_config": {
+      "obs_mode": "raw_regime",
+      "benchmark_relative": false,
+      "lambda_drawdown": 0.01,
+      "transaction_cost": 0.001,
+      "regime_stream_path": "/kaggle/working/marta/data/processed/crypto5_multihorizon/regime_stream_placebo.parquet"
+    },
+    "data_sources": {
+      "aligned_btc": null,
+      "regime_stream": {
+        "path": "/kaggle/working/marta/data/processed/crypto5_multihorizon/regime_stream_placebo.parquet",
+        "mtime_utc": "2026-09-21T16:18:09.075092+00:00",
+        "size_bytes": 18613685
+      }
+    }
+  }
+}

@@ -130,7 +130,7 @@ here; if a version mismatch causes trouble, the sanity-check cell below will sur
 before the real run, not mid-sweep.
 
 ```python
-!pip install -q stable-baselines3==2.8.0 gymnasium==1.2.3 mlflow-skinny==3.12.0 rich==15.0.0
+!pip install -q stable-baselines3==2.8.0 gymnasium==1.2.3 mlflow-skinny==3.12.0 rich==15.0.0 arch==8.0.0
 
 import os
 # mlflow 3.x deprecated the local filesystem tracking store by default (same fix
@@ -155,8 +155,8 @@ assert str(t.MARTA_ROOT) == "/kaggle/working/marta"
 from rl.train_weekly_crypto5_grid import build_weekly_config
 from rl.train import load_data
 cfg = build_weekly_config("BTC_USDT", "raw", seed=1)
-regime_stream, aligned_dfs = load_data(cfg)
-print("Data OK —", len(aligned_dfs["BTC_USDT"]), "BTC_USDT rows")
+aligned_dfs, regime_stream, encoder = load_data(cfg)
+print("Data OK —", len(aligned_dfs["BTC_USDT"]), "BTC_USDT rows, encoder:", encoder)
 ```
 
 If `MARTA_ROOT` prints anything other than `/kaggle/working/marta`, stop — the path

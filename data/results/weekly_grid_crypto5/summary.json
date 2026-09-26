@@ -67,56 +67,97 @@
     "max_drawdown_mean": 0.11596059963552101,
     "n_meaningful_trades_mean": 34.0
   },
+  "BTC_USDT_A": {
+    "asset": "BTC_USDT",
+    "label": "A",
+    "obs_mode": "raw",
+    "n_seeds": 4,
+    "seeds": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "sharpe_mean": 1.991503265741552,
+    "sharpe_std": 0.2532913909963723,
+    "sharpe_per_seed": {
+      "0": 2.041851409706358,
+      "1": 2.3626230987333905,
+      "2": 1.8981226350570195,
+      "3": 1.66341591946944
+    },
+    "total_return_mean": 0.5836288033862701,
+    "max_drawdown_mean": 0.11250452396972677,
+    "n_meaningful_trades_mean": 40.5
+  },
   "BTC_USDT_B": {
     "asset": "BTC_USDT",
     "label": "B",
     "obs_mode": "raw_vol",
-    "n_seeds": 1,
+    "n_seeds": 4,
     "seeds": [
-      0
+      0,
+      1,
+      2,
+      3
     ],
-    "sharpe_mean": 1.0123212429375448,
-    "sharpe_std": 0.0,
+    "sharpe_mean": 2.0554454237366526,
+    "sharpe_std": 0.6430341129349644,
     "sharpe_per_seed": {
-      "0": 1.0123212429375448
+      "0": 1.0123212429375448,
+      "1": 2.2858335927761053,
+      "2": 2.1597250284939213,
+      "3": 2.76390183073904
     },
-    "total_return_mean": 0.26050387572588996,
-    "max_drawdown_mean": 0.1254320976361546,
-    "n_meaningful_trades_mean": 40.0
+    "total_return_mean": 0.5456270235435046,
+    "max_drawdown_mean": 0.08447566860156132,
+    "n_meaningful_trades_mean": 37.75
   },
   "BTC_USDT_C": {
     "asset": "BTC_USDT",
     "label": "C",
     "obs_mode": "raw_regime",
-    "n_seeds": 1,
+    "n_seeds": 4,
     "seeds": [
-      0
+      0,
+      1,
+      2,
+      3
     ],
-    "sharpe_mean": 1.738416985413198,
-    "sharpe_std": 0.0,
+    "sharpe_mean": 1.7673107174552234,
+    "sharpe_std": 0.24497909603597803,
     "sharpe_per_seed": {
-      "0": 1.738416985413198
+      "0": 1.738416985413198,
+      "1": 2.0687118583860458,
+      "2": 1.395206010762521,
+      "3": 1.8669080152591293
     },
-    "total_return_mean": 0.6589748836257556,
-    "max_drawdown_mean": 0.1347686283921199,
-    "n_meaningful_trades_mean": 37.0
+    "total_return_mean": 0.5181757268689756,
+    "max_drawdown_mean": 0.11511630876646081,
+    "n_meaningful_trades_mean": 39.25
   },
   "BTC_USDT_D": {
     "asset": "BTC_USDT",
     "label": "D",
     "obs_mode": "raw_regime",
-    "n_seeds": 1,
+    "n_seeds": 4,
     "seeds": [
-      0
+      0,
+      1,
+      2,
+      3
     ],
-    "sharpe_mean": 2.2722240334238384,
-    "sharpe_std": 0.0,
+    "sharpe_mean": 2.353392515681861,
+    "sharpe_std": 0.2467653007772035,
     "sharpe_per_seed": {
-      "0": 2.2722240334238384
+      "0": 2.2722240334238384,
+      "1": 2.5868343924621082,
+      "2": 2.5695702287602327,
+      "3": 1.9849414080812664
     },
-    "total_return_mean": 0.7330865719865947,
-    "max_drawdown_mean": 0.061949637919535006,
-    "n_meaningful_trades_mean": 33.0
+    "total_return_mean": 0.7430114288323862,
+    "max_drawdown_mean": 0.09500030912443463,
+    "n_meaningful_trades_mean": 35.75
   },
   "ETH_USDT_A": {
     "asset": "ETH_USDT",

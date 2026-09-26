@@ -66,3 +66,8 @@ kaggle_upload/marta-debate-coverage-pkg.zip
 # regenerate this from a clean checkout (a handful of `cp` commands, no script needed).
 kaggle_upload/marta-weekly-ppo-pkg/
 kaggle_upload/marta-weekly-ppo-pkg.zip
+
+# Downloaded Kaggle notebook output bundle (284MB) — the extracted results already
+# live under data/results/weekly_grid_crypto5/, this raw zip is just the download
+# artifact and shouldn't bloat git history.
+kaggle_output/weekly_grid_results_btcusdt.zip
