@@ -31,11 +31,11 @@ MARTA was carried out within the R\&D and Finance/Insurance Consulting scope of 
 \subsection{Internship Framework}
 \label{subsec:internship-framework}
 
-Unlike a project built around a pre-defined internal need, this final-year project was conducted under a self-directed research framework: Coral-io granted full autonomy in selecting the subject and technical direction of the work, provided it aligned with the company's R\&D and FinTech interests. This arrangement reflects a model already familiar from the author's prior internship experience at Coral-io, where independent, exploratory project work was similarly supported as a way to build internal expertise in emerging domains.
+Unlike a project built around a pre-defined internal need, this final-year project was conducted under a self-directed research framework: Coral-io granted full autonomy in selecting the subject and technical direction of the work.
 
 Within this framework, technical guidance was provided collaboratively by Ms. Oumaima Aounallah and the wider Coral-io team, consulted on an as-needed basis for architectural decisions, tooling questions, and periodic progress reviews rather than through prescriptive task assignment. Academic supervision was provided by Saoussen Lakhdhar at ESPRIT.
 
-This structure placed a greater share of responsibility for scoping, planning, and technical decision-making on the author than is typical of a company-assigned project --- a distinction elaborated further in Section~\ref{sec:methodology-planning}.
+This structure placed a greater share of responsibility for scoping, planning, and technical decision-making than is typical of a company-assigned project --- a distinction elaborated further in Section~\ref{sec:methodology-planning}.
 
 \section{Problem Statement}
 \label{sec:problem-statement}
@@ -74,8 +74,8 @@ Success is measured not only by trading performance (risk-adjusted returns, draw
 MARTA (Multi-Agent Regime-Aware Trading Architecture) addresses this gap through a five-layer pipeline, each layer directly targeting one part of the problem statement above.
 
 \begin{enumerate}
-    \item \textbf{Regime Encoder}: a Temporal Fusion Transformer (TFT) trained with an InfoNCE contrastive objective learns dense embeddings of market state from hourly multi-asset data (BTC, ETH, EUR/USD, XAU/USD), without requiring hand-labeled regimes.
-    \item \textbf{Regime Detection}: a Gaussian Hidden Markov Model is fitted over the encoder's embedding space, discretizing the continuous representation into a small number of interpretable, statistically distinct regimes with associated transition dynamics.
+    \item \textbf{Feature Engineering}: a set of engineered technical and statistical indicators (volatility, momentum, trend, and higher-moment statistics) is computed per asset from hourly multi-asset crypto data (BTC, ETH, BNB, LTC, XRP), providing the market-state representation regime detection operates on directly, without requiring hand-labeled regimes. Two aspects of this layer's initial design were later revised (Chapter~\ref{chap:methodology}), both driven by the same finding: the representation was originally learned via a Temporal Fusion Transformer trained with an InfoNCE contrastive objective rather than engineered directly, and the initial data panel paired two crypto assets with two traditional-finance instruments (BTC, ETH, EUR/USD, XAU/USD) rather than the crypto-only panel above --- a raw-feature HMM fit on that mixed panel was found to collapse onto asset identity rather than market regime, motivating both revisions together.
+    \item \textbf{Regime Detection}: a Gaussian Hidden Markov Model is fitted directly on the engineered feature space, discretizing market state into a small number of interpretable, statistically distinct regimes with associated transition dynamics.
     \item \textbf{Multi-Agent Deliberation}: five specialized LLM agents debate the appropriate trading stance given the current regime, each contributing a different analytical perspective (e.g., trend, risk, contrarian), producing a reasoned, regime-aware recommendation rather than a black-box signal.
     \item \textbf{RL Execution Supervisor}: a PPO-trained agent translates the agents' deliberation output into concrete position sizing and execution decisions, learning to modulate risk exposure according to regime and the confidence of the upstream reasoning.
     \item \textbf{Monitoring Dashboard}: a Next.js interface exposes regime detection, agent reasoning, and execution decisions in real time, making the system's behavior auditable rather than opaque.
@@ -92,8 +92,8 @@ This layered design directly mirrors the two-part problem statement: layers 1--2
 The project pursues four concrete objectives, each corresponding to a layer of the proposed solution:
 
 \begin{enumerate}
-    \item \textbf{Learn a meaningful regime representation}: train a TFT + InfoNCE encoder on multi-asset hourly data such that the resulting embedding space captures structure relevant to near-term market dynamics, validated through downstream regime separability rather than reconstruction loss alone.
-    \item \textbf{Discover interpretable, statistically distinct regimes}: fit a Gaussian HMM over the learned embeddings and verify that the resulting regimes are stable, distinguishable, and align with intuitive market conditions (e.g., trending vs.\ ranging, high vs.\ low volatility) upon inspection.
+    \item \textbf{Learn a meaningful regime representation}: engineer a multi-asset hourly feature set (volatility, momentum, trend, and higher-moment statistics) that captures structure relevant to near-term market dynamics, validated through downstream regime separability once clustered by the HMM.
+    \item \textbf{Discover interpretable, statistically distinct regimes}: fit a Gaussian HMM directly over the engineered feature space and verify that the resulting regimes are stable, distinguishable, and align with intuitive market conditions (e.g., trending vs.\ ranging, high vs.\ low volatility) upon inspection.
     \item \textbf{Build a regime-aware multi-agent reasoning layer}: design and implement a five-agent LLM deliberation system whose recommendations are conditioned on detected regime, and evaluate whether this conditioning improves recommendation quality over a regime-agnostic baseline.
     \item \textbf{Train an adaptive execution policy}: implement a PPO-based execution supervisor that translates agent deliberation into position-sizing decisions, and evaluate --- via ablation --- whether regime-awareness measurably improves risk-adjusted trading performance relative to an equivalent regime-agnostic system.
 \end{enumerate}
@@ -105,7 +105,7 @@ A secondary, supporting objective is to expose the full pipeline through a monit
 
 \textbf{In scope:}
 \begin{itemize}
-    \item Four assets: BTC/USD, ETH/USD, EUR/USD, XAU/USD, at hourly resolution, 2018--2025.
+    \item Five crypto assets: BTC/USDT, ETH/USDT, BNB/USDT, LTC/USDT, XRP/USDT, at hourly resolution, 2018--2025. An initial four-asset panel spanning crypto and traditional-finance instruments (BTC/USD, ETH/USD, EUR/USD, XAU/USD) was revised to this crypto-only panel after a data-quality defect specific to the traditional-finance instruments was diagnosed (Chapter~\ref{chap:methodology}).
     \item Design, training, and evaluation of all five architectural layers described in Section~\ref{sec:proposed-solution}.
     \item Backtesting and ablation studies quantifying the contribution of regime-awareness specifically.
     \item A functional monitoring dashboard for the full pipeline.
@@ -114,7 +114,7 @@ A secondary, supporting objective is to expose the full pipeline through a monit
 \textbf{Out of scope:}
 \begin{itemize}
     \item Live deployment with real capital; the system is evaluated via backtesting and paper-trading simulation only.
-    \item Assets or timeframes beyond the four instruments and hourly resolution listed above.
+    \item Assets or timeframes beyond the five instruments and hourly resolution listed above.
     \item Regulatory, compliance, or brokerage-integration work required for production trading.
     \item Optimization of LLM inference cost/latency for high-frequency use cases; the multi-agent layer operates at hourly decision frequency, not tick-level.
 \end{itemize}
@@ -144,7 +144,7 @@ The work was organized into seven successive phases, summarized in Table~\ref{ta
 \hline
 2. Data \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 25 -- Jun 7) \\
 \hline
-3. Regime Encoder & Trained TFT + InfoNCE encoder & 3 wk (Jun 8 -- Jun 28) \\
+3. Regime Encoder & Trained TFT + InfoNCE encoder (later superseded, Ch.~\ref{chap:methodology}) & 3 wk (Jun 8 -- Jun 28) \\
 \hline
 4. Regime Detection & Gaussian HMM over encoder embeddings & 1 wk (Jun 29 -- Jul 5) \\
 \hline
