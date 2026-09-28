@@ -2,13 +2,17 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
   createChart,
+  createSeriesMarkers,
   ColorType,
   CrosshairMode,
   LineStyle,
+  PriceScaleMode,
   CandlestickSeries,
   HistogramSeries,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type Time,
   type UTCTimestamp,
   type MouseEventParams,
   type LogicalRange,
@@ -25,12 +29,28 @@ interface Props {
   dataRange: DataRange | null;
   onRangeChange: (range: { start: string; end: string } | null) => void;
   onCandleClick?: (timestamp: string) => void;
+  // Whether the chart is currently following the live feed (no explicit historical
+  // range picked) — purely a header-UI concern (pulsing badge vs. a "back to live"
+  // button). Pan/zoom/date-range selection is always available regardless of this,
+  // same as a real trading-view chart: you can always scrub back in time, the feed
+  // just isn't "live" anymore once you have.
   liveMode?: boolean;
+  // Clears any picked historical range and resumes live streaming. Falls back to
+  // onRangeChange(null) if not provided.
+  onGoLive?: () => void;
   // Infinite-scroll-back: fires when the user pans/zooms to the oldest currently-loaded
   // candle. Caller is expected to prepend older candles onto `candles`.
   onLoadMore?: () => void;
   loadingMore?: boolean;
   noMoreHistory?: boolean;
+  // Point annotations (e.g. "COVID Crash", "FTX Collapse") — snapped to the nearest
+  // loaded candle and rendered as small labels above the bar, lightweight-charts'
+  // native way to mark a specific moment (vs. Recharts' full-height ReferenceLine).
+  markers?: Array<{ time: string; label: string; color?: string }>;
+  // Log price scale — needed for any chart spanning BTC's full history (~$3k in 2018
+  // to $100k+ later): a linear scale makes the early years unreadably flat. Off by
+  // default (Dashboard/Trading views a recent window, where linear is fine/expected).
+  logScale?: boolean;
 }
 
 // How close to the left edge (in bar count) before triggering onLoadMore. Large enough
@@ -98,8 +118,8 @@ interface RegimeBand {
 }
 
 export default function PriceChart({
-  candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false,
-  onLoadMore, loadingMore = false, noMoreHistory = false,
+  candles, asset, dataRange, onRangeChange, onCandleClick, liveMode = false, onGoLive,
+  onLoadMore, loadingMore = false, noMoreHistory = false, markers = [], logScale = false,
 }: Props) {
   const regimeNames = useMARTAStore((s) => s.regimeNames);
   const [activeRange, setActiveRange] = useState<RangeKey>("ALL");
@@ -201,10 +221,13 @@ export default function PriceChart({
   // render loop (setBands inside the effect -> re-render -> new displayCandles
   // reference -> effect fires again). Recharts never had a useEffect keyed on this,
   // so the same unmemoized .slice() didn't loop there — introduced by this rewrite.
-  // Cap raised 2000 -> 20000 (was silently discarding "load more" history once loaded
-  // history exceeded 2000 bars — the whole point of infinite-scroll-back is to keep
-  // growing this past that); lightweight-charts handles datasets this size natively.
-  const displayCandles = useMemo(() => liveCandles.slice(-20000), [liveCandles]);
+  // Cap raised 2000 -> 20000 -> 200000 (was silently discarding "load more"/full-history
+  // data once loaded history exceeded the cap — live BTC history is already 74,596 rows
+  // as of this pass and keeps growing with every data extension per CLAUDE.md, so a
+  // tight cap keeps needing bumping; 200000 is generous headroom instead of chasing a
+  // moving target). lightweight-charts handles datasets this size natively (canvas-
+  // rendered, virtualized to the visible window, not one DOM node per bar).
+  const displayCandles = useMemo(() => liveCandles.slice(-200000), [liveCandles]);
 
   const latestClose = displayCandles.at(-1)?.close;
   const prevClose = displayCandles.at(-2)?.close;
@@ -265,6 +288,7 @@ export default function PriceChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const seriesMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const candleByTimeRef = useRef<Map<number, Candle>>(new Map());
   const regimeRunsRef = useRef<RegimeRun[]>([]);
   const liveBoundarySecRef = useRef<number | null>(null);
@@ -330,7 +354,7 @@ export default function PriceChart({
         vertLine: { color: "#4a9eff88", width: 1, style: LineStyle.Dashed, labelBackgroundColor: "#111" },
         horzLine: { color: "#4a9eff88", width: 1, style: LineStyle.Dashed, labelBackgroundColor: "#111" },
       },
-      rightPriceScale: { borderColor: "#1a1a1a" },
+      rightPriceScale: { borderColor: "#1a1a1a", mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal },
       timeScale: { borderColor: "#1a1a1a", timeVisible: true, secondsVisible: false, rightOffset: 4 },
       autoSize: false,
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
@@ -356,6 +380,7 @@ export default function PriceChart({
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    seriesMarkersRef.current = createSeriesMarkers(candleSeries, []);
 
     const handleClick = (param: MouseEventParams) => {
       if (!param.time) return;
@@ -430,6 +455,7 @@ export default function PriceChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
+      seriesMarkersRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -484,6 +510,43 @@ export default function PriceChart({
     panes?.[1]?.setStretchFactor(hasVolume ? 0.18 : 0.0001);
   }, [displayCandles, regimeRuns, liveBridgeBoundarySec, recomputeOverlays, hasVolume]);
 
+  // Point annotations — snap each marker to the nearest loaded candle (an exact-match
+  // lookup would silently drop a marker whose date falls on a gap/weekend/holiday bar).
+  useEffect(() => {
+    if (!seriesMarkersRef.current) return;
+    if (markers.length === 0 || displayCandles.length === 0) {
+      seriesMarkersRef.current.setMarkers([]);
+      return;
+    }
+    const sorted = markers
+      .map((m) => {
+        const targetMs = new Date(m.time).getTime();
+        let nearest = displayCandles[0];
+        let bestDiff = Infinity;
+        for (const c of displayCandles) {
+          const diff = Math.abs(new Date(c.timestamp).getTime() - targetMs);
+          if (diff < bestDiff) { bestDiff = diff; nearest = c; }
+        }
+        return { time: toUTCTimestamp(nearest.timestamp), label: m.label, color: m.color ?? "#e0e0e0" };
+      })
+      .sort((a, b) => a.time - b.time);
+    seriesMarkersRef.current.setMarkers(
+      sorted.map((m) => ({
+        time: m.time as UTCTimestamp,
+        position: "aboveBar",
+        color: m.color,
+        shape: "arrowDown",
+        text: m.label,
+      })),
+    );
+  }, [markers, displayCandles]);
+
+  useEffect(() => {
+    chartRef.current?.priceScale("right").applyOptions({
+      mode: logScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+    });
+  }, [logScale]);
+
   // Y-axis autoscales to whatever's visible natively (lightweight-charts recomputes
   // it on every pan/zoom already) — no manual zoom/pan state needed here anymore.
   // "Fit" resets both axes to show the whole loaded dataset.
@@ -516,54 +579,64 @@ export default function PriceChart({
         </div>
         <div className="flex items-center gap-2">
           {liveMode ? (
-            <span className="text-[10px] text-[#ff5555] animate-pulse">● LIVE</span>
+            <span className="text-[10px] text-[#00ff7f] animate-pulse">● LIVE</span>
           ) : (
-            <>
-              {/* Custom date range scrubber */}
-              <div className="hidden xl:flex items-center gap-1">
-                <input
-                  type="datetime-local"
-                  value={customStart}
-                  min={dataRange?.start.slice(0, 16)}
-                  max={dataRange?.end.slice(0, 16)}
-                  onChange={(e) => setCustomStart(e.target.value)}
-                  className="bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-0.5 text-[9px] text-[#666] outline-none"
-                />
-                <span className="text-[#333] text-[10px]">→</span>
-                <input
-                  type="datetime-local"
-                  value={customEnd}
-                  min={dataRange?.start.slice(0, 16)}
-                  max={dataRange?.end.slice(0, 16)}
-                  onChange={(e) => setCustomEnd(e.target.value)}
-                  className="bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-0.5 text-[9px] text-[#666] outline-none"
-                />
-                <button
-                  onClick={handleCustomApply}
-                  disabled={!customStart || !customEnd}
-                  className="text-[9px] px-1.5 py-0.5 rounded border border-[#4a9eff44] text-[#4a9eff] disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  Go
-                </button>
-              </div>
-              <div className="flex rounded overflow-hidden border border-[#1a1a1a]">
-                {RANGES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => handleRangeClick(r)}
-                    className="px-2 py-0.5 text-[10px] transition-colors"
-                    style={{
-                      background: activeRange === r ? "rgba(0,255,127,0.15)" : "transparent",
-                      color: activeRange === r ? "#00ff7f" : "#444",
-                      borderRight: r !== "ALL" ? "1px solid #1a1a1a" : "none",
-                    }}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </>
+            <button
+              onClick={() => {
+                setActiveRange("ALL");
+                (onGoLive ?? (() => onRangeChange(null)))();
+              }}
+              className="text-[10px] px-1.5 py-0.5 rounded border border-[#00ff7f44] text-[#00ff7f] hover:bg-[#00ff7f]/10 transition-colors"
+              title="Return to the live feed"
+            >
+              ⟲ Live
+            </button>
           )}
+
+          {/* Custom date range scrubber — always available, same as a real trading-view
+              chart: you can scrub back in time without leaving "live" behind for good. */}
+          <div className="hidden xl:flex items-center gap-1">
+            <input
+              type="datetime-local"
+              value={customStart}
+              min={dataRange?.start.slice(0, 16)}
+              max={dataRange?.end.slice(0, 16)}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-0.5 text-[9px] text-[#666] outline-none"
+            />
+            <span className="text-[#333] text-[10px]">→</span>
+            <input
+              type="datetime-local"
+              value={customEnd}
+              min={dataRange?.start.slice(0, 16)}
+              max={dataRange?.end.slice(0, 16)}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-0.5 text-[9px] text-[#666] outline-none"
+            />
+            <button
+              onClick={handleCustomApply}
+              disabled={!customStart || !customEnd}
+              className="text-[9px] px-1.5 py-0.5 rounded border border-[#4a9eff44] text-[#4a9eff] disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Go
+            </button>
+          </div>
+          <div className="flex rounded overflow-hidden border border-[#1a1a1a]">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => handleRangeClick(r)}
+                className="px-2 py-0.5 text-[10px] transition-colors"
+                style={{
+                  background: activeRange === r ? "rgba(0,255,127,0.15)" : "transparent",
+                  color: activeRange === r ? "#00ff7f" : "#444",
+                  borderRight: r !== "ALL" ? "1px solid #1a1a1a" : "none",
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

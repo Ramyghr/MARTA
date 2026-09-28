@@ -16,29 +16,9 @@ import { api } from "@/lib/api";
 import type { AblationResults, BacktestStrategyInfo, BacktestResult } from "@/lib/api";
 import { API_URL } from "@/lib/websocket";
 import { useMARTAStore } from "@/lib/store";
-
-type AblationWithMeta = AblationResults & { last_updated?: string };
-import type { Scenario, FundManagerDecision } from "@/lib/types";
+import { VARIANT_LABELS, VARIANT_COLORS, TEST_STRATEGY_ORDER } from "@/lib/ablation";
+import type { Scenario, FundManagerDecision, TestSetResults, TestSetMetrics } from "@/lib/types";
 import { REGIME_COLORS } from "@/lib/types";
-
-const VARIANT_LABELS: Record<string, string> = {
-  buy_hold: "Buy & Hold",
-  rsi_strategy: "RSI Strategy",
-  ma_crossover: "MA Crossover",
-  ppo_no_regime: "PPO No Regime",
-  agents_no_regime: "Agents No Regime",
-  ppo_agents_no_regime: "PPO+Agents No Regime",
-  marta_full: "MARTA Full",
-};
-const VARIANT_COLORS: Record<string, string> = {
-  buy_hold: "#4a9eff",
-  rsi_strategy: "#00c8d7",
-  ma_crossover: "#e070c0",
-  ppo_no_regime: "#ffd700",
-  agents_no_regime: "#b07fff",
-  ppo_agents_no_regime: "#ff8c00",
-  marta_full: "#00ff7f",
-};
 
 type SortKey = "sharpe" | "sortino" | "max_drawdown" | "total_return";
 const SORT_LABELS: Record<SortKey, string> = { sharpe: "Sharpe", sortino: "Sortino", max_drawdown: "Max DD", total_return: "Total Ret" };
@@ -142,49 +122,14 @@ function AblationTable({ ablation }: { ablation: AblationResults }) {
 
 // ── Out-of-sample test set panel ───────────────────────────────────────────────
 
-interface TestSetMetrics {
-  sharpe: number;
-  sortino: number;
-  max_drawdown: number;
-  calmar: number;
-  total_return: number;
-  method?: string;
-}
-
-interface TestSetResults {
-  test_period: { start: string; end: string };
-  n_steps: number;
-  warning: string;
-  caveats?: string[];
-  key_finding?: string | null;
-  marta_ppo: TestSetMetrics;
-  buy_hold: TestSetMetrics;
-  rsi_strategy: TestSetMetrics;
-  ma_crossover: TestSetMetrics;
-  momentum: TestSetMetrics;
-}
-
-const TEST_STRATEGY_ORDER: Array<{ key: keyof TestSetResults; label: string }> = [
-  { key: "marta_ppo", label: "MARTA PPO" },
-  { key: "buy_hold", label: "Buy & Hold" },
-  { key: "rsi_strategy", label: "RSI Strategy" },
-  { key: "ma_crossover", label: "MA Crossover" },
-  { key: "momentum", label: "Momentum" },
-];
-
 function TestSetPanel() {
   const [results, setResults] = useState<TestSetResults | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/test-set`)
-      .then((res) => {
-        if (res.status === 404) { setNotFound(true); return null; }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
-      })
-      .then((data) => { if (data) setResults(data); })
+    api.getTestSet()
+      .then(setResults)
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, []);
@@ -453,7 +398,7 @@ function StrategyTesterPanel() {
     setError(null);
     try {
       const params = new URLSearchParams({ asset: selectedAsset, strategy, start, end });
-      const res = await fetch(`${API_URL}/api/backtest/run?${params.toString()}`);
+      const res = await fetch(`${API_URL}/api/backtest/run?${params.toString()}`, { credentials: "include" });
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;
         try {
@@ -640,7 +585,7 @@ function StrategyTesterPanel() {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function BacktestPage() {
-  const [ablation, setAblation] = useState<AblationWithMeta | null>(null);
+  const [ablation, setAblation] = useState<AblationResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -653,7 +598,7 @@ export default function BacktestPage() {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      const res = await fetch(`${API_URL}/api/ablation/refresh`, { method: "POST" });
+      const res = await fetch(`${API_URL}/api/ablation/refresh`, { method: "POST", credentials: "include" });
       if (!res.ok) {
         let detail = `HTTP ${res.status}`;
         try {

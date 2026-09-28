@@ -4,18 +4,15 @@ import type { RegimeState, FundManagerDecision, DebateResult, IndicatorKey } fro
 import { REGIME_NAMES, INDICATOR_DEFS } from "./types";
 import type { WsStatus } from "./websocket";
 
-export type AppMode = "historical" | "live";
-
 interface MARTAStore {
-  // Mode
-  mode: AppMode;
-  setMode: (mode: AppMode) => void;
-
   // Selected asset
   selectedAsset: string;
   setSelectedAsset: (asset: string) => void;
 
-  // Selected timestamp (historical mode)
+  // Selected timestamp — used to inspect a specific point on a chart (e.g. clicking the
+  // Regime timeline), not a global historical/live app mode (removed 2026-09 — the app
+  // is always-live now; per-page concepts like Debates' replay-vs-run-now stay local to
+  // that page instead of a global toggle).
   selectedTimestamp: string | null;
   setSelectedTimestamp: (ts: string | null) => void;
 
@@ -83,9 +80,6 @@ interface MARTAStore {
 }
 
 export const useMARTAStore = create<MARTAStore>((set) => ({
-  mode: "historical",
-  setMode: (mode) => set({ mode }),
-
   selectedAsset: "BTC_USDT",
   setSelectedAsset: (selectedAsset) => set({ selectedAsset }),
 

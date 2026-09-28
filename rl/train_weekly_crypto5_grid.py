@@ -56,6 +56,11 @@ Run:
 
   # reconcile whatever cells have completed so far into a summary table, no training
   conda run -n marta python rl/train_weekly_crypto5_grid.py --summarize-only
+
+Every mode above (including a single explicit --asset/--label/--seed call) skips a cell
+whose result JSON already exists in data/results/weekly_grid_crypto5/ instead of
+retraining it -- pass --force to retrain on purpose. See
+kaggle_weekly_ppo_grid_instructions.md for running the seeds 1-3 grid on Kaggle.
 """
 from __future__ import annotations
 
@@ -213,25 +218,41 @@ def main() -> None:
                          help="all 5 assets x 4 conditions x --seeds (default 0-3, 80 runs)")
     parser.add_argument("--summarize-only", action="store_true",
                          help="aggregate existing result cells into summary.json, train nothing")
+    parser.add_argument("--force", action="store_true",
+                         help="retrain a cell even if its result file already exists (default: "
+                              "skip it). Applies to every mode, including a single explicit "
+                              "--asset --label --seed call. Without this, re-running after an "
+                              "interrupted session (e.g. a Kaggle commit that timed out partway "
+                              "through) only trains the still-missing cells.")
     args = parser.parse_args()
 
     if args.summarize_only:
         summarize()
         return
 
+    def _run_if_needed(asset: str, label: str, seed: int) -> None:
+        if not args.force and cell_result_path(asset, label, seed).exists():
+            logger.info(f"[{asset}_{label}_seed{seed}] result already on disk, skipping (use --force to retrain)")
+            return
+        run_one(asset, label, seed)
+
     if args.pilot:
         for asset in CRYPTO5_ASSETS:
             for label in CONDITIONS:
-                run_one(asset, label, seed=0)
+                _run_if_needed(asset, label, seed=0)
         summarize()
     elif args.all:
         for asset in CRYPTO5_ASSETS:
             for label in CONDITIONS:
                 for seed in args.seeds:
-                    run_one(asset, label, seed)
+                    _run_if_needed(asset, label, seed)
         summarize()
     elif args.asset and args.label:
-        run_one(args.asset, args.label, args.seed)
+        # Also resume-skip-aware, same as --pilot/--all — a Kaggle notebook cell that
+        # issues one `--asset --label --seed` call per cell (for per-cell log visibility)
+        # needs the exact same within-session re-run safety the multi-cell sweeps get.
+        # Pass --force to retrain a specific cell on purpose.
+        _run_if_needed(args.asset, args.label, args.seed)
     else:
         parser.error("pass --asset {BTC_USDT,...} --label {A,B,C,D} --seed N, "
                       "or --pilot, or --all [--seeds 0 1 2 3], or --summarize-only")

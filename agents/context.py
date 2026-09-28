@@ -192,46 +192,15 @@ _REGIME_TRADING_INSTRUCTIONS: dict[str, str] = {
 
 _WINDOW_INDICATORS = ["realized_vol", "rsi", "adx", "close_return"]
 
-USE_PER_ASSET_REGIME: bool = False
-# 2026-07-14: reverted to False (documented default per run_per_asset_regime.py's own
-# "Consequence" note). Was found flipped to True while pointing at
-# data/processed/regime_stream_per_asset.parquet, which is stale (predates the
-# 2026-07-14 walk-forward encoder retrain by 10 days) — every BTC_USDT debate was
-# silently being built against a two-generations-old regime map. All debates use the
-# shared regime_stream.parquet (freshly refit) unless this is deliberately re-enabled
-# after regenerating the per-asset stream on the current encoder.
-# Example structure: {0: 'BTC calm/transitional', 1: 'BTC calm bull', 2: 'BTC crash/crisis', ...}
-_BTC_REGIME_DESCRIPTIONS: dict[int, str] = {
-    0: "BTC bear/crisis — strong downtrend (ann. return -189.5%), elevated volatility, "
-       "worst risk-adjusted performance (Sharpe -2.77), trending (ADX+)",
-    1: "BTC calm/range-bound — mild positive drift (ann. return +15.7%), moderate volatility, "
-       "near-neutral risk-adjusted return (Sharpe 0.23)",
-    2: "BTC high-volatility/transitional — near-zero net return (ann. +0.4%) despite the "
-       "highest raw volatility band, non-trending (ADX-), choppy price action; this is the "
-       "regime BTC's March 2020 crash occurs within (pre-crash and crash windows both fall "
-       "in R2, distinguished by a sharp internal probability shift rather than a label change)",
-    3: "BTC volatile bull — strong uptrend (ann. return +94.9%) with high realized volatility, "
-       "trending (ADX+), solid risk-adjusted return (Sharpe 0.98)",
-    4: "BTC calm bull — strongest uptrend (ann. return +203.5%) combined with the lowest "
-       "volatility of any BTC regime, best risk-adjusted performance (Sharpe 3.36)",
-}
-_PER_ASSET_STREAM_PATH = _ROOT / 'data' / 'processed' / 'regime_stream_per_asset.parquet'
-_per_asset_stream_cache: dict[str, pd.DataFrame] = {}
-
-
-def _resolve_regime_stream(regime_stream_df: pd.DataFrame, asset: str) -> pd.DataFrame:
-    """Return per-asset stream only for BTC when USE_PER_ASSET_REGIME is True."""
-    if not USE_PER_ASSET_REGIME or asset != "BTC_USDT":
-        return regime_stream_df
-    if "data" not in _per_asset_stream_cache:
-        if _PER_ASSET_STREAM_PATH.exists():
-            _per_asset_stream_cache["data"] = pd.read_parquet(
-                _PER_ASSET_STREAM_PATH, engine="pyarrow"
-            )
-        else:
-            return regime_stream_df
-    return _per_asset_stream_cache["data"]
-
+# Per-asset regime (USE_PER_ASSET_REGIME / _BTC_REGIME_DESCRIPTIONS /
+# regime_stream_per_asset.parquet) was removed 2026-09 — permanently inert (flag
+# hardcoded False since 2026-07-14) after having already caused one real incident
+# (found flipped to True once, silently serving every BTC_USDT debate a regime map
+# 10 days stale relative to the current encoder, for an unknown period before catching
+# it). Per CLAUDE.md's "Per-Asset HMM Experiment" section, this was a deliberately-
+# shelved experiment, not a live feature — all debates use the shared
+# regime_stream.parquet. Re-add only alongside a real decision to re-enable it and a
+# freshly regenerated per-asset stream, not as flagged-off dead code.
 
 
 @dataclass
@@ -290,19 +259,19 @@ def build_regime_context(
         ts_aligned = ts_utc.tz_localize(None)
 
     # Look up regime row
-    active_stream = _resolve_regime_stream(regime_stream_df, asset)
-    mask = (active_stream["asset"] == asset) & (active_stream["timestamp"] == ts_utc)
-    regime_rows = active_stream[mask]
+    mask = (regime_stream_df["asset"] == asset) & (regime_stream_df["timestamp"] == ts_utc)
+    regime_rows = regime_stream_df[mask]
     regime_stale = False
     regime_gap_hours = 0.0
     if regime_rows.empty:
         # Fall back to nearest available timestamp. get_indexer(method="nearest") requires
-        # a uniquely-valued index — regime_stream_per_asset.parquet has one duplicated
-        # BTC_USDT timestamp (a boundary artifact from however the file was built), which
+        # a uniquely-valued index — a single duplicated timestamp anywhere in the stream
         # makes pandas treat the *whole* index as non-unique and raise InvalidIndexError
-        # for every nearest-lookup, not just ones near that specific timestamp. This is
-        # the path a live "now" request always takes once it's past the data's end date.
-        asset_df = active_stream[active_stream["asset"] == asset].copy()
+        # for every nearest-lookup, not just ones near that specific timestamp, so the
+        # dedup below is defensive regardless of whether the current stream actually has
+        # one. This is the path a live "now" request always takes once it's past the
+        # data's end date.
+        asset_df = regime_stream_df[regime_stream_df["asset"] == asset].copy()
         asset_df = asset_df.set_index("timestamp").sort_index()
         asset_df = asset_df[~asset_df.index.duplicated(keep="last")]
         idx = asset_df.index.get_indexer([ts_utc], method="nearest")[0]
@@ -314,7 +283,7 @@ def build_regime_context(
         row = regime_rows.iloc[0]
 
     regime_label = int(row["regime_label"])
-    prob_cols = [c for c in active_stream.columns if c.startswith("regime_prob_")]
+    prob_cols = [c for c in regime_stream_df.columns if c.startswith("regime_prob_")]
     regime_probs = {col.replace("regime_prob_", "regime_"): float(row[col]) for col in prob_cols}
     dominant_regime = max(regime_probs, key=regime_probs.get)
     dominant_regime_int = int(dominant_regime.replace("regime_", ""))
@@ -345,13 +314,7 @@ def build_regime_context(
         regime_label=regime_label,
         regime_probs=regime_probs,
         dominant_regime=dominant_regime_int,
-        regime_description=(
-            _BTC_REGIME_DESCRIPTIONS.get(regime_label)
-            if USE_PER_ASSET_REGIME
-            and asset == "BTC_USDT"
-            and regime_label in _BTC_REGIME_DESCRIPTIONS
-            else _load_regime_descriptions(semantics_path).get(regime_label, "Unknown regime")
-        ),
+        regime_description=_load_regime_descriptions(semantics_path).get(regime_label, "Unknown regime"),
         price_features=price_features,
         window_features=window_features,
         regime_stale=regime_stale,

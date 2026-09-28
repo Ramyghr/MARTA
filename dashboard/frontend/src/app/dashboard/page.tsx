@@ -61,7 +61,6 @@ function EquitySparkline({ curve }: { curve: EquityCurve | null }) {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const mode = useMARTAStore((s) => s.mode);
   const regimeNames = useMARTAStore((s) => s.regimeNames);
   const selectedAsset = useMARTAStore((s) => s.selectedAsset);
   const setCurrentRegime = useMARTAStore((s) => s.setCurrentRegime);
@@ -161,8 +160,10 @@ export default function DashboardPage() {
       req.then((r) => { setRegime(r); setCurrentRegime(r); }).catch(() => {});
     };
 
-    // Historical mode with an explicit scrubbed range — fetch once via REST, no WS.
-    if (mode === "historical" && chartRange) {
+    // A custom range picked on the chart itself — fetch once via REST, no WS. Not a
+    // page-level "mode": the app is always-live by default, this is just the user
+    // scrubbing the chart back in time (same as any trading-view chart).
+    if (chartRange) {
       wsRef.current?.close();
       setWsConnected(false);
       api.getHistoryRange(selectedAsset, chartRange.start, chartRange.end)
@@ -180,8 +181,7 @@ export default function DashboardPage() {
     wsRef.current?.close();
     setWsConnected(false);
 
-    const path = mode === "live" ? `/ws/price/${selectedAsset}?mode=live` : `/ws/price/${selectedAsset}`;
-    const ws = new MartaWebSocket(path);
+    const ws = new MartaWebSocket(`/ws/price/${selectedAsset}?mode=live`);
     const off = ws.on((msg) => {
       setWsLastUpdate(Date.now());
       if (msg.type === "history") {
@@ -205,7 +205,7 @@ export default function DashboardPage() {
     wsRef.current = ws;
     return () => { off(); offStatus(); ws.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAsset, mode, chartRange]);
+  }, [selectedAsset, chartRange]);
 
   const handleRunDebate = useCallback(() => {
     router.push("/debates?autorun=1");
@@ -254,7 +254,7 @@ export default function DashboardPage() {
     <div className="flex flex-col h-full min-h-0">
       <PageHeader
         title="Overview"
-        description={`${selectedAsset.replace("_", "/")} — ${mode === "live" ? "live feed" : "historical replay"}`}
+        description={`${selectedAsset.replace("_", "/")} — live feed`}
         actions={
           <>
             <button
@@ -330,8 +330,9 @@ export default function DashboardPage() {
             candles={candles}
             asset={selectedAsset}
             dataRange={dataRange}
-            onRangeChange={mode === "historical" ? setChartRange : () => {}}
-            liveMode={mode === "live"}
+            onRangeChange={setChartRange}
+            onGoLive={() => setChartRange(null)}
+            liveMode={chartRange === null}
             onLoadMore={handleLoadMoreHistory}
             loadingMore={loadingMoreHistory}
             noMoreHistory={noMoreHistory}

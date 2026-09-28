@@ -41,6 +41,11 @@ Yijia Xiao, Edward Sun, Di~Luo, and Wei Wang.
 \newblock Tradingagents: Multi-agents llm financial trading framework.
 \newblock {\em arXiv preprint arXiv:2412.20138}, 2024.
 
+\bibitem{ppo2017}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal policy optimization algorithms.
+\newblock {\em arXiv preprint arXiv:1707.06347}, 2017.
+
 \bibitem{infonce2018}
 Aaron van~den Oord, Yazhe Li, and Oriol Vinyals.
 \newblock Representation learning with contrastive predictive coding.
@@ -51,10 +56,5 @@ Bryan Lim, Sercan~O. Arik, Nicolas Loeff, and Tomas Pfister.
 \newblock Temporal fusion transformers for interpretable multi-horizon time
   series forecasting.
 \newblock {\em International Journal of Forecasting}, 37(4):1748--1764, 2021.
-
-\bibitem{ppo2017}
-John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
-\newblock Proximal policy optimization algorithms.
-\newblock {\em arXiv preprint arXiv:1707.06347}, 2017.
 
 \end{thebibliography}

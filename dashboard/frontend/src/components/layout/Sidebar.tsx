@@ -1,13 +1,15 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, MessagesSquare, Waves, Wallet, FlaskConical, Settings, Cpu,
-  Zap, BarChart3,
+  Zap, BarChart3, ChevronUp, User, LogOut,
 } from "lucide-react";
 import { useMARTAStore } from "@/lib/store";
 import { fetchApi } from "@/lib/websocket";
+import { useCurrentUser, logout } from "@/lib/auth";
+import { MartaLogo } from "@/components/Logo";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -49,6 +51,81 @@ function StatusRow({ label, ok, okLabel, badLabel }: { label: string; ok: boolea
   );
 }
 
+function SidebarProfile() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { user, loading } = useCurrentUser();
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  if (loading) {
+    return <div className="px-3 py-2.5 h-[52px] animate-pulse" />;
+  }
+
+  if (!user) {
+    return (
+      <Link
+        href="/login"
+        className="flex items-center gap-2 px-3 py-2.5 text-[11px] text-[#666] hover:text-[#00ff7f] hover:bg-[#00ff7f]/5 transition-colors"
+      >
+        <User size={14} /> Log in
+      </Link>
+    );
+  }
+
+  const initials = (user.display_name || user.email).slice(0, 2).toUpperCase();
+
+  return (
+    <div className="relative px-2 py-2" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-1.5 py-1.5 rounded text-left hover:bg-[#161616] transition-colors"
+      >
+        <span
+          className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[10px] font-bold"
+          style={{ background: "rgba(0,255,127,0.12)", color: "#00ff7f" }}
+        >
+          {initials}
+        </span>
+        <span className="flex-1 min-w-0">
+          <div className="text-[11px] text-[#ccc] font-medium truncate">{user.display_name || user.email}</div>
+        </span>
+        <ChevronUp size={12} className={`text-[#555] transition-transform ${open ? "" : "rotate-180"}`} />
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-2 right-2 mb-1 rounded border border-[#2a2a2a] bg-[#111] shadow-lg overflow-hidden">
+          <Link
+            href="/profile"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-3 py-2 text-[11px] text-[#ccc] hover:bg-[#1a1a1a] transition-colors"
+          >
+            <User size={12} /> Profile Settings
+          </Link>
+          <button
+            onClick={async () => {
+              setOpen(false);
+              await logout();
+              // Full navigation, not router.push — AuthGate's useCurrentUser() is a
+              // separate hook instance that won't otherwise know the session is gone.
+              window.location.href = "/login";
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[11px] text-[#ff6b6b] hover:bg-[#1a1a1a] transition-colors"
+          >
+            <LogOut size={12} /> Log out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const wsConnected = useMARTAStore((s) => s.wsConnected);
@@ -65,10 +142,7 @@ export function Sidebar() {
       <div className="w-[240px] h-full flex flex-col">
         {/* Logo */}
         <div className="flex items-center gap-2 px-4 h-12 shrink-0 border-b border-[#1a1a1a]">
-          <span
-            className="w-1.5 h-1.5 rounded-full inline-block shrink-0 animate-pulse-dot"
-            style={{ background: "#00ff7f", boxShadow: "0 0 6px #00ff7f" }}
-          />
+          <MartaLogo className="w-6 h-6 shrink-0" />
           <span className="font-bold text-[#00ff7f] tracking-widest text-sm glow-green">MARTA</span>
         </div>
 
@@ -92,6 +166,10 @@ export function Sidebar() {
             );
           })}
         </nav>
+
+        <div className="border-t border-[#1a1a1a] shrink-0">
+          <SidebarProfile />
+        </div>
 
         {/* System status */}
         <div className="px-3 py-3 border-t border-[#1a1a1a] shrink-0">

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import deque
 from pathlib import Path
 from typing import Union
@@ -17,7 +18,9 @@ from utils.logger import logger
 
 TrainEnv = Union[MARTATradingEnv, VecEnv]
 
-_CHECKPOINT_DIR = Path("rl/checkpoints")
+# Same MARTA_ROOT anchoring as rl/train.py's identical constant — see its comment.
+_MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).resolve().parent.parent)))
+_CHECKPOINT_DIR = _MARTA_ROOT / "rl/checkpoints"
 
 
 class CurriculumCallback(BaseCallback):

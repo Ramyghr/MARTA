@@ -8,6 +8,7 @@ import { Panel } from "@/components/ui/Panel";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ProvenanceTag } from "@/components/ui/ProvenanceTag";
 import { Skeleton, SkeletonRows } from "@/components/ui/Skeleton";
 import { TradeReasoningPanel } from "@/components/TradeReasoningPanel";
 import { LearningPanel } from "@/components/LearningPanel";
@@ -301,7 +302,11 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-3 pb-4">
-      <PageHeader title="Portfolio" description="P&L, equity curve, trade log, and per-regime performance from the trained PPO policy" />
+      <PageHeader
+        title="Portfolio"
+        description="P&L, equity curve, trade log, and per-regime performance from the trained PPO policy"
+        actions={<ProvenanceTag portfolio={portfolio} />}
+      />
 
       {/* Top row — 6 metrics */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 shrink-0">
@@ -335,9 +340,11 @@ export default function PortfolioPage() {
         {/* Backtest trade log — historical validation only, never a live execution */}
         <div className="flex flex-col gap-1">
           <div className="text-[10px] text-[#ff8c00] bg-[#ff8c0012] border border-[#ff8c0033] rounded px-2 py-1.5">
-            These trades are from the 2023 validation backtest — not live executions.
+            These trades are from the {portfolio?.val_window ? `${portfolio.val_window.start} → ${portfolio.val_window.end}` : ""} validation backtest — not live executions.
           </div>
-          <Panel title="Backtest Trade Log (2023 Validation)">
+          <Panel
+            title={`Backtest Trade Log${portfolio?.val_window ? ` (${portfolio.val_window.start.slice(0, 4)} Validation)` : ""}`}
+          >
             {loading ? <div className="p-1"><SkeletonRows rows={8} /></div> : <TradeLogTable trades={positions?.trades ?? []} />}
           </Panel>
         </div>

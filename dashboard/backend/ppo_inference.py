@@ -298,19 +298,21 @@ def _live_vol_forecast(asset: str) -> float:
     return vol
 
 
-def _build_portfolio_vec(asset: str) -> np.ndarray:
-    """Build the 8-dim live portfolio vector from paper_db state.
+def _build_portfolio_vec(asset: str, user_id: int) -> np.ndarray:
+    """Build the 8-dim live portfolio vector from paper_db state, for one user.
 
     Sourced from paper_db.get_portfolio_state_for_obs(), called before this tick's
     paper_db.update() runs (predict() executes before update() inside
-    live_signal.get_live_signal()) — so this naturally reflects pre-decision state,
-    matching rl/env.py's training-time semantics.
+    live_signal.book_signal()) — so this naturally reflects pre-decision state,
+    matching rl/env.py's training-time semantics. Genuinely per-user: two users can
+    have different open positions on the same asset, so this can't be resolved once
+    for everyone the way the rest of the observation can.
     """
     import logging
     vec = np.zeros(_PORTFOLIO_DIM, dtype=np.float32)
     try:
         import paper_db
-        state = paper_db.get_portfolio_state_for_obs(asset)
+        state = paper_db.get_portfolio_state_for_obs(user_id, asset)
     except Exception as exc:
         logging.getLogger(__name__).warning(f"ppo_inference: portfolio state read failed for {asset} — {exc}")
         return vec
@@ -497,22 +499,27 @@ def _build_asset_id_vec(asset: str) -> np.ndarray:
     return vec
 
 
-def _build_observation(asset: str, timestamp: "pd.Timestamp") -> np.ndarray:
+def _build_observation(asset: str, timestamp: "pd.Timestamp", user_id: int) -> np.ndarray:
     """Build the 156-dim observation for PPO inference (see rl/env.py STATE_DIM).
 
     Consensus is a nearest-cached-debate lookup (never triggers a live debate); portfolio
-    reflects live paper_db state (position, return, drawdown, idle time, vol forecast).
+    reflects live paper_db state (position, return, drawdown, idle time, vol forecast)
+    for `user_id` specifically.
     """
     regime = _build_regime_embedding(asset, timestamp)
     consensus = _build_consensus_vec(asset, timestamp)
-    portfolio = _build_portfolio_vec(asset)
+    portfolio = _build_portfolio_vec(asset, user_id)
     asset_id = _build_asset_id_vec(asset)
     obs = np.concatenate([regime, consensus, portfolio, asset_id])
     return np.clip(obs, -10.0, 10.0).astype(np.float32)
 
 
-def predict(asset: str, timestamp: "pd.Timestamp") -> Optional[dict]:
-    """Run model.predict() on the current observation.
+def predict(asset: str, timestamp: "pd.Timestamp", user_id: int) -> Optional[dict]:
+    """Run model.predict() on the current observation for one user.
+
+    Called once per user (not once per asset) whenever the live PPO checkpoint is the
+    active signal source, since the observation's portfolio block is user-specific —
+    see live_signal.py's book_signal() docstring.
 
     Returns {"action": "long"|"short"|"hold", "position_size": float, "source": "ppo"}
     or None if the model is not loaded.
@@ -521,7 +528,7 @@ def predict(asset: str, timestamp: "pd.Timestamp") -> Optional[dict]:
         return None
 
     try:
-        obs = _build_observation(asset, timestamp)
+        obs = _build_observation(asset, timestamp, user_id)
         action_arr, _ = _model.predict(obs, deterministic=True)
         # Unflatten: action[0]=direction (0=long,1=short,2=hold), action[1]=fraction
         direction = int(round(float(np.clip(action_arr[0], 0, 2))))

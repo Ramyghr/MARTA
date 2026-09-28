@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,11 +26,18 @@ from utils.freshness import (
 )
 from utils.logger import logger
 
-_PROCESSED = Path("data/processed")
-_CHECKPOINT_DIR = Path("rl/checkpoints")
-_DEBATE_PATH = Path("data/debates/debate_results.json")
-_HISTORY_PATH = Path("data/results/curriculum_history.json")
-_ENCODER_PATH = Path("encoder/checkpoints/best_encoder.pt")
+# Anchored to MARTA_ROOT (falls back to this file's own repo-root-relative location),
+# same pattern as every dashboard/backend/*.py module and rl/env.py's _CACHE_DIR — this
+# file had never needed it before since it was always run with cwd=repo-root via
+# run_rl.py, but a Kaggle notebook or any other non-repo-root cwd would otherwise
+# silently resolve these to the wrong place (found during the weekly-PPO Kaggle
+# notebook pass, 2026-09; rl/env.py hit the identical bug once already).
+MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).resolve().parent.parent)))
+_PROCESSED = MARTA_ROOT / "data/processed"
+_CHECKPOINT_DIR = MARTA_ROOT / "rl/checkpoints"
+_DEBATE_PATH = MARTA_ROOT / "data/debates/debate_results.json"
+_HISTORY_PATH = MARTA_ROOT / "data/results/curriculum_history.json"
+_ENCODER_PATH = MARTA_ROOT / "encoder/checkpoints/best_encoder.pt"
 _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
 
 # Crypto-only panel (2026-08-24 migration) — pass config["processed_dir"]=CRYPTO5_PROCESSED
@@ -38,7 +46,7 @@ _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
 # dashboard/backend/ppo_inference.py and the diagnostic scripts (rl/diagnose_env.py,
 # rl/supervised_predictability.py, rl/audit_test3.py) depend on them.
 CRYPTO5_CANONICAL_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
-CRYPTO5_PROCESSED = Path("data/processed/crypto5_multihorizon")
+CRYPTO5_PROCESSED = MARTA_ROOT / "data/processed/crypto5_multihorizon"
 # regime_stream.parquet is built by regime/hmm.py's generate_regime_stream(), which calls
 # predict_proba() on the FULL train+val+test embedding sequence in one shot — hmmlearn's
 # forward-backward smoothing means a 2019 row's regime probability is influenced by 2025

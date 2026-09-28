@@ -11,12 +11,19 @@ could silently feed the debate cache without ever being caught.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 from utils.assets import aligned_path
+
+# Same MARTA_ROOT anchoring as rl/train.py/rl/callbacks.py's identical constant — see
+# rl/train.py's comment. This module is imported from dashboard/backend/ (a different
+# cwd) as well as repo-root training/debate scripts, so a bare relative Path here is
+# exactly the bug class documented throughout this project's history.
+_MARTA_ROOT = Path(os.environ.get("MARTA_ROOT", str(Path(__file__).resolve().parent.parent)))
 
 # Kept at the old 4-asset, encoder+PCA-based production panel as the DEFAULT — dashboard
 # code doesn't call this loader, but run_weekly_debates.py/run_clean_ablation_debates.py/
@@ -28,8 +35,8 @@ from utils.assets import aligned_path
 # reading production semantics/regime streams, a worse and less consistent state than
 # before. Crypto-only callers (run_debate.py) pass CRYPTO5_PROCESSED/CRYPTO5_DEBATE_ASSETS
 # explicitly instead — see that file for the fully-wired example.
-_PROCESSED = Path("data/processed")
-_ENCODER_PATH = Path("encoder/checkpoints/best_encoder.pt")
+_PROCESSED = _MARTA_ROOT / "data/processed"
+_ENCODER_PATH = _MARTA_ROOT / "encoder/checkpoints/best_encoder.pt"
 _REGIME_STREAM_PATH = _PROCESSED / "regime_stream.parquet"
 
 DEBATE_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
@@ -39,8 +46,8 @@ DEBATE_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "EURUSD", "GOLD"]
 # data/validated/regime_semantics_crypto5_multihorizon.json). Pass these explicitly to
 # load_debate_data() (and the matching kwargs to every agent constructed alongside it —
 # see run_debate.py) to use the crypto-only panel instead of the production default.
-CRYPTO5_PROCESSED = Path("data/processed/crypto5_multihorizon")
-CRYPTO5_SEMANTICS_PATH = Path("data/validated/regime_semantics_crypto5_multihorizon.json")
+CRYPTO5_PROCESSED = _MARTA_ROOT / "data/processed/crypto5_multihorizon"
+CRYPTO5_SEMANTICS_PATH = _MARTA_ROOT / "data/validated/regime_semantics_crypto5_multihorizon.json"
 CRYPTO5_DEBATE_ASSETS: list[str] = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
 
 

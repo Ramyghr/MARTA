@@ -7,9 +7,12 @@ import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { LearningPanel } from "@/components/LearningPanel";
+import Link from "next/link";
+import { User } from "lucide-react";
 import { fetchApi, API_URL, WS_URL } from "@/lib/websocket";
 import { useMARTAStore, useIndicatorSettingsStore } from "@/lib/store";
 import { api } from "@/lib/api";
+import { useCurrentUser } from "@/lib/auth";
 import { INDICATOR_DEFS } from "@/lib/types";
 import type { SystemStatus, SystemModels } from "@/lib/api";
 
@@ -224,22 +227,30 @@ function AgentConfigSection() {
 
   return (
     <div className="flex flex-col gap-4 text-[11px]">
-      <div>
+      <div className="text-[10px] text-[#ff8c00] bg-[#ff8c0012] border border-[#ff8c0033] rounded px-2 py-1.5 leading-relaxed">
+        Model, temperature, and timeout below are <strong>not wired to the live debate backend</strong> —
+        shown disabled so they don&apos;t look like live controls. <code className="text-[#ccc]">agents/base.py</code>{" "}
+        hardcodes temperature=0.1 regardless of what&apos;s picked here. &ldquo;Show Contrarian&rdquo; at the
+        bottom is the one control on this panel that&apos;s actually live.
+      </div>
+
+      <div className="opacity-50">
         <label className="stat-label block mb-1.5">LLM Model</label>
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
-          className="w-full bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc]"
+          disabled
+          className="w-full bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] cursor-not-allowed"
         >
           {(ollamaModels.length ? ollamaModels : [model]).map((m) => <option key={m} value={m}>{m}</option>)}
         </select>
         <div className="text-[10px] text-[#444] mt-1">Live from Ollama {ollamaModels.length ? `(${ollamaModels.length} model${ollamaModels.length > 1 ? "s" : ""} pulled)` : "— unreachable"}</div>
       </div>
 
-      <div>
+      <div className="opacity-50">
         <div className="flex items-center justify-between mb-1.5">
           <label className="stat-label">Temperature</label>
-          <span className="text-[#00ff7f] font-mono">{temperature.toFixed(1)}</span>
+          <span className="text-[#999] font-mono">{temperature.toFixed(1)}</span>
         </div>
         <input
           type="range"
@@ -248,11 +259,12 @@ function AgentConfigSection() {
           step={0.1}
           value={temperature}
           onChange={(e) => setTemperature(parseFloat(e.target.value))}
-          className="w-full accent-[#00ff7f]"
+          disabled
+          className="w-full cursor-not-allowed"
         />
       </div>
 
-      <div>
+      <div className="opacity-50">
         <label className="stat-label block mb-1.5">Debate Timeout (seconds)</label>
         <input
           type="number"
@@ -261,7 +273,8 @@ function AgentConfigSection() {
           step={30}
           value={timeoutSec}
           onChange={(e) => setTimeoutSec(parseInt(e.target.value, 10) || 300)}
-          className="w-full bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc]"
+          disabled
+          className="w-full bg-[#111] border border-[#2a2a2a] rounded px-2 py-1.5 text-[11px] text-[#ccc] cursor-not-allowed"
         />
       </div>
 
@@ -278,12 +291,6 @@ function AgentConfigSection() {
           />
         </button>
       </label>
-
-      <div className="text-[10px] text-[#3a3a3a] leading-relaxed border-t border-[#161616] pt-2">
-        Model + temperature + timeout are session-local UI state — they are not yet wired to the live debate
-        backend (<code className="text-[#555]">agents/base.py</code> hardcodes temperature=0.1). &ldquo;Show Contrarian&rdquo;
-        is live: it filters the Contrarian&apos;s thesis/rebuttals out of the Debates page transcript immediately.
-      </div>
     </div>
   );
 }
@@ -475,6 +482,14 @@ function WeeklyPpoSection() {
           ? `ON — replaces the hourly PPO/regime-policy/debate-override chain for BTC/USDT with a policy trained to decide once a week (168h). Validated positive Sharpe on both modes; unaffected by other assets or the RL Execution toggle above.`
           : "OFF (default) — BTC/USDT uses the same signal chain as every other asset."}
       </div>
+      <div className="text-[10px] text-[#3a3a3a] leading-relaxed">
+        BTC/USDT-only everywhere this policy is used — live execution here and the{" "}
+        <code className="text-[#555]">weekly_ppo_raw</code>/<code className="text-[#555]">weekly_ppo_raw_regime</code>{" "}
+        strategies on the Strategy Tester (Backtest page) both hard-gate to BTC/USDT. Seed-0 pilot
+        checkpoints for ETH/BNB/LTC/XRP already exist on disk from the crypto5 weekly grid, but
+        neither live execution nor the Strategy Tester loads them yet — extending to the other four
+        assets is a separate change, not done here.
+      </div>
     </div>
   );
 }
@@ -532,6 +547,28 @@ function IndicatorVisibilitySection() {
   );
 }
 
+// ── Section 3d — Account ────────────────────────────────────────────────────────
+
+function AccountSection() {
+  const { user, loading } = useCurrentUser();
+
+  if (loading) return <div className="p-1"><SkeletonRows rows={2} /></div>;
+  if (!user) return null;
+
+  return (
+    <div className="flex flex-col gap-3 text-[11px]">
+      <ConfigRow label="Email" value={user.email} />
+      <ConfigRow label="Display Name" value={user.display_name || "—"} />
+      <Link
+        href="/profile"
+        className="flex items-center justify-center gap-1.5 py-1.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-[#00ff7f]/10 text-[#00ff7f] border border-[#00ff7f]/30 hover:bg-[#00ff7f]/20 transition-colors"
+      >
+        <User size={11} /> Profile Settings
+      </Link>
+    </div>
+  );
+}
+
 // ── Section 4 — System Status ──────────────────────────────────────────────────
 
 function latencyColor(ms: number | null): string {
@@ -576,11 +613,17 @@ function SystemStatusSection() {
           {status.ollama.connected ? `Connected · ${(status.ollama.models ?? []).join(", ") || "no models"}` : "Unreachable"}
         </Badge>
       </div>
-      <div className="flex items-center justify-between">
-        <span className="text-[#555]">Redis</span>
-        <Badge variant={status.redis.connected ? "long" : "neutral"}>
-          {status.redis.connected ? "Connected" : status.redis.configured ? "Unreachable" : "Not configured"}
-        </Badge>
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="text-[#555]">Redis</span>
+          <Badge variant="neutral">
+            {status.redis.connected ? "Connected (unused)" : status.redis.configured ? "Unreachable" : "Not configured"}
+          </Badge>
+        </div>
+        <div className="text-[10px] text-[#3a3a3a] mt-0.5">
+          Not load-bearing — scheduling runs on APScheduler, not Celery/Redis. This row is an
+          optional health-check probe, never on the critical path.
+        </div>
       </div>
       <div className="flex items-center justify-between">
         <span className="text-[#555]">Backend API Latency</span>
@@ -593,7 +636,6 @@ function SystemStatusSection() {
 // ── Page ────────────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const mode = useMARTAStore((s) => s.mode);
   const selectedAsset = useMARTAStore((s) => s.selectedAsset);
   const [freshness, setFreshness] = useState<Freshness | null>(null);
 
@@ -606,9 +648,10 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Data sources, model configuration, agent behavior, and system status" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <Panel title="Account"><AccountSection /></Panel>
         <Panel title="Data Sources"><DataSourcesSection /></Panel>
         <Panel title="Model Configuration"><ModelConfigSection /></Panel>
-        <Panel title="Agent Configuration"><AgentConfigSection /></Panel>
+        <Panel title="Agent Configuration" actions={<Badge variant="warning">Not wired</Badge>}><AgentConfigSection /></Panel>
         <Panel title="Execution Controls"><ExecutionControlsSection /></Panel>
         <Panel title="RL Execution"><RlExecutionSection /></Panel>
         <Panel title="Weekly PPO"><WeeklyPpoSection /></Panel>
@@ -620,15 +663,10 @@ export default function SettingsPage() {
         <Panel title="Connection">
           <ConfigRow label="API Base URL" value={API_URL} />
           <ConfigRow label="WebSocket URL" value={WS_URL} />
-          <ConfigRow label="Active Mode" value={mode} />
           <ConfigRow label="Selected Asset" value={selectedAsset} />
         </Panel>
         <Panel title="Architecture">
           <div className="flex flex-col gap-2 text-[11px]">
-            <div className="flex items-center justify-between">
-              <span className="text-[#555]">Mode</span>
-              <Badge variant={mode === "live" ? "live" : "neutral"}>{mode}</Badge>
-            </div>
             <div className="flex items-center justify-between">
               <span className="text-[#555]">Pipeline</span>
               <span className="text-[#999] font-mono text-[10px]">TFT + InfoNCE → HMM → 5-agent debate → PPO</span>

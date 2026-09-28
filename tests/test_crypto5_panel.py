@@ -82,13 +82,16 @@ class TestProductionDefaultsUnchanged:
         assert default is None  # resolves to agents.context._DEFAULT_SEMANTICS_PATH
 
     def test_utils_freshness_default_panel(self):
+        # MARTA_ROOT-anchored (2026-09, same fix as rl/train.py/rl/callbacks.py) —
+        # absolute now, not a bare relative path, so compare the meaningful suffix
+        # rather than exact equality against a relative Path.
         from utils.freshness import _PROCESSED, DEBATE_ASSETS
-        assert _PROCESSED == Path("data/processed")
+        assert _PROCESSED.parts[-2:] == ("data", "processed")
         assert DEBATE_ASSETS == PRODUCTION_ASSETS
 
     def test_utils_freshness_crypto5_constants_exist_and_differ(self):
         from utils.freshness import CRYPTO5_PROCESSED, CRYPTO5_DEBATE_ASSETS, CRYPTO5_SEMANTICS_PATH
-        assert CRYPTO5_PROCESSED == Path("data/processed/crypto5_multihorizon")
+        assert CRYPTO5_PROCESSED.parts[-3:] == ("data", "processed", "crypto5_multihorizon")
         assert CRYPTO5_DEBATE_ASSETS == CRYPTO5_ASSETS
         assert CRYPTO5_SEMANTICS_PATH.name == "regime_semantics_crypto5_multihorizon.json"
 

@@ -78,7 +78,15 @@ class MacroAgent(BaseAgent):
         # Highest absolute correlation pair
         top_pair = ("N/A", "N/A", 0.0)
         if not corr_matrix.empty:
-            np.fill_diagonal(corr_matrix.values, 0.0)
+            # `.values`/`.to_numpy()` without copy=True can return a read-only array
+            # under pandas' Copy-on-Write mode (always-on since pandas 3.0, which the
+            # dashboard backend's docker image resolves via requirements.txt's
+            # unpinned `pandas>=2.0.0` — the conda `marta` env still runs 2.3.3, where
+            # this doesn't reproduce). np.fill_diagonal writes in place, so it needs a
+            # genuinely owned, writable buffer, not a CoW view.
+            corr_values = corr_matrix.to_numpy(copy=True)
+            np.fill_diagonal(corr_values, 0.0)
+            corr_matrix = pd.DataFrame(corr_values, index=corr_matrix.index, columns=corr_matrix.columns)
             flat = corr_matrix.abs().stack()
             if not flat.empty:
                 idx_top = flat.idxmax()

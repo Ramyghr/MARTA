@@ -24,7 +24,6 @@ const SHORTCUTS: Array<{ key: string; description: string }> = [
   { key: "A", description: "Go to Analytics" },
   { key: "T", description: "Go to Backtest" },
   { key: "S", description: "Go to Settings" },
-  { key: "M", description: "Toggle Historical / Live mode" },
   { key: "?", description: "Show this help" },
 ];
 
@@ -37,8 +36,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function KeyboardShortcuts() {
   const router = useRouter();
   const demoMode = useMARTAStore((s) => s.demoMode);
-  const mode = useMARTAStore((s) => s.mode);
-  const setMode = useMARTAStore((s) => s.setMode);
   const [helpOpen, setHelpOpen] = useState(false);
 
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -48,10 +45,9 @@ export function KeyboardShortcuts() {
     if (e.key === "Escape") { setHelpOpen(false); return; }
 
     const key = e.key.toLowerCase();
-    if (key === "m") { setMode(mode === "live" ? "historical" : "live"); return; }
     const path = ROUTE_KEYS[key];
     if (path) router.push(path);
-  }, [demoMode, mode, setMode, router]);
+  }, [demoMode, router]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKey);

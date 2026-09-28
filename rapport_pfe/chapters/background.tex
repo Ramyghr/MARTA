@@ -86,12 +86,12 @@ HMM + FinRL \cite{hmm-finrl-2025} & Partial (hand-features) & No & Yes (RL) & Pa
 TradingGPT \cite{tradinggpt2023} & No & Yes & No & Partial \\
 FinAgent \cite{finagent2024} & No & Partial (single agent) & No & Yes \\
 TradingAgents \cite{tradingagents2024} & No & Yes & No & Yes \\
-\textbf{MARTA (this work)} & \textbf{Yes (TFT + InfoNCE)} & \textbf{Yes (5 agents)} & \textbf{Yes (PPO)} & \textbf{Yes} \\
+\textbf{MARTA (this work)} & \textbf{Yes (Gaussian HMM, engineered feats.)} & \textbf{Yes (5 agents)} & \textbf{Yes (PPO)} & \textbf{Yes} \\
 \hline
 \end{tabular}
 \end{table}
 
-No system reviewed combines a learned regime representation, multi-agent reasoning conditioned on that representation, and an adaptive execution layer in a single pipeline. This is precisely the combination MARTA proposes: a TFT encoder trained with an InfoNCE contrastive objective \cite{infonce2018,tft2019} learns the regime representation that HMM-based approaches instead derive from hand-selected features; this representation conditions the multi-agent debate that LLM trading systems otherwise perform without any explicit regime signal; and a PPO-based execution supervisor \cite{ppo2017} translates the resulting recommendation into position sizing, closing the loop that regime-detection-only systems leave open.
+No system reviewed combines a learned regime representation, multi-agent reasoning conditioned on that representation, and an adaptive execution layer in a single pipeline. This is precisely the combination MARTA proposes: a Gaussian Hidden Markov Model fit directly on engineered market features learns the regime representation, producing an explicit probabilistic regime posterior rather than the hand-tuned volatility thresholds that ad hoc regime filters rely on; this representation conditions the multi-agent debate that LLM trading systems otherwise perform without any explicit regime signal; and a PPO-based execution supervisor \cite{ppo2017} translates the resulting recommendation into position sizing, closing the loop that regime-detection-only systems leave open.
 
 \section{Summary}
 \label{sec:background-summary}

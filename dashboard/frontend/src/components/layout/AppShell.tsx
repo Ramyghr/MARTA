@@ -6,6 +6,7 @@ import { REGIME_NAMES } from "@/lib/types";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { PageTransition } from "./PageTransition";
+import { HeaderTicker } from "@/components/HeaderTicker";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const sidebarCollapsed = useMARTAStore((s) => s.sidebarCollapsed);
@@ -52,6 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <HeaderTicker />
       <Sidebar />
       <Topbar />
       <main className="app-shell-main">

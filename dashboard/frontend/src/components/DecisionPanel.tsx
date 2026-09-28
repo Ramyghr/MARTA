@@ -131,14 +131,17 @@ export default function DecisionPanel({ decision, timestamp }: Props) {
           </div>
         </div>
 
-        {/* Regime override */}
+        {/* decision.regime_override — despite the field name (kept for backward
+            compatibility with the persisted debate cache and the RL observation
+            builder), this no longer means "regime disagreed with consensus" — it
+            means the Contrarian challenged and successfully flipped another agent. */}
         {decision.regime_override && (
           <div
             className="text-[11px] px-2.5 py-2 rounded flex items-center gap-2 animate-fade-in"
             style={{ background: "rgba(255,140,0,0.1)", border: "1px solid #ff8c0044", color: "#ff8c00" }}
           >
             <span>⚠</span>
-            <span className="font-semibold tracking-wide">REGIME OVERRIDE APPLIED</span>
+            <span className="font-semibold tracking-wide">CONTRARIAN FLIPPED CONSENSUS</span>
           </div>
         )}
 

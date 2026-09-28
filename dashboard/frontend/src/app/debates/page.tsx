@@ -57,17 +57,43 @@ function DebateBrowser({ debates, selectedId, onSelect, onRunNew }: {
   const [assetFilter, setAssetFilter] = useState("");
   const [regimeFilter, setRegimeFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  // Real pagination instead of dumping every match into the DOM at once — with
+  // 1,800+ debates cached, an unfiltered/loosely-filtered view was the actual
+  // "infinite scroll" complaint (a single wall of rows, no way to jump to a date).
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(1);
 
   const assets = useMemo(() => Array.from(new Set(debates.map((d) => d.asset))).sort(), [debates]);
   const regimes = useMemo(() => Array.from(new Set(debates.map((d) => d.regime_label))).sort((a, b) => a - b), [debates]);
 
-  const filtered = useMemo(() => debates.filter((d) => {
-    if (assetFilter && d.asset !== assetFilter) return false;
-    if (regimeFilter && String(d.regime_label) !== regimeFilter) return false;
-    if (actionFilter && d.action !== actionFilter) return false;
-    if (search && !`${d.asset} ${d.scenario}`.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  }), [debates, search, assetFilter, regimeFilter, actionFilter]);
+  const filtered = useMemo(() => {
+    const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
+    // Inclusive of the whole "to" day, not just its midnight instant.
+    const toMs = dateTo ? new Date(dateTo).getTime() + 24 * 3600_000 - 1 : null;
+    return debates
+      .filter((d) => {
+        if (assetFilter && d.asset !== assetFilter) return false;
+        if (regimeFilter && String(d.regime_label) !== regimeFilter) return false;
+        if (actionFilter && d.action !== actionFilter) return false;
+        if (search && !`${d.asset} ${d.scenario}`.toLowerCase().includes(search.toLowerCase())) return false;
+        const ts = new Date(d.timestamp).getTime();
+        if (fromMs !== null && ts < fromMs) return false;
+        if (toMs !== null && ts > toMs) return false;
+        return true;
+      })
+      // Newest first by default — the underlying cache isn't stored in any
+      // consistent order (interleaved per-asset batches from separate Kaggle runs).
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [debates, search, assetFilter, regimeFilter, actionFilter, dateFrom, dateTo]);
+
+  // Any filter change invalidates whatever page was previously showing.
+  useEffect(() => setPage(1), [search, assetFilter, regimeFilter, actionFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const visible = filtered.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -103,11 +129,40 @@ function DebateBrowser({ debates, selectedId, onSelect, onRunNew }: {
             <option value="hold">Hold</option>
           </select>
         </div>
+        {/* Jump to a date instead of scrolling for it */}
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="flex-1 min-w-0 bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-1 text-[10px] text-[#888] outline-none"
+          />
+          <span className="text-[#333] text-[10px]">→</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="flex-1 min-w-0 bg-[#111] border border-[#1a1a1a] rounded px-1.5 py-1 text-[10px] text-[#888] outline-none"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              title="Clear date range"
+              className="shrink-0 text-[#555] hover:text-[#999] transition-colors"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <div className="text-[9px] text-[#444]">
+          {filtered.length.toLocaleString()} match{filtered.length === 1 ? "" : "es"}
+          {filtered.length !== debates.length && ` (of ${debates.length.toLocaleString()})`}
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         {filtered.length === 0 ? (
-          <EmptyState title="No debates match" description="Try clearing the search or filters." />
-        ) : filtered.map((d) => (
+          <EmptyState title="No debates match" description="Try clearing the search, filters, or date range." />
+        ) : visible.map((d) => (
           <button
             key={d.id}
             onClick={() => onSelect(d.id)}
@@ -132,6 +187,25 @@ function DebateBrowser({ debates, selectedId, onSelect, onRunNew }: {
           </button>
         ))}
       </div>
+      {filtered.length > 0 && (
+        <div className="shrink-0 flex items-center justify-between px-2 py-1.5 border-t border-[#1a1a1a]">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={clampedPage <= 1}
+            className="px-2 py-1 rounded text-[10px] uppercase tracking-wider text-[#4a9eff] hover:bg-[#4a9eff]/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            ← Previous
+          </button>
+          <span className="text-[10px] text-[#555]">Page {clampedPage} of {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={clampedPage >= totalPages}
+            className="px-2 py-1 rounded text-[10px] uppercase tracking-wider text-[#4a9eff] hover:bg-[#4a9eff]/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -145,89 +219,108 @@ function DebateMetadataPanel({ view, regime }: { view: DebateView | null; regime
   const keyFactors = Array.from(new Set(view.theses.flatMap((t) => t.key_factors ?? [])));
 
   return (
-    <div className="flex flex-col gap-4 text-[11px]">
-      <div>
-        <div className="stat-label mb-1">Timestamp</div>
+    <div className="flex flex-col gap-3 text-[11px]">
+      {/* Always-visible summary — everything you need at a glance, no scrolling/expanding. */}
+      <div className="flex items-center justify-between">
         <div className="text-[#ccc] font-mono">{new Date(view.timestamp).toLocaleString()}</div>
-        <div className="text-[#666] mt-0.5">{view.asset.replace("_", "/")}</div>
+        <div className="text-[#666]">{view.asset.replace("_", "/")}</div>
       </div>
-
-      {regime && (
-        <div>
-          <div className="stat-label mb-1.5">Regime at Debate Time</div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <span className="w-2 h-2 rounded-full" style={{ background: REGIME_COLORS[regime.dominant_regime] ?? "#666" }} />
-            <span className="font-semibold" style={{ color: REGIME_COLORS[regime.dominant_regime] ?? "#666" }}>
-              R{regime.dominant_regime} — {regime.regime_description}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            {Object.entries(regime.probabilities).map(([k, v]) => {
-              const label = parseInt(k.replace("regime_", ""));
-              const pct = Math.round(v * 100);
-              return (
-                <div key={k} className="flex items-center gap-1.5">
-                  <span className="w-6 text-[9px] text-[#555]">R{label}</span>
-                  <div className="flex-1 h-1 rounded-full bg-[#1a1a1a] overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: REGIME_COLORS[label] ?? "#666" }} />
-                  </div>
-                  <span className="w-8 text-right text-[9px] text-[#666]">{pct}%</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {view.decision && (
-        <div>
-          <div className="stat-label mb-1">Final Decision</div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <ActionBadge action={view.decision.action} />
-            <span className="text-[#666]">{(view.decision.conviction * 100).toFixed(0)}% conviction</span>
-          </div>
-          <p className="text-[#777] leading-relaxed">{view.decision.rationale}</p>
+        <div className="flex items-center gap-2">
+          <ActionBadge action={view.decision.action} />
+          <span className="text-[#666]">{(view.decision.conviction * 100).toFixed(0)}% conviction</span>
         </div>
       )}
 
-      {keyFactors.length > 0 && (
-        <div>
-          <div className="stat-label mb-1.5">Key Factors</div>
-          <div className="flex flex-col gap-1">
-            {keyFactors.map((f, i) => (
-              <div key={i} className="text-[#888] flex gap-1.5"><span className="text-[#333]">•</span>{f}</div>
-            ))}
-          </div>
+      {regime && (
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: REGIME_COLORS[regime.dominant_regime] ?? "#666" }} />
+          <span className="font-semibold truncate" style={{ color: REGIME_COLORS[regime.dominant_regime] ?? "#666" }}>
+            R{regime.dominant_regime} — {regime.regime_description}
+          </span>
         </div>
       )}
 
-      <div>
-        <div className="stat-label mb-1">Dissenting Agents</div>
-        {view.decision?.dissenting_agents?.length ? (
-          <div className="flex flex-wrap gap-1.5">
-            {view.decision.dissenting_agents.map((a) => (
-              <span
-                key={a}
-                className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ background: a === "ContrarianAgent" ? "rgba(255,55,55,0.12)" : "#1a1a1a", color: a === "ContrarianAgent" ? "#ff3737" : "#888" }}
-              >
-                {a}
-              </span>
-            ))}
-          </div>
-        ) : <span style={{ color: "#00ff7f88" }}>✓ Full consensus</span>}
-      </div>
+      {view.decision?.rationale && (
+        <p className="text-[#777] leading-relaxed line-clamp-2">{view.decision.rationale}</p>
+      )}
 
-      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1a1a1a]">
-        <div>
-          <div className="stat-label">Duration</div>
-          <div className="text-[#999] font-mono mt-0.5">{view.durationSeconds != null ? `${view.durationSeconds.toFixed(0)}s` : "—"}</div>
+      {/* Everything else — open by default (nothing's hidden), just visually
+          subordinate to the summary above it instead of one flat undifferentiated dump. */}
+      <details className="pt-2 border-t border-[#1a1a1a] group" open>
+        <summary className="stat-label cursor-pointer select-none list-none flex items-center gap-1 hover:text-[#999] transition-colors">
+          <span className="transition-transform group-open:rotate-90">▸</span> Full details
+        </summary>
+        <div className="flex flex-col gap-4 mt-3">
+          {view.decision && (
+            <div>
+              <div className="stat-label mb-1">Rationale</div>
+              <p className="text-[#777] leading-relaxed">{view.decision.rationale}</p>
+            </div>
+          )}
+
+          {regime && (
+            <div>
+              <div className="stat-label mb-1.5">Regime Probabilities</div>
+              <div className="flex flex-col gap-1">
+                {Object.entries(regime.probabilities).map(([k, v]) => {
+                  const label = parseInt(k.replace("regime_", ""));
+                  const pct = Math.round(v * 100);
+                  return (
+                    <div key={k} className="flex items-center gap-1.5">
+                      <span className="w-6 text-[9px] text-[#555]">R{label}</span>
+                      <div className="flex-1 h-1 rounded-full bg-[#1a1a1a] overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: REGIME_COLORS[label] ?? "#666" }} />
+                      </div>
+                      <span className="w-8 text-right text-[9px] text-[#666]">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {keyFactors.length > 0 && (
+            <div>
+              <div className="stat-label mb-1.5">Key Factors</div>
+              <div className="flex flex-col gap-1">
+                {keyFactors.map((f, i) => (
+                  <div key={i} className="text-[#888] flex gap-1.5"><span className="text-[#333]">•</span>{f}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="stat-label mb-1">Dissenting Agents</div>
+            {view.decision?.dissenting_agents?.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {view.decision.dissenting_agents.map((a) => (
+                  <span
+                    key={a}
+                    className="text-[10px] px-1.5 py-0.5 rounded"
+                    style={{ background: a === "ContrarianAgent" ? "rgba(255,55,55,0.12)" : "#1a1a1a", color: a === "ContrarianAgent" ? "#ff3737" : "#888" }}
+                  >
+                    {a}
+                  </span>
+                ))}
+              </div>
+            ) : <span style={{ color: "#00ff7f88" }}>✓ Full consensus</span>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1a1a1a]">
+            <div>
+              <div className="stat-label">Duration</div>
+              <div className="text-[#999] font-mono mt-0.5">{view.durationSeconds != null ? `${view.durationSeconds.toFixed(0)}s` : "—"}</div>
+            </div>
+            <div>
+              <div className="stat-label">Tokens</div>
+              <div className="text-[#999] font-mono mt-0.5">{view.totalTokens != null ? view.totalTokens.toLocaleString() : "—"}</div>
+            </div>
+          </div>
         </div>
-        <div>
-          <div className="stat-label">Tokens</div>
-          <div className="text-[#999] font-mono mt-0.5">{view.totalTokens != null ? view.totalTokens.toLocaleString() : "—"}</div>
-        </div>
-      </div>
+      </details>
     </div>
   );
 }
@@ -235,7 +328,9 @@ function DebateMetadataPanel({ view, regime }: { view: DebateView | null; regime
 // ── Run New Debate modal ───────────────────────────────────────────────────────
 
 function RunDebateModal({ onClose, onRun }: { onClose: () => void; onRun: (asset: string, timestamp: string) => void }) {
-  const mode = useMARTAStore((s) => s.mode);
+  // Local to this modal, not a global app mode — "run a fresh debate right now" vs.
+  // "run one at a chosen past timestamp" (e.g. to reproduce a specific scenario).
+  const [runAtNow, setRunAtNow] = useState(true);
   const [assets, setAssets] = useState<AssetInfo[]>([]);
   const [asset, setAsset] = useState("BTC_USDT");
   const [dataRange, setDataRange] = useState<DataRange | null>(null);
@@ -244,16 +339,16 @@ function RunDebateModal({ onClose, onRun }: { onClose: () => void; onRun: (asset
   useEffect(() => { api.getAssets().then((d) => setAssets(d.assets)).catch(() => {}); }, []);
 
   useEffect(() => {
-    if (mode === "live") return;
+    if (runAtNow) return;
     api.getDataRange(asset).then((r) => {
       setDataRange(r);
       const mid = new Date((new Date(r.start).getTime() + new Date(r.end).getTime()) / 2);
       setTimestamp(mid.toISOString().slice(0, 16));
     }).catch(() => {});
-  }, [asset, mode]);
+  }, [asset, runAtNow]);
 
   const handleRun = () => {
-    const ts = mode === "live" ? new Date().toISOString() : new Date(timestamp).toISOString();
+    const ts = runAtNow ? new Date().toISOString() : new Date(timestamp).toISOString();
     onRun(asset, ts);
   };
 
@@ -275,8 +370,23 @@ function RunDebateModal({ onClose, onRun }: { onClose: () => void; onRun: (asset
           </div>
           <div>
             <label className="stat-label block mb-1">Timestamp</label>
-            {mode === "live" ? (
-              <div className="text-[11px] text-[#4a9eff] px-2 py-1.5 border border-[#4a9eff33] rounded bg-[#4a9eff08]">● Current time (live mode)</div>
+            <div className="flex rounded overflow-hidden border border-[#2a2a2a] mb-1.5 w-fit">
+              {[["Now", true], ["Choose date", false]].map(([label, val]) => (
+                <button
+                  key={label as string}
+                  onClick={() => setRunAtNow(val as boolean)}
+                  className="px-2.5 py-1 text-[10px] uppercase tracking-wider transition-colors"
+                  style={{
+                    background: runAtNow === val ? "rgba(74,158,255,0.15)" : "transparent",
+                    color: runAtNow === val ? "#4a9eff" : "#555",
+                  }}
+                >
+                  {label as string}
+                </button>
+              ))}
+            </div>
+            {runAtNow ? (
+              <div className="text-[11px] text-[#4a9eff] px-2 py-1.5 border border-[#4a9eff33] rounded bg-[#4a9eff08]">● Current time</div>
             ) : (
               <input
                 type="datetime-local"
@@ -290,7 +400,7 @@ function RunDebateModal({ onClose, onRun }: { onClose: () => void; onRun: (asset
           </div>
           <button
             onClick={handleRun}
-            disabled={mode !== "live" && !timestamp}
+            disabled={!runAtNow && !timestamp}
             className="mt-2 w-full py-2 rounded text-[11px] font-semibold uppercase tracking-wider bg-[#4a9eff]/10 text-[#4a9eff] border border-[#4a9eff]/30 hover:bg-[#4a9eff]/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Run Debate
@@ -310,7 +420,6 @@ function DebatesPageInner() {
   const searchParams = useSearchParams();
   const autoRunParam = searchParams.get("autorun") === "1";
 
-  const globalMode = useMARTAStore((s) => s.mode);
   const selectedAsset = useMARTAStore((s) => s.selectedAsset);
   const setSelectedAsset = useMARTAStore((s) => s.setSelectedAsset);
   const setCurrentDecision = useMARTAStore((s) => s.setCurrentDecision);
@@ -356,6 +465,23 @@ function DebatesPageInner() {
     setModalOpen(false);
     api.getDebate(id).then(setStoredDetail).catch(() => setStoredDetail(null));
   }, []);
+
+  // Default to the most recent debate instead of an empty "pick something" state —
+  // fires once, only if nothing else already claimed the initial view (an explicit
+  // row click, or one of the two deep-link mechanisms below). Prefers a debate for
+  // the currently selected asset, falling back to the single most recent overall so
+  // the page is never empty just because that asset happens to have none cached yet.
+  const autoSelectedRef = useRef(false);
+  useEffect(() => {
+    if (autoSelectedRef.current || debatesLoading || debatesList.length === 0) return;
+    if (autoRunParam || searchParams.get("scenario")) return;
+    autoSelectedRef.current = true;
+    const forAsset = debatesList.filter((d) => d.asset === selectedAsset);
+    const pool = forAsset.length > 0 ? forAsset : debatesList;
+    const latest = [...pool].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+    handleSelectDebate(latest.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debatesLoading, debatesList]);
 
   // Deep link from the Backtest page's "Replay Debate" buttons: /debates?scenario=<id>
   const scenarioParam = searchParams.get("scenario");
@@ -488,18 +614,20 @@ function DebatesPageInner() {
             dataRange={dataRangeForAsset}
             onDecision={handleDecision}
             onEvent={handleEvent}
-            liveMode={globalMode === "live"}
+            liveMode={viewMode !== "stored"}
             autoRun={autoRunParam}
             forceReplayId={selectedId}
             forceLiveRun={liveTarget}
           />
         </Panel>
+        {/* News first/larger — this is the panel people actually want to see without
+            hunting for it; the metadata dump is secondary reference material. */}
         <div className="flex flex-col gap-2 min-h-0">
-          <Panel title="Debate Metadata" className="flex-[3] min-h-0 overflow-auto">
-            <DebateMetadataPanel view={view} regime={regimeAtView} />
+          <Panel title="News Feed" noPadding className="flex-[3] min-h-0">
+            <NewsPanel asset={view?.asset ?? selectedAsset} timestamp={view?.timestamp ?? null} liveMode={viewMode !== "stored"} />
           </Panel>
-          <Panel title="News Feed" noPadding className="flex-[2] min-h-0">
-            <NewsPanel asset={view?.asset ?? selectedAsset} timestamp={view?.timestamp ?? null} liveMode={globalMode === "live"} />
+          <Panel title="Debate Metadata" className="flex-[2] min-h-0 overflow-auto">
+            <DebateMetadataPanel view={view} regime={regimeAtView} />
           </Panel>
         </div>
       </div>

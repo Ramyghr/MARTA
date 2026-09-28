@@ -14,8 +14,10 @@ from agents.schemas import RiskLimits
 from utils.assets import aligned_path
 from utils.logger import logger
 
-_DATA_DIR = Path("data/processed")  # dashboard/backend/debate_stream.py relies on this
-# default (constructs RiskAgent() with no args) — crypto-only callers pass data_dir= explicitly.
+_DATA_DIR = Path("data/processed")  # legacy default from the original 4-asset panel.
+# dashboard/backend/debate_stream.py's live debate path now always passes
+# data_dir=CRYPTO5_PROCESSED explicitly (as does run_debate.py) — this default is not
+# currently exercised by any real caller, kept only as a safe fallback.
 _GARCH_WINDOW = 90 * 24  # 90 days of hourly data
 
 

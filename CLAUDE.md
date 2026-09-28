@@ -1128,3 +1128,79 @@ predates `TEST_START` (2025-01-01), rendered as a visible amber banner in the St
 Tester UI (`backtest/page.tsx`). Non-PPO rule-based strategies are exempt (never
 "trained" on anything, so no window is invalid for them). Verified end-to-end in a real
 browser: banner renders for a 2022-08-15 start, absent for a 2025-01-01 start.
+
+## Live price chart stuck on one frozen regime label — fixed (2026-09-16)
+
+User report: the BTC price chart had shown the same regime, "R3 Low Volatility /
+Range-bound (XRP-dominant)," for the entire visible window (Aug 17 2026 → today, i.e.
+the full 30-day/720h default chart range) — not literally every candle since Aug 17
+historically, just every candle currently on screen.
+
+**Root cause:** `dashboard/backend/main.py`'s `/ws/price/{asset}` `mode="live"` branch
+fetches its initial history batch via `live_feed.fetch_live_candles()`, then tagged each
+candle with `_add_regime(c, asset)` — default `live=False`, i.e.
+`regime_service.get_regime()`, a pure nearest-neighbor lookup into the frozen crypto5
+causal `regime_stream_causal.parquet` (last row: 2025-12-31, BTC label 3). Nearest-lookup
+has no upper bound check, so *every* query timestamp after 2025-12-31 resolves to that
+same last row — and since it's now September 2026, that covers the entire 30-day visible
+window. `historical.py`'s `get_history()`/`_build_records()` had already been fixed for
+this exact failure mode (the "Dashboard bug sweep" 2026-09-03 section, `_add_regime`'s
+own docstring, and `regime_service.get_regime_series_live_aware`'s docstring all describe
+it) via `get_regime_series_live_aware()` — nearest hit in the incrementally-growing
+`regime_live_log.parquet` past the frozen boundary, falling back to one shared fresh
+`get_live_regime()` compute only if the log has no entry within 14 days. The live-mode WS
+history batch was a separate code path that never got the same fix.
+
+**Fixed:** added `_add_regime_batch()` in `main.py`, thin wrapper around the same
+`regime_service.get_regime_series_live_aware()` `historical.py` already uses, and swapped
+it in for the per-candle `_add_regime()` loop in `/ws/price`'s live-mode history branch.
+The per-tick `forward()` callback (genuinely real-time single candles) is unchanged —
+still correctly uses `_add_regime(candle, asset, live=True)`. Verified directly against
+`get_regime_series_live_aware('BTC_USDT', ...)` over the same 30-day window: now returns
+a real 6-way regime distribution (counts 32/104/305/151/67/62 across labels 0-5) instead
+of one repeated label. Redeployed via `docker compose up -d --force-recreate backend`.
+
+## GitHub OAuth login added alongside Google — complete (2026-09-20)
+
+Mirrors the existing "Sign in with Google" flow end-to-end, same session-cookie mechanism
+(`auth_db.create_session()` + `marta_session` cookie) — not a separate auth system.
+
+- `dashboard/backend/oauth_github.py` (new) — `/api/auth/github/login` +
+  `/api/auth/github/callback`, registered via authlib `OAuth().register()` the same way
+  `oauth_google.py` is, but plain OAuth2 endpoints (GitHub has no OIDC discovery document,
+  unlike Google). GitHub's `/user` endpoint omits email when the user has it set private
+  (common default) — falls back to `/user/emails` and picks the `primary` one.
+  `auth_db.get_or_create_oauth_user()` was already provider-generic (`provider` is a plain
+  string param), so no `auth_db.py` changes were needed for a second provider.
+- `main.py`'s `/api/auth/providers` now returns `{"google": ..., "github": ...}`.
+  `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` gate visibility, same pattern as Google.
+- **Gotcha that caused a real 401 in this session, worth checking on sight for any future
+  OAuth provider:** `session_auth.py`'s `SessionAuthMiddleware` gates every `/api/` path
+  behind a valid session cookie EXCEPT an explicit `_PUBLIC_API_PATHS` allowlist. Adding a
+  new provider's router in `main.py` is not enough by itself — its `/login`/`/callback`
+  paths must also be added to that allowlist, or the middleware 401s
+  (`{"detail":"Not authenticated"}`) before the request ever reaches the new route. This is
+  a separate gate from `auth.py`'s `APIKeyMiddleware` (that one's opt-in via `MARTA_API_KEY`
+  and wasn't the cause here).
+- Frontend: `GoogleLoginButton.tsx` replaced by `dashboard/frontend/src/components/SocialLoginButtons.tsx`
+  — fetches `/api/auth/providers` once and renders a single "or" divider plus whichever
+  provider buttons are actually enabled (avoids a double divider when both are configured).
+  `lib/auth.ts` gained `githubLoginUrl()`; `getAuthProviders()`'s return type now includes
+  `github`.
+- Verified end-to-end against the real docker deployment (not just the dev preview): a
+  direct `curl http://localhost:8001/api/auth/github/login` 302-redirects to
+  `github.com/login/oauth/authorize` with the real configured `client_id` and the correct
+  `redirect_uri` once `GITHUB_CLIENT_ID`/`SECRET` were filled into `.env` and the backend
+  container recreated.
+
+**Unrelated infra issue hit and fixed in the same session, not caused by this change but
+worth recording since it'll recur:** the host's Docker daemon had a corrupted container-store
+entry (a `Dead`-status container with no name, visible in `docker ps -a` but `docker
+inspect`/`docker rm` on the same ID both returned "No such container" — a genuine daemon-level
+inconsistency, not a compose-level one). `docker compose up`/`down -v` alone couldn't clear
+it and kept erroring. Fix required `sudo systemctl restart docker` (cleared it this time —
+survived at first, actually needed a second pass); if a zombie container ID survives even a
+daemon restart, the next step is stopping docker, deleting that specific container's
+directory under `/var/lib/docker/containers/<id>`, then starting docker again. Nothing else
+was running under Docker on this host at the time, so the restart's blast radius was
+confirmed limited to the dashboard stack before doing it.
