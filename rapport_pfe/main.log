@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.7.20)  28 SEP 2026 14:48
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.7.20)  28 SEP 2026 15:12
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -428,7 +428,7 @@ Chapter 2.
 
 
 ] [9] [10]
-Overfull \hbox (181.86989pt too wide) in paragraph at lines 79--92
+Overfull \hbox (283.41438pt too wide) in paragraph at lines 79--92
  [][] 
  []
 
@@ -437,21 +437,13 @@ Overfull \hbox (181.86989pt too wide) in paragraph at lines 79--92
 
  (./chapters/methodology.tex
 Chapter 3.
-
-Overfull \hbox (2.57355pt too wide) in paragraph at lines 17--18
-\OT1/cmr/m/n/12 sam-pled to hourly OHLCV (\OT1/cmtt/m/n/12 open\OT1/cmr/m/n/12 
-=first, \OT1/cmtt/m/n/12 high\OT1/cmr/m/n/12 =max, \OT1/cmtt/m/n/12 low\OT1/cmr
-/m/n/12 =min, \OT1/cmtt/m/n/12 close\OT1/cmr/m/n/12 =last, \OT1/cmtt/m/n/12 vol
-ume\OT1/cmr/m/n/12 =sum).
- []
-
 [13
 
 
 
 
 ]
-Overfull \hbox (57.58395pt too wide) in paragraph at lines 41--59
+Overfull \hbox (57.58395pt too wide) in paragraph at lines 43--61
  [][] 
  []
 
@@ -459,59 +451,71 @@ Overfull \hbox (57.58395pt too wide) in paragraph at lines 41--59
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 [14] [15]
-Underfull \hbox (badness 2671) in paragraph at lines 107--108
+Underfull \hbox (badness 2671) in paragraph at lines 111--112
 \OT1/cmr/m/n/12 fea-ture axis at ev-ery timestep,
  []
 
 
-Underfull \hbox (badness 2245) in paragraph at lines 107--108
+Underfull \hbox (badness 2245) in paragraph at lines 111--112
 \OT1/cmr/m/n/12 put --- a learned, per-timestep
  []
 
 
-Underfull \hbox (badness 4013) in paragraph at lines 111--112
+Underfull \hbox (badness 4013) in paragraph at lines 115--116
 []\OT1/cmr/m/n/12 Unweighted mean over the 60
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 115--116
+Underfull \hbox (badness 1701) in paragraph at lines 117--118
+\OT1/cmr/m/n/12 now de-scribe both this orig-i-nal
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 119--120
 []\OT1/cmr/m/n/12 Linear(128$\OMS/cmsy/m/n/12 !$\OT1/cmr/m/n/12 128) + ReLU +
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 115--116
+Underfull \hbox (badness 10000) in paragraph at lines 119--120
 \OT1/cmr/m/n/12 Linear(128$\OMS/cmsy/m/n/12 !$\OT1/cmr/m/n/12 64) --- used only
 
  []
 
 
-Underfull \hbox (badness 4217) in paragraph at lines 115--116
+Underfull \hbox (badness 4217) in paragraph at lines 119--120
 \OT1/cmr/m/n/12 by the con-trastive loss dur-ing
  []
 
 
-Underfull \hbox (badness 1308) in paragraph at lines 115--116
+Underfull \hbox (badness 1308) in paragraph at lines 119--120
 \OT1/cmr/m/n/12 fer-ence time, fol-low-ing stan-dard
  []
 
 
-Underfull \hbox (badness 1270) in paragraph at lines 115--116
+Underfull \hbox (badness 1270) in paragraph at lines 119--120
 \OT1/cmr/m/n/12 contrastive-learning prac-tice (the
  []
 
 
-Underfull \hbox (badness 1320) in paragraph at lines 115--116
+Underfull \hbox (badness 1320) in paragraph at lines 119--120
 \OT1/cmr/m/n/12 the rep-re-sen-ta-tion in ways that
  []
 
-[16] [17] [18] [19] [20] [21] [22]
-Overfull \hbox (5.99971pt too wide) in paragraph at lines 233--234
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[16]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[17] [18] [19] [20] [21]
+Overfull \hbox (5.99971pt too wide) in paragraph at lines 237--238
 []\OT1/cmr/m/n/12 With the gen-er-a-tor val-i-dated, the cen-tral ques-tion ---
  does the ac-tual feature-engineering
  []
 
-[23]
-Underfull \hbox (badness 1259) in paragraph at lines 273--274
+[22] [23]
+Underfull \hbox (badness 1259) in paragraph at lines 277--278
 \OT1/cmr/m/n/10.95 re-sult-ing one-step-ahead volatil-ity fore-cast into 95%
  []
 
@@ -519,7 +523,7 @@ Underfull \hbox (badness 1259) in paragraph at lines 273--274
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 [24] [25] [26]
-Overfull \hbox (33.80542pt too wide) in paragraph at lines 339--359
+Overfull \hbox (33.80542pt too wide) in paragraph at lines 345--365
  [][] 
  []
 
@@ -527,19 +531,19 @@ Overfull \hbox (33.80542pt too wide) in paragraph at lines 339--359
 LaTeX Warning: `h' float specifier changed to `ht'.
 
 [27]
-Underfull \hbox (badness 3803) in paragraph at lines 392--393
+Underfull \hbox (badness 3803) in paragraph at lines 398--399
 []\OT1/cmr/m/n/10.95 Rule-based RSI(14) mean-reversion (over-
  []
 
 
-Overfull \hbox (45.41771pt too wide) in paragraph at lines 386--406
+Overfull \hbox (45.41771pt too wide) in paragraph at lines 392--412
  [][] 
  []
 
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[28]) [29] [30] [31] [32]
+[28]) [29] [30] [31] [32] [33]
 \openout2 = `chapters/results.aux'.
 
  (./chapters/results.tex
@@ -562,7 +566,7 @@ LaTeX Warning: `h' float specifier changed to `ht'.
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[33
+[34
 
 
 
@@ -590,13 +594,13 @@ Overfull \hbox (94.94482pt too wide) in paragraph at lines 74--92
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[34]
+[35]
 Overfull \hbox (16.73988pt too wide) in paragraph at lines 118--119
 []\OT1/cmr/m/n/12 Buy-and-hold out-per-formed both siz-ing strate-gies in both 
 pe-ri-ods, and regime-conditioned
  []
 
-[35] [36]
+[36] [37]
 Overfull \hbox (12.95372pt too wide) in paragraph at lines 175--175
 []\OT1/cmr/bx/n/14.4 Consequence: Re-mov-ing Di-rec-tional Lan-guage from Regim
 e
@@ -604,12 +608,12 @@ e
 
 LaTeX Font Info:    Font shape `OT1/cmtt/bx/n' in size <12> not available
 (Font)              Font shape `OT1/cmtt/m/n' tried instead on input line 180.
-[37] [38]
+[38] [39]
 Overfull \hbox (109.31602pt too wide) in paragraph at lines 228--240
  [][] 
  []
 
-[39]
+[40]
 Overfull \hbox (41.81502pt too wide) in paragraph at lines 251--252
 []\OT1/cmr/bx/n/12 ContrarianAgent's dis-sent is in-ten-tion-ally not LLM-gener
 ated. \OT1/cmr/m/n/12 Its \OT1/cmtt/m/n/12 directional[]bias
@@ -621,7 +625,7 @@ Overfull \hbox (13.30289pt too wide) in paragraph at lines 264--265
  Fol-low-ing the panel mi-gra-tion (Sec-tion 3.4.6[]),
  []
 
-[40]
+[41]
 Overfull \hbox (3.87485pt too wide) in paragraph at lines 272--273
 \OT1/cmr/m/n/12 Following the panel mi-gra-tion of the RL en-vi-ron-ment it-sel
 f (as-set siz-ing and portfolio/asset-
@@ -677,7 +681,7 @@ Underfull \hbox (badness 1484) in paragraph at lines 291--291
 []\OT1/cmr/m/n/8 incon- clu-
  []
 
-[41] [42]
+[42] [43]
 Underfull \hbox (badness 2680) in paragraph at lines 321--321
 \OT1/cmr/m/n/12 re-com-puted with buy-and-hold ag-gre-gated to the iden-ti-cal 
 weekly ca-dence (52
@@ -698,21 +702,27 @@ Full de-tail:
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[43]
+[44]
 
 LaTeX Warning: `h' float specifier changed to `ht'.
 
-[44]) [45]
+[45]) [46]
 \openout2 = `chapters/conclusion.aux'.
 
  (./chapters/conclusion.tex
 Chapter 5.
-[46
+[47
 
 
 
 
-]) [47] [48] (./main.bbl)
+] [48] [49]
+Overfull \hbox (6.06915pt too wide) in paragraph at lines 46--47
+\OT1/cmr/m/n/12 alone, but whether regime con-di-tion-ing demon-stra-bly im-pro
+ves out-comes rel-a-tive to regime-
+ []
+
+[50]) [51] (./main.bbl)
 File: PDFs/Page_Garde.pdf Graphic file (type pdf)
 <use PDFs/Page_Garde.pdf>
 Package pdftex.def Info: PDFs/Page_Garde.pdf  used on input line 23.
@@ -721,7 +731,7 @@ File: PDFs/Page_Garde.pdf Graphic file (type pdf)
 <use PDFs/Page_Garde.pdf>
 Package pdftex.def Info: PDFs/Page_Garde.pdf  used on input line 23.
 (pdftex.def)             Requested size: 597.551pt x 845.07512pt.
-<PDFs/Page_Garde.pdf, id=245, page=2, 597.55246pt x 845.07718pt>
+<PDFs/Page_Garde.pdf, id=255, page=2, 597.55246pt x 845.07718pt>
 File: PDFs/Page_Garde.pdf Graphic file (type pdf)
 <use PDFs/Page_Garde.pdf, page 2>
 Package pdftex.def Info: PDFs/Page_Garde.pdf , page2 used on input line 23.
@@ -730,7 +740,7 @@ File: PDFs/Page_Garde.pdf Graphic file (type pdf)
 <use PDFs/Page_Garde.pdf, page 2>
 Package pdftex.def Info: PDFs/Page_Garde.pdf , page2 used on input line 23.
 (pdftex.def)             Requested size: 597.57834pt x 845.1138pt.
- [49
+ [52
 
 
 
@@ -747,7 +757,7 @@ File: PDFs/Page_Garde.pdf Graphic file (type pdf)
 <use PDFs/Page_Garde.pdf, page 2>
 Package pdftex.def Info: PDFs/Page_Garde.pdf , page2 used on input line 23.
 (pdftex.def)             Requested size: 597.57834pt x 845.1138pt.
- [50
+ [53
 
  <./PDFs/Page_Garde.pdf>] (./main.aux
 (./chapters/introduction.aux) (./chapters/background.aux)
@@ -759,13 +769,13 @@ L3 programming layer <2024-01-22>
  ***********
  ) 
 Here is how much of TeX's memory you used:
- 4648 strings out of 474222
- 74595 string characters out of 5748733
- 1944975 words of memory out of 5000000
- 26815 multiletter control sequences out of 15000+600000
+ 4651 strings out of 474222
+ 74651 string characters out of 5748733
+ 1950975 words of memory out of 5000000
+ 26818 multiletter control sequences out of 15000+600000
  567122 words of font info for 68 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 77i,17n,82p,2111b,433s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 77i,17n,82p,2481b,433s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/shar
 e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share/texli
@@ -783,10 +793,10 @@ e/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texl
 ive/texmf-dist/fonts/type1/public/amsfonts/cm/cmtt12.pfb></usr/share/texlive/te
 xmf-dist/fonts/type1/public/amsfonts/cm/cmtt8.pfb></usr/share/texmf/fonts/type1
 /public/cm-super/sfrm1200.pfb>
-Output written on main.pdf (55 pages, 1056169 bytes).
+Output written on main.pdf (58 pages, 1068830 bytes).
 PDF statistics:
- 334 PDF objects out of 1000 (max. 8388607)
- 219 compressed objects within 3 object streams
+ 343 PDF objects out of 1000 (max. 8388607)
+ 225 compressed objects within 3 object streams
  0 named destinations out of 1000 (max. 500000)
  51 words of extra memory for PDF output out of 10000 (max. 10000000)
 
