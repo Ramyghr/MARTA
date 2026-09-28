@@ -71,7 +71,7 @@ Success is measured not only by trading performance (risk-adjusted returns, draw
 \section{Proposed Solution}
 \label{sec:proposed-solution}
 
-MARTA (Multi-Agent Regime-Aware Trading Architecture) addresses this gap through a five-layer pipeline, each layer directly targeting one part of the problem statement above.
+MARTA addresses this gap through a five-layer pipeline, each layer directly targeting one part of the problem statement above.
 
 \begin{enumerate}
     \item \textbf{Feature Engineering}: a set of engineered technical and statistical indicators (volatility, momentum, trend, and higher-moment statistics) is computed per asset from hourly multi-asset crypto data (BTC, ETH, BNB, LTC, XRP), providing the market-state representation regime detection operates on directly, without requiring hand-labeled regimes. Two aspects of this layer's initial design were later revised (Chapter~\ref{chap:methodology}), both driven by the same finding: the representation was originally learned via a Temporal Fusion Transformer trained with an InfoNCE contrastive objective rather than engineered directly, and the initial data panel paired two crypto assets with two traditional-finance instruments (BTC, ETH, EUR/USD, XAU/USD) rather than the crypto-only panel above --- a raw-feature HMM fit on that mixed panel was found to collapse onto asset identity rather than market regime, motivating both revisions together.
@@ -129,7 +129,7 @@ Given the exploratory, research-oriented nature of MARTA, a rigid upfront specif
 \subsection{Development Phases}
 \label{subsec:development-phases}
 
-The work was organized into seven successive phases, summarized in Table~\ref{tab:phases} and Figure~\ref{fig:gantt}. The first phase, covering literature review, problem definition, and architecture design, produced Chapter~\ref{chap:background}'s survey and the five-layer design introduced in Section~\ref{sec:proposed-solution}; the remaining six phases correspond one-to-one with the architectural layers and validation work described in Chapter~\ref{chap:methodology}.
+The work was organized into nine phases, summarized in Table~\ref{tab:phases} and Figure~\ref{fig:gantt}. The first five ran sequentially: literature review and architecture design, then one phase per architectural layer through the multi-agent system, each producing a working, evaluable component before the next began. The final four phases (RL execution, dashboard/live integration, encoder diagnostics, and the raw-feature pivot) overlapped rather than running strictly in sequence --- a genuine reflection of the project's last two months, during which RL training, dashboard development, and a systematic audit of the encoder were pursued concurrently, converging in the decision to drop the learned encoder in favor of engineered features (Chapter~\ref{chap:methodology}).
 
 \begin{table}[h]
 \centering
@@ -140,19 +140,23 @@ The work was organized into seven successive phases, summarized in Table~\ref{ta
 \hline
 \textbf{Phase} & \textbf{Deliverable} & \textbf{Duration \& dates} \\
 \hline
-1. Literature Review \& Architecture Design & State-of-the-art survey, 5-layer design & 12 wk (Mar 1 -- May 24) \\
+1. Literature Review \& Architecture Design & State-of-the-art survey, 5-layer design & 8 wk (Mar 16 -- May 10) \\
 \hline
-2. Data \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 25 -- Jun 7) \\
+2. Data Pipeline \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 11 -- May 24) \\
 \hline
-3. Regime Encoder & Trained TFT + InfoNCE encoder (later superseded, Ch.~\ref{chap:methodology}) & 3 wk (Jun 8 -- Jun 28) \\
+3. Regime Encoder (TFT + InfoNCE) --- v1 & Trained TFT + InfoNCE encoder (later superseded, Ch.~\ref{chap:methodology}) & 3 wk (May 25 -- Jun 14) \\
 \hline
-4. Regime Detection & Gaussian HMM over encoder embeddings & 1 wk (Jun 29 -- Jul 5) \\
+4. Regime Detection (HMM) & Gaussian HMM over encoder embeddings (later refit on raw features, Ch.~\ref{chap:methodology}) & 2 wk (Jun 15 -- Jun 28) \\
 \hline
-5. Multi-Agent System & 5-agent LLM debate pipeline & 2 wk (Jul 6 -- Jul 19) \\
+5. Multi-Agent System & 5-agent LLM debate pipeline & 3 wk (Jun 29 -- Jul 19) \\
 \hline
-6. RL Execution Agent & PPO supervisor trained on agent outputs & 3 wk (Jul 20 -- Aug 9) \\
+6. RL Execution Agent \& Evaluation Fixes & PPO supervisor trained on agent outputs; eval-determinism and reward-scaling fixes & 6 wk (Jul 20 -- Aug 30) \\
 \hline
-7. Dashboard \& Validation & Next.js dashboard, live system, ablations & 3 wk (Aug 10 -- Aug 31) \\
+7. Dashboard \& Live Integration & Next.js dashboard, live data bridges, paper-trading execution & 6 wk (Jul 27 -- Sep 6) \\
+\hline
+8. Encoder Diagnostic \& Rejected Retrains & Systematic audit of encoder retrain variants; none promoted (Ch.~\ref{chap:methodology}) & 3 wk (Aug 10 -- Aug 30) \\
+\hline
+9. Raw-Feature Pivot \& Crypto5 Migration & Encoder retired in favor of engineered features; crypto-only 5-asset panel adopted & 3 wk (Aug 27 -- Sep 16) \\
 \hline
 \end{tabular}
 \normalsize
@@ -168,6 +172,6 @@ The work was organized into seven successive phases, summarized in Table~\ref{ta
 \subsection{Rationale for the Approach}
 \label{subsec:methodology-rationale}
 
-This phase-by-phase structure offered two advantages over a monolithic design-then-build approach. First, it allowed early validation of the encoder and regime detection stages in isolation --- verifying, for instance, that discovered regimes were interpretable and stable before committing to an agent architecture built on top of them. Second, it kept technical risk contained: had the HMM failed to produce meaningful regime clusters, the multi-agent and RL layers could have been redesigned without discarding the data pipeline or encoder work.
+This phase-by-phase structure offered two advantages over a monolithic design-then-build approach. First, it allowed early validation of the encoder and regime detection stages in isolation --- verifying, for instance, that discovered regimes were interpretable and stable before committing to an agent architecture built on top of them. Second, it kept technical risk contained: had the HMM failed to produce meaningful regime clusters, the multi-agent and RL layers could have been redesigned without discarding the data pipeline or encoder work. The overlap in phases 6--9 is itself part of that story: it was the concurrent pressure of RL evaluation work and a systematic encoder audit --- not a planned step --- that surfaced the case for the raw-feature pivot.
 
-The sections of Chapter~\ref{chap:methodology} follow this same phase ordering, each one corresponding to a development stage described above.
+The sections of Chapter~\ref{chap:methodology} broadly follow this same progression; the phase 8--9 findings are folded into the discussion of the layers they ultimately affected (the Regime Encoder and Regime Detection sections) rather than given standalone sections of their own.
