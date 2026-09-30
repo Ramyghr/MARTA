@@ -74,21 +74,29 @@ Table~\ref{tab:gap-comparison} consolidates the gaps identified across the three
 
 \begin{table}[h]
 \centering
+\small
 \caption{Comparison of MARTA against representative prior systems}
 \label{tab:gap-comparison}
-\begin{tabular}{|l|c|c|c|c|}
+\begin{tabular}{|p{2.6cm}|>{\centering\arraybackslash}p{2.8cm}|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{2.1cm}|>{\centering\arraybackslash}p{2.6cm}|}
 \hline
 \textbf{System} & \textbf{Learned regime repr.} & \textbf{Multi-agent reasoning} & \textbf{Adaptive execution} & \textbf{Interpretable} \\
 \hline
 HMM regime filters \cite{questdb-hmm} & Partial (hand-features) & No & No & Yes \\
+\hline
 FinRL \cite{finrl2020} & No & No & Yes (RL) & Partial \\
+\hline
 HMM + FinRL \cite{hmm-finrl-2025} & Partial (hand-features) & No & Yes (RL) & Partial \\
+\hline
 TradingGPT \cite{tradinggpt2023} & No & Yes & No & Partial \\
+\hline
 FinAgent \cite{finagent2024} & No & Partial (single agent) & No & Yes \\
+\hline
 TradingAgents \cite{tradingagents2024} & No & Yes & No & Yes \\
+\hline
 \textbf{MARTA (this work)} & \textbf{Yes (Gaussian HMM, engineered feats.)} & \textbf{Yes (5 agents)} & \textbf{Yes (PPO)} & \textbf{Yes} \\
 \hline
 \end{tabular}
+\normalsize
 \end{table}
 
 No system reviewed combines a learned regime representation, multi-agent reasoning conditioned on that representation, and an adaptive execution layer in a single pipeline. This is precisely the combination MARTA proposes: a Gaussian Hidden Markov Model fit directly on engineered market features learns the regime representation, producing an explicit probabilistic regime posterior rather than the hand-tuned volatility thresholds that ad hoc regime filters rely on; this representation conditions the multi-agent debate that LLM trading systems otherwise perform without any explicit regime signal; and a PPO-based execution supervisor \cite{ppo2017} translates the resulting recommendation into position sizing, closing the loop that regime-detection-only systems leave open.

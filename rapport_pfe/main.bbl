@@ -1,5 +1,11 @@
 \begin{thebibliography}{10}
 
+\bibitem{crispdm2000}
+Pete Chapman, Julian Clinton, Randy Kerber, Thomas Khabaza, Thomas Reinartz,
+  Colin Shearer, and Rudiger Wirth.
+\newblock Crisp-dm 1.0: Step-by-step data mining guide.
+\newblock Technical report, SPSS Inc., 2000.
+
 \bibitem{hamilton1989}
 James~D. Hamilton.
 \newblock A new approach to the economic analysis of nonstationary time series

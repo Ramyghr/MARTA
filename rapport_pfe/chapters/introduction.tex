@@ -126,6 +126,40 @@ This scope reflects the project's nature as an applied research contribution dem
 
 Given the exploratory, research-oriented nature of MARTA, a rigid upfront specification was not appropriate: each architectural layer's design depended on empirical results from the layer built before it (e.g., the number and structure of latent regimes discovered by the HMM directly shaped how agent prompts were engineered). The project therefore followed an \textbf{iterative, layer-by-layer methodology}, where each phase produced a working, evaluable component before the next was started, rather than a big-bang integration at the end.
 
+\subsection{Development Methodology: CRISP-DM}
+\label{subsec:crispdm-methodology}
+
+MARTA's process follows CRISP-DM (Cross-Industry Standard Process for Data Mining) \cite{crispdm2000}, whose six canonical phases --- Business Understanding, Data Understanding, Data Preparation, Modeling, Evaluation, and Deployment --- structure both the project's actual work and this report's own chapter layout (Table~\ref{tab:crispdm-mapping}).
+
+CRISP-DM's defining property is that it is not a one-way pipeline: it explicitly allows evaluation in one phase to send the project back to an earlier one, and MARTA's own revision history is a direct instance of this rather than a deviation from a plan. Three examples recur throughout Chapter~\ref{chap:methodology}: evaluating the regime encoder against a raw-feature baseline (Evaluation) found it underperforming and sent the design back to Modeling, where the HMM was refit directly on engineered features instead (Section~\ref{subsec:encoder-refinement}); evaluating the resulting model against the original four-asset panel (Evaluation) found it had collapsed onto asset identity rather than market regime, sending the project back to Data Preparation to redefine the asset panel itself (Section~\ref{subsec:regime-asset-panel-revision}); and evaluating the RL execution layer's ablation (Evaluation) found no configuration beat buy-and-hold, changing the Deployment phase's default signal source accordingly (Section~\ref{subsec:rl-final-decision}). Table~\ref{tab:phases}'s nine work-plan phases are this same six-phase cycle instantiated concretely for MARTA, several of them spanning more than one CRISP-DM phase where a revision folded two stages back together.
+
+\begin{table}[h]
+\centering
+\small
+\caption{CRISP-DM phases mapped to where each is documented in this report}
+\label{tab:crispdm-mapping}
+\begin{tabular}{|l|p{9.5cm}|}
+\hline
+\textbf{CRISP-DM Phase} & \textbf{Report Section(s)} \\
+\hline
+Business Understanding & Section~\ref{sec:problem-statement} (Problem Statement), Section~\ref{sec:proposed-solution} (Proposed Solution), Section~\ref{sec:objectives-scope} (Objectives and Scope) \\
+\hline
+Data Understanding & Section~\ref{subsec:data-sources} (Data Sources and Coverage); Section~\ref{subsec:regime-asset-panel-revision} (Asset Panel Revision) \\
+\hline
+Data Preparation & Section~\ref{subsec:pipeline-stages} (Pipeline Stages), Section~\ref{subsec:train-val-test-split} (Train/Validation/Test Split) \\
+\hline
+Modeling & Section~\ref{sec:regime-encoder-methodology} (Regime Encoder), Section~\ref{sec:regime-detection-methodology} (Regime Detection), Section~\ref{sec:multi-agent-methodology} (Multi-Agent Deliberation), Section~\ref{sec:rl-execution-methodology} (RL Execution Agent) \\
+\hline
+Evaluation & Section~\ref{sec:evaluation-methodology-full} (Evaluation Methodology), Chapter~\ref{chap:results} (Results) \\
+\hline
+Deployment & Section~\ref{sec:dashboard-methodology} (Dashboard and Live System) \\
+\hline
+\end{tabular}
+\normalsize
+\end{table}
+
+This mapping tracks Chapter~\ref{chap:methodology}'s own section order, which follows the same Data $\to$ Modeling $\to$ Evaluation $\to$ Deployment sequence without having been deliberately arranged to do so.
+
 \subsection{Development Phases}
 \label{subsec:development-phases}
 
@@ -136,27 +170,27 @@ The work was organized into nine phases, summarized in Table~\ref{tab:phases} an
 \small
 \caption{MARTA development phases}
 \label{tab:phases}
-\begin{tabular}{|p{4.6cm}|p{5.4cm}|p{3.3cm}|}
+\begin{tabular}{|p{3.6cm}|p{4.4cm}|p{2.5cm}|p{2.6cm}|}
 \hline
-\textbf{Phase} & \textbf{Deliverable} & \textbf{Duration \& dates} \\
+\textbf{Phase} & \textbf{Deliverable} & \textbf{Duration \& dates} & \textbf{CRISP-DM Phase(s)} \\
 \hline
-1. Literature Review \& Architecture Design & State-of-the-art survey, 5-layer design & 8 wk (Mar 16 -- May 10) \\
+1. Literature Review \& Architecture Design & State-of-the-art survey, 5-layer design & 8 wk (Mar 16 -- May 10) & Business Understanding \\
 \hline
-2. Data Pipeline \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 11 -- May 24) \\
+2. Data Pipeline \& Feature Engineering & Cleaned multi-asset hourly dataset (2018--2025) & 2 wk (May 11 -- May 24) & Data Preparation \\
 \hline
-3. Regime Encoder (TFT + InfoNCE) --- v1 & Trained TFT + InfoNCE encoder (later superseded, Ch.~\ref{chap:methodology}) & 3 wk (May 25 -- Jun 14) \\
+3. Regime Encoder (TFT + InfoNCE) --- v1 & Trained TFT + InfoNCE encoder (later superseded, Ch.~\ref{chap:methodology}) & 3 wk (May 25 -- Jun 14) & Modeling \\
 \hline
-4. Regime Detection (HMM) & Gaussian HMM over encoder embeddings (later refit on raw features, Ch.~\ref{chap:methodology}) & 2 wk (Jun 15 -- Jun 28) \\
+4. Regime Detection (HMM) & Gaussian HMM over encoder embeddings (later refit on raw features, Ch.~\ref{chap:methodology}) & 2 wk (Jun 15 -- Jun 28) & Modeling \\
 \hline
-5. Multi-Agent System & 5-agent LLM debate pipeline & 3 wk (Jun 29 -- Jul 19) \\
+5. Multi-Agent System & 5-agent LLM debate pipeline & 3 wk (Jun 29 -- Jul 19) & Modeling \\
 \hline
-6. RL Execution Agent \& Evaluation Fixes & PPO supervisor trained on agent outputs; eval-determinism and reward-scaling fixes & 6 wk (Jul 20 -- Aug 30) \\
+6. RL Execution Agent \& Evaluation Fixes & PPO supervisor trained on agent outputs; eval-determinism and reward-scaling fixes & 6 wk (Jul 20 -- Aug 30) & Modeling, Evaluation \\
 \hline
-7. Dashboard \& Live Integration & Next.js dashboard, live data bridges, paper-trading execution & 6 wk (Jul 27 -- Sep 6) \\
+7. Dashboard \& Live Integration & Next.js dashboard, live data bridges, paper-trading execution & 6 wk (Jul 27 -- Sep 6) & Deployment \\
 \hline
-8. Encoder Diagnostic \& Rejected Retrains & Systematic audit of encoder retrain variants; none promoted (Ch.~\ref{chap:methodology}) & 3 wk (Aug 10 -- Aug 30) \\
+8. Encoder Diagnostic \& Rejected Retrains & Systematic audit of encoder retrain variants; none promoted (Ch.~\ref{chap:methodology}) & 3 wk (Aug 10 -- Aug 30) & Evaluation \\
 \hline
-9. Raw-Feature Pivot \& Crypto5 Migration & Encoder retired in favor of engineered features; crypto-only 5-asset panel adopted & 3 wk (Aug 27 -- Sep 16) \\
+9. Raw-Feature Pivot \& Crypto5 Migration & Encoder retired in favor of engineered features; crypto-only 5-asset panel adopted & 3 wk (Aug 27 -- Sep 16) & Data Understanding, Data Preparation, Modeling \\
 \hline
 \end{tabular}
 \normalsize
