@@ -1,0 +1,20 @@
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {1.1}{\ignorespaces MARTA's five-layer pipeline, grouped according to the two-part problem statement of Section~\ref {subsec:formal-problem}. Each layer is detailed in Chapter~\ref {chap:methodology}.}}{4}{}%
+\contentsline {figure}{\numberline {1.2}{\ignorespaces Project planning Gantt chart}}{10}{}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Use case diagram: actors, use cases, and \texttt {<<include>>}/\texttt {<<uses>>} relationships across the five layers.}}{17}{}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Class diagram: agent hierarchy, debate data classes, and RL environment/policy classes.}}{18}{}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Sequence diagram: one hourly decision cycle, from a new OHLCV bar to a placed paper order and dispatched alert.}}{19}{}%
+\contentsline {figure}{\numberline {3.4}{\ignorespaces Deployment diagram: Docker containers, mounted volumes, the host-process LLM, and external service dependencies.}}{20}{}%
+\contentsline {figure}{\numberline {3.5}{\ignorespaces Contrastive pretraining of the regime encoder: two augmented views of the same window are encoded with shared weights and pulled together in embedding space, while other windows in the mini-batch act as negatives pushed apart by the NT-Xent loss.}}{23}{}%
+\contentsline {figure}{\numberline {3.6}{\ignorespaces Regime detection pipeline: engineered features $\to $ BIC-guided state-count search $\to $ best-of-5-seed Gaussian HMM fit $\to $ regime probability stream, consumed by Layers 3 and 4.}}{26}{}%
+\contentsline {figure}{\numberline {3.7}{\ignorespaces Multi-agent deliberation flow: Round 1 (three LLM directional agents plus the deterministic Risk agent), the conditional Contrarian check and Round 2 rebuttals, and the deterministic Fund Manager synthesis producing the final decision.}}{31}{}%
+\contentsline {figure}{\numberline {3.8}{\ignorespaces RL execution agent: the shared policy trunk feeds a Categorical direction head and a Beta position-fraction head, whose combined output is executed by the environment and scored by the CVaR-normalized reward, producing the next observation.}}{33}{}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Per-regime historical Sharpe (bars, left axis) and annualized volatility (line, right axis), six-state five-asset 22-column configuration. Time-share annotations below each bar show the fraction of pooled 2018--2025 hours spent in that regime.}}{45}{}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Absolute Sharpe ratio per ablation row against the buy-and-hold reference (dashed line, Sharpe 1.498). Error bars show the 95\% block-bootstrap confidence interval on the Sharpe delta, re-centered onto the absolute Sharpe axis; bar color follows the significance verdict of Table~\ref {tab:rl-ablation-crypto5}.}}{51}{}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces BTC-only weekly-cadence grid: the pre-registered checkpoint's $\Delta $ Sharpe vs.\ buy-hold on 2024 validation (blue) against the same checkpoint's $\Delta $ on 2025 test (red/green), from Table~\ref {tab:rl-weekly-2025}. Diamonds show the individual-seed 2024 $\Delta $ values of Table~\ref {tab:rl-weekly-grid} as context for the spread the pre-registered checkpoint was drawn from. Conditions A and B flip sign between the two years; C and D do not.}}{53}{}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces Crypto5 panel extension, 2025-only $\Delta $ Sharpe vs.\ buy-hold per asset and condition (Table~\ref {tab:rl-weekly-crypto5-2025}). ETH is the one asset where all four conditions, including both the real regime condition (C) and its noise control (D), lose to buy-hold.}}{55}{}%
+\addvspace {10\p@ }
+\addvspace {10\p@ }

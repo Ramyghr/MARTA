@@ -1,0 +1,43 @@
+@startuml architecture_overview
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+skinparam linetype ortho
+
+package "External Data Sources" {
+  [Binance / CCXT\n(BTC, ETH, BNB, LTC, XRP — hourly)] as Binance
+  [News / Sentiment Feeds\n(StockTwits, Fear&Greed, RSS)] as News
+  [Ollama\n(Mistral 7B Instruct)] as Ollama
+}
+
+package "MARTA Pipeline" {
+  [Layer 1\nFeature Engineering\n(22 indicators / asset)] as L1
+  [Layer 2\nRegime Detection\n(Gaussian HMM, 6 states)] as L2
+  [Layer 3\nMulti-Agent Deliberation\n(5 LLM agents)] as L3
+  [Layer 4\nRL Execution\n(PPO + GARCH/CVaR)] as L4
+  [Layer 5\nDashboard & Live Bridge\n(FastAPI + Next.js)] as L5
+
+  L1 -down-> L2
+  L2 -down-> L3
+  L3 -down-> L4
+  L4 -down-> L5
+}
+
+package "Outputs" {
+  [Trade Signal\n(direction + position size)] as Signal
+  [Alpaca Paper\nExecution] as Alpaca
+  [Telegram\nAlerts] as Telegram
+  [Dashboard UI] as DashUI
+}
+
+Binance --> L1
+News --> L3
+Ollama --> L3
+
+L2 ..> L4 : regime probs
+L3 ..> L4 : consensus
+
+L4 --> Signal
+Signal --> Alpaca
+Signal --> Telegram
+L5 --> DashUI
+@enduml

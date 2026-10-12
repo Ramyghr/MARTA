@@ -91,6 +91,13 @@ R5 & Extreme Volatility / Trending & $-0.44$ & $-82.7\%$ & $189.8\%$ & $9.0\%$ &
 \normalsize
 \end{table}
 
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{images/regime_characterization_barplot.png}
+    \caption{Per-regime historical Sharpe (bars, left axis) and annualized volatility (line, right axis), six-state five-asset 22-column configuration. Time-share annotations below each bar show the fraction of pooled 2018--2025 hours spent in that regime.}
+    \label{fig:regime-characterization}
+\end{figure}
+
 Read purely as descriptive statistics, R0 and R5 resemble a natural short-or-avoid signal and R4 a natural long signal. Section~\ref{subsec:regime-zigzag} tests this reading directly at the level of individual price legs rather than accepting it at face value, and finds that it does not hold: these historical averages describe each state's unconditional population history over 2018--2025, not a leg-by-leg or forward-looking predictive property, and R4 in particular is dominant on \emph{more} down-legs than up-legs despite carrying the highest historical Sharpe of any state.
 
 \subsection{Downstream Value: Position Sizing and Directional Conditioning}
@@ -294,6 +301,13 @@ Following the panel migration of the RL environment itself (asset sizing and por
 \normalsize
 \end{table}
 
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{images/rl_ablation_barplot.png}
+    \caption{Absolute Sharpe ratio per ablation row against the buy-and-hold reference (dashed line, Sharpe 1.498). Error bars show the 95\% block-bootstrap confidence interval on the Sharpe delta, re-centered onto the absolute Sharpe axis; bar color follows the significance verdict of Table~\ref{tab:rl-ablation-crypto5}.}
+    \label{fig:rl-ablation}
+\end{figure}
+
 Rows 1--2 isolate observation mode: dropping the regime-probability block improved Sharpe by roughly 1.5 points, consistent with a lookahead-bias defect identified independently (the HMM decode smooths over the entire concatenated sequence, so a regime probability at any training-split timestamp is influenced by data after it) --- but both configurations remained significantly worse than buy-and-hold, so removing the leaky feature alone was not sufficient. Row 3 isolates reward shaping: benchmark-relative reward plus a longer minimum hold narrowed the gap further without resolving it, and the policy was still trading almost as often (5{,}991 trades). Row 4, behavior-cloning warm-start from a buy-hold teacher, is the only configuration not significantly different from buy-and-hold --- but at only ten meaningful trades over a full year, and given a per-feature predictability check (Section~\ref{subsec:rl-ceiling-check}) finding only a modest directional edge exists at all, this result cannot be confirmed as a genuine edge over its own teacher rather than a faithful reproduction of it; both readings are consistent with the data at this sample size. Row 5 tested whether the continuous Beta position head itself was driving excess trading; it was not --- with a minimum hold seven times longer than row 3's, the discrete policy still traded roughly once every 8.5 days, almost exactly at the minimum-hold floor, and did not clear the pre-registered zero-Sharpe gate.
 
 \subsection{Predictability Ceiling Check}
@@ -333,6 +347,13 @@ With both fixes in place, a smoke test (two configurations, one seed each) clear
 \end{tabular}
 \normalsize
 \end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{images/weekly_grid_2024_2025_barplot.png}
+    \caption{BTC-only weekly-cadence grid: the pre-registered checkpoint's $\Delta$ Sharpe vs.\ buy-hold on 2024 validation (blue) against the same checkpoint's $\Delta$ on 2025 test (red/green), from Table~\ref{tab:rl-weekly-2025}. Diamonds show the individual-seed 2024 $\Delta$ values of Table~\ref{tab:rl-weekly-grid} as context for the spread the pre-registered checkpoint was drawn from. Conditions A and B flip sign between the two years; C and D do not.}
+    \label{fig:weekly-grid-2024-2025}
+\end{figure}
 
 None of the twelve 95\% confidence intervals excludes zero (widest, $[-1.93, 3.10]$; the narrowest still crosses it). Two things are simultaneously true and neither cancels the other: twelve of twelve independently trained runs beat buy-and-hold at the point estimate, which has not occurred for any prior configuration across this project's history; and zero of twelve individually reach significance, with confidence intervals this wide at only 52 weekly observations per validation pass. A naive sign-test argument over twelve independent trials does not apply here, because the trials are not independent in the sense that argument requires: all twelve runs are evaluated against the identical single 2024 market window, so consistent point-estimate wins are equally consistent with ``2024 favored a weekly-committed directional strategy generally'' as with any genuine, architecture-specific skill. Condition D, an explicit noise control carrying no real regime information, performs in the same range as condition C, the real regime condition --- consistent with every other regime-conditioning test in this chapter (Section~\ref{subsec:regime-downstream-value}) finding no measurable, noise-control-surviving value from regime conditioning.
 
@@ -399,6 +420,13 @@ XRP & +2.41 & --0.08 & +0.01 & +1.18 \\
 \end{tabular}
 \normalsize
 \end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{images/weekly_grid_crypto5_2025_barplot.png}
+    \caption{Crypto5 panel extension, 2025-only $\Delta$ Sharpe vs.\ buy-hold per asset and condition (Table~\ref{tab:rl-weekly-crypto5-2025}). ETH is the one asset where all four conditions, including both the real regime condition (C) and its noise control (D), lose to buy-hold.}
+    \label{fig:weekly-grid-crypto5-2025}
+\end{figure}
 
 The 2024 pattern (18/20 positive) weakens to 11/20 positive on the 2025 out-of-window check --- close to a coin flip --- and \textbf{ETH reverses completely: all four conditions lose to buy-hold in 2025}, having looked positive in the 2024 pilot. This is the identical favorable-year-artifact signature already found for BTC alone, now independently reproduced on a second asset. Condition C shows no separation from D on either split, on any asset.
 
