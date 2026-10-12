@@ -234,22 +234,23 @@ _STRATEGIES: dict[str, dict[str, object]] = {
 }
 
 # The one non-rule-based entry: native weekly-cadence (decision_interval=168) PPO
-# checkpoints (rl/train_weekly_smoketest.py) — see ppo_strategy_backtest.py, which is
-# where the actual model loading/inference lives (kept out of this file so its torch/
-# stable-baselines3 imports don't load for the 10 rule-based strategies above). Both
-# validated positive Sharpe on BTC_USDT (~2.04 raw, ~1.74 raw_regime — CLAUDE.md's
-# "Dense BTC debate coverage" section) — only asset this pair was trained/evaluated on,
-# so unlike every other strategy here these two are BTC_USDT-only, enforced in
-# run_backtest() below rather than left to silently produce a meaningless result on
-# a different asset's price series.
+# checkpoints — see ppo_strategy_backtest.py, which is where the actual model
+# loading/inference lives (kept out of this file so its torch/stable-baselines3 imports
+# don't load for the 10 rule-based strategies above). Originally wired up BTC_USDT-only
+# (CLAUDE.md's "Dense BTC debate coverage" section: ~2.04 raw, ~1.74 raw_regime Sharpe);
+# rl/train_weekly_crypto5_grid.py later trained the same pair independently on all 5
+# crypto5 assets (4 seeds each — CLAUDE.md's "Weekly-cadence PPO grid" sections), and
+# this now picks those up too, so these two are available on any CANONICAL_ASSETS entry,
+# gated per-asset in run_backtest()/list_strategies() by whether that asset's seed-0
+# checkpoint actually exists on disk.
 _PPO_STRATEGIES: dict[str, dict[str, object]] = {
     "weekly_ppo_raw": {
         "label": "Weekly PPO (raw)", "category": "Advanced", "obs_mode": "raw",
-        "description": "Trained PPO policy, decides once a week from 60h of raw price/indicator history. BTC/USDT only.",
+        "description": "Trained PPO policy, decides once a week from 60h of raw price/indicator history.",
     },
     "weekly_ppo_raw_regime": {
         "label": "Weekly PPO (regime-aware)", "category": "Advanced", "obs_mode": "raw_regime",
-        "description": "Same weekly PPO policy, additionally conditioned on the crypto5 HMM regime probability vector. BTC/USDT only.",
+        "description": "Same weekly PPO policy, additionally conditioned on the crypto5 HMM regime probability vector.",
     },
 }
 
@@ -273,16 +274,16 @@ _LOCKED_STRATEGIES: list[dict[str, str]] = [
 
 def list_strategies(asset: str | None = None) -> dict:
     """``asset`` is optional so this endpoint still works unscoped (e.g. a first page
-    load before any asset is known), but when provided, the weekly-PPO strategies —
-    BTC_USDT-only by training, see the run_backtest() check below — are locked for any
-    other asset. Without this, the frontend would let a user select+run them for e.g.
-    ETH_USDT and only find out via a 400 from /api/backtest/run after clicking Run."""
+    load before any asset is known), but when provided, the weekly-PPO strategies are
+    locked unless that specific asset's checkpoint actually exists on disk. Without
+    this, the frontend would let a user select+run them for an asset with no trained
+    checkpoint and only find out via a 400 from /api/backtest/run after clicking Run."""
     strategies = [
         {"id": sid, "label": s["label"], "category": s["category"], "description": s["description"], "locked": False}
         for sid, s in _STRATEGIES.items()
     ]
-    checkpoints_available = ppo_strategy_backtest.available()
-    asset_ok = asset is None or asset == "BTC_USDT"
+    asset_ok = asset is None or asset in ppo_strategy_backtest.CANONICAL_ASSETS
+    checkpoints_available = ppo_strategy_backtest.available(asset if asset_ok else None)
     strategies += [
         {
             "id": sid, "label": s["label"], "category": s["category"], "description": s["description"],
@@ -346,11 +347,18 @@ def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) 
     is_ppo = strategy in _PPO_STRATEGIES
     if not is_ppo and strategy not in _STRATEGIES:
         raise ValueError(f"Unknown or locked strategy: '{strategy}'")
-    if is_ppo and asset != ppo_strategy_backtest.ASSET:
-        raise ValueError(
-            f"'{strategy}' was only trained/evaluated on {ppo_strategy_backtest.ASSET} "
-            f"— pick that asset to run it."
-        )
+    if is_ppo:
+        obs_mode = _PPO_STRATEGIES[strategy]["obs_mode"]
+        if asset not in ppo_strategy_backtest.CANONICAL_ASSETS:
+            raise ValueError(
+                f"'{strategy}' is only available for {ppo_strategy_backtest.CANONICAL_ASSETS} "
+                f"— pick one of those assets to run it."
+            )
+        if not ppo_strategy_backtest.checkpoint_exists(asset, obs_mode):
+            raise ValueError(
+                f"'{strategy}' has no trained checkpoint for {asset} yet — pick a "
+                f"different asset or strategy."
+            )
 
     df = historical._load(asset)
     end_ts = pd.Timestamp(end, tz="UTC") if end else pd.Timestamp.now(tz="UTC")
@@ -370,7 +378,7 @@ def run_backtest(asset: str, strategy: str, start: str | None, end: str | None) 
         # decision only ever sees data up to and including its own decision bar, same
         # no-lookahead guarantee run_backtest() gives every other strategy via the
         # shift(1) below (which is skipped here, not needed twice).
-        positions = ppo_strategy_backtest.run(spec["obs_mode"], window.index).to_numpy()  # type: ignore[arg-type]
+        positions = ppo_strategy_backtest.run(spec["obs_mode"], window.index, asset).to_numpy()  # type: ignore[arg-type]
     else:
         spec = _STRATEGIES[strategy]
         signal_fn: Callable[[pd.Series], pd.Series] = spec["fn"]  # type: ignore[assignment]

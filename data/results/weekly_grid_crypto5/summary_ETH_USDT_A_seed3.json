@@ -1,0 +1,11 @@
+{
+  "asset": "ETH_USDT",
+  "label": "A",
+  "obs_mode": "raw",
+  "seed": 3,
+  "sharpe": 2.3632319526665544,
+  "total_return": 0.713714983964777,
+  "max_drawdown": 0.0909403090136952,
+  "n_meaningful_trades": 32,
+  "train_wall_seconds": 240.10708594322205
+}

@@ -127,6 +127,13 @@ async def lifespan(app: FastAPI):
     ppo_inference.load_model()
     import signal_scheduler
     signal_scheduler.start()
+
+    # Warm historical.py's per-asset candle cache immediately on boot rather than
+    # waiting for the first hourly tick (signal_scheduler._warm_historical_cache) — a
+    # fresh restart is exactly when a real user's first dashboard page load would
+    # otherwise pay the multi-second-to-10s ccxt backfill cold-cache cost (see
+    # historical.warm_cache's docstring).
+    asyncio.create_task(asyncio.to_thread(historical.warm_cache, signal_scheduler._ACTIVE_ASSETS))
     # live_feed.start_forex_feed() — NOT started (2026-09-01). EURUSD/GOLD were dropped
     # from /api/assets by the crypto-only migration (RESULTS_AND_METHODOLOGY.md Section 7)
     # and have no remaining frontend consumer, but this Twelve Data poll loop kept running

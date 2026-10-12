@@ -22,6 +22,14 @@ ALPACA_SYMBOLS = {
     "ETH_USDT": "ETH/USD",
 }
 
+# Skip rebalancing when the already-held position is within this fraction of the
+# target — mirrors paper_db.MIN_TRADE_SIZE so "stay long 2%" doesn't look like a new
+# trade on either ledger. Without this, place_order() used to submit a fresh BUY for
+# the full target notional on every tick the signal stayed "long", so the real Alpaca
+# account's exposure silently grew far past what paper_db (the dashboard's logical
+# source of truth) believed was held.
+MIN_REBALANCE_FRACTION = 0.001
+
 
 def is_configured() -> bool:
     return bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
@@ -93,12 +101,29 @@ def place_order(asset: str, action: str, position_size: float, current_price: fl
         from alpaca.trading.requests import MarketOrderRequest
 
         account = client.get_account()
-        notional = round(float(account.portfolio_value) * position_size, 2)
+        portfolio_value = float(account.portfolio_value)
+
+        # Reconcile against what this symbol is already holding on the real account —
+        # only trade the delta to reach `position_size`, not the full target every time.
+        # Alpaca's positions endpoint wants the symbol WITHOUT the slash (e.g. "BTCUSD"),
+        # unlike submit_order's "BTC/USD" — confirmed empirically, a slash here 404s.
+        try:
+            current_position = client.get_open_position(alpaca_symbol.replace("/", ""))
+            current_fraction = float(current_position.market_value) / portfolio_value if portfolio_value else 0.0
+        except Exception:
+            current_fraction = 0.0  # no open position for this symbol
+
+        delta_fraction = position_size - current_fraction
+        if abs(delta_fraction) < MIN_REBALANCE_FRACTION:
+            return {"source": "alpaca", "action": "hold", "order_id": None, "reason": "already at target position"}
+
+        side = OrderSide.BUY if delta_fraction > 0 else OrderSide.SELL
+        notional = round(abs(portfolio_value * delta_fraction), 2)
 
         order = client.submit_order(MarketOrderRequest(
             symbol=alpaca_symbol,
             notional=notional,
-            side=OrderSide.BUY,
+            side=side,
             time_in_force=TimeInForce.GTC,
         ))
 
@@ -108,6 +133,7 @@ def place_order(asset: str, action: str, position_size: float, current_price: fl
             "status": str(order.status),
             "symbol": alpaca_symbol,
             "notional": notional,
+            "side": str(side),
             "action": action,
         }
     except Exception as e:

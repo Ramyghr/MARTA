@@ -1,0 +1,294 @@
+[02:40:57] INFO     Device: cuda | quick=False | eval_only=False |              
+                    benchmark_relative=False | obs_mode=raw_regime              
+           INFO     ✓ Regime stream: 6 states, 334,355 rows, 2018-05-13 →       
+                    2025-12-31                                                  
+/home/ramy/miniconda3/envs/marta/lib/python3.11/site-packages/mlflow/tracking/_tracking_service/utils.py:184: FutureWarning: The filesystem tracking backend (e.g., './mlruns') is deprecated as of February 2026. Consider transitioning to a database backend (e.g., 'sqlite:///mlflow.db') to take advantage of the latest MLflow features. See https://mlflow.org/docs/latest/self-hosting/migrate-from-file-store for migration guidance.
+  return FileStore(store_uri, store_uri)
+           INFO     obs_mode='raw_regime' — skipping encoder load and freshness 
+                    guard (no encoder involved in this mode)                    
+[02:40:58] INFO     Sanity check: mean_reward=-0.0930, mean_position=0.4171     
+           INFO     ✓ Environment sanity check PASSED                           
+Using cuda device
+[02:41:01] INFO     Starting PPO curriculum training: 1,400,000 total steps, 5  
+                    phases                                                      
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 435      |
+|    ep_rew_mean     | -23.2    |
+| time/              |          |
+|    fps             | 2285     |
+|    iterations      | 1        |
+|    time_elapsed    | 1        |
+|    total_timesteps | 4096     |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 450         |
+|    ep_rew_mean          | -16.9       |
+| time/                   |             |
+|    fps                  | 1183        |
+|    iterations           | 2           |
+|    time_elapsed         | 6           |
+|    total_timesteps      | 8192        |
+| train/                  |             |
+|    approx_kl            | 0.017492129 |
+|    clip_fraction        | 0.167       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1.01       |
+|    explained_variance   | 0.00107     |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.094      |
+|    n_updates            | 10          |
+|    policy_gradient_loss | -0.0275     |
+|    value_loss           | 0.149       |
+-----------------------------------------
+[02:41:27] INFO      phase 1/5 (BTC_USDT) step=10000 val_sharpe=-2.292          
+                    thresh=0.00 n_trades=2300                                   
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 457         |
+|    ep_rew_mean          | -16.5       |
+| time/                   |             |
+|    fps                  | 450         |
+|    iterations           | 3           |
+|    time_elapsed         | 27          |
+|    total_timesteps      | 12288       |
+| train/                  |             |
+|    approx_kl            | 0.020669758 |
+|    clip_fraction        | 0.221       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -1          |
+|    explained_variance   | -0.135      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0473     |
+|    n_updates            | 20          |
+|    policy_gradient_loss | -0.0336     |
+|    value_loss           | 0.0863      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 477         |
+|    ep_rew_mean          | -17.2       |
+| time/                   |             |
+|    fps                  | 506         |
+|    iterations           | 4           |
+|    time_elapsed         | 32          |
+|    total_timesteps      | 16384       |
+| train/                  |             |
+|    approx_kl            | 0.024426538 |
+|    clip_fraction        | 0.261       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.994      |
+|    explained_variance   | -0.181      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.11       |
+|    n_updates            | 30          |
+|    policy_gradient_loss | -0.0389     |
+|    value_loss           | 0.0672      |
+-----------------------------------------
+[02:41:54] INFO      phase 1/5 (BTC_USDT) step=20000 val_sharpe=-1.968          
+                    thresh=0.00 n_trades=3504                                   
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 487         |
+|    ep_rew_mean          | -17.9       |
+| time/                   |             |
+|    fps                  | 385         |
+|    iterations           | 5           |
+|    time_elapsed         | 53          |
+|    total_timesteps      | 20480       |
+| train/                  |             |
+|    approx_kl            | 0.025644211 |
+|    clip_fraction        | 0.279       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.971      |
+|    explained_variance   | -0.274      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.124      |
+|    n_updates            | 40          |
+|    policy_gradient_loss | -0.0491     |
+|    value_loss           | 0.0635      |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 493         |
+|    ep_rew_mean          | -18.3       |
+| time/                   |             |
+|    fps                  | 422         |
+|    iterations           | 6           |
+|    time_elapsed         | 58          |
+|    total_timesteps      | 24576       |
+| train/                  |             |
+|    approx_kl            | 0.027697029 |
+|    clip_fraction        | 0.305       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.96       |
+|    explained_variance   | -0.106      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0846     |
+|    n_updates            | 50          |
+|    policy_gradient_loss | -0.0428     |
+|    value_loss           | 0.105       |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 520         |
+|    ep_rew_mean          | -18.4       |
+| time/                   |             |
+|    fps                  | 453         |
+|    iterations           | 7           |
+|    time_elapsed         | 63          |
+|    total_timesteps      | 28672       |
+| train/                  |             |
+|    approx_kl            | 0.026018668 |
+|    clip_fraction        | 0.286       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.957      |
+|    explained_variance   | 0.0204      |
+|    learning_rate        | 0.0003      |
+|    loss                 | -0.0729     |
+|    n_updates            | 60          |
+|    policy_gradient_loss | -0.0365     |
+|    value_loss           | 0.0939      |
+-----------------------------------------
+[02:42:24] INFO      phase 1/5 (BTC_USDT) step=30000 val_sharpe=-3.116          
+                    thresh=0.00 n_trades=3600                                   
+           WARNING   early stop: val_sharpe < -0.5 for 3 evals                  
+           INFO     Training complete. best_sharpe=-1.968 early_stopped=True    
+           INFO     Evaluating ppo_best.zip (best val Sharpe), not the final    
+                    model                                                       
+           INFO     Evaluating PPO on validation set (2024-01-01 .. 2024-12-31) 
+[02:42:42] INFO     Evaluation written to                                       
+                    data/results/ppo_evaluation_crypto5_raw_regime.json         
+           INFO      running variant 'buy_hold' {'regime': False, 'agents':     
+                    False, 'ppo': False}                                        
+           INFO      running variant 'rsi_strategy' {'regime': False, 'agents': 
+                    False, 'ppo': False, 'strategy': 'rsi'}                     
+           INFO      running variant 'ma_crossover' {'regime': False, 'agents': 
+                    False, 'ppo': False, 'strategy': 'ma'}                      
+[02:42:43] INFO      running variant 'ppo_no_regime' {'regime': False, 'agents':
+                    False, 'ppo': True}                                         
+[02:42:44] INFO      running variant 'agents_no_regime' {'regime': False,       
+                    'agents': True, 'ppo': False}                               
+[02:42:46] INFO      running variant 'ppo_agents_no_regime' {'regime': False,   
+                    'agents': True, 'ppo': True}                                
+[02:42:49] INFO      running variant 'marta_full' {'regime': True, 'agents':    
+                    True, 'ppo': True}                                          
+[02:42:58] INFO     Ablation results written to                                 
+                    data/results/ablation_results_crypto5_raw_regime.json       
+[02:43:07] INFO     BTC_USDT: Sharpe=-1.978 MaxDD=35.1% Trades=3505             
+                    HoldRatio=43.9%                                             
+[02:43:17] INFO     ETH_USDT: Sharpe=-2.166 MaxDD=43.0% Trades=3683             
+                    HoldRatio=42.6%                                             
+[02:43:26] INFO     BNB_USDT: Sharpe=-3.617 MaxDD=56.4% Trades=3561             
+                    HoldRatio=44.0%                                             
+[02:43:36] INFO     LTC_USDT: Sharpe=-2.136 MaxDD=52.6% Trades=3633             
+                    HoldRatio=40.1%                                             
+[02:43:45] INFO     XRP_USDT: Sharpe=-1.579 MaxDD=51.5% Trades=3609             
+                    HoldRatio=39.1%                                             
+           INFO     Analyzing IN-SAMPLE regime behavior (NOT a performance      
+                    evaluation)                                                 
+[02:43:47] INFO      'March 2020 crash': 2151 steps, 128 regime transitions,    
+                    regimes [0, 1, 2, 3, 4, 5]                                  
+[02:43:49] INFO      '2018 crypto bear': 2201 steps, 108 regime transitions,    
+                    regimes [0, 1, 2, 3, 4, 5]                                  
+           INFO     Regime behavior analysis written to                         
+                    data/results/regime_behavior_analysis.json                  
+─────────────────────────── MARTA Month 3 — Summary ────────────────────────────
+                         Curriculum Phases                          
+┏━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ Phase ┃ Assets ┃ Steps ┃ Sharpe ┃ Threshold ┃        Met?        ┃
+┡━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│     — │ —      │     — │      — │         — │ no phase completed │
+└───────┴────────┴───────┴────────┴───────────┴────────────────────┘
+                      Validation Metrics (MARTA PPO — BTC)                      
+┏━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┓
+┃ sharpe ┃ sortino ┃ max_drawd… ┃ calmar ┃ total_ret… ┃ n_meaning… ┃ mean_tur… ┃
+┡━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━┩
+│ -1.978 │  -2.101 │      0.351 │ -1.046 │   -32.002% │       3505 │   0.06355 │
+└────────┴─────────┴────────────┴────────┴────────────┴────────────┴───────────┘
+           Per-Regime Breakdown           
+┏━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Regime ┃ Steps ┃ Sharpe ┃ Avg Position ┃
+┡━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━┩
+│     R0 │  1330 │ -5.110 │        0.246 │
+│     R1 │  1383 │ -1.196 │        0.313 │
+│     R2 │  1956 │  1.387 │        0.254 │
+│     R3 │  1069 │ -1.766 │        0.263 │
+│     R4 │  2207 │ -2.857 │        0.269 │
+│     R5 │   838 │ -4.972 │        0.214 │
+└────────┴───────┴────────┴──────────────┘
+                      Ablation Study (validation set)                       
+┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Variant              ┃  Sharpe ┃ Sortino ┃ Max DD ┃ Total Ret ┃ N Trades ┃
+┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ buy_hold             │   1.498 │   1.931 │  0.360 │   91.754% │        0 │
+│ rsi_strategy         │  -2.409 │  -1.113 │  0.178 │  -15.376% │      548 │
+│ ma_crossover         │  -1.554 │  -2.169 │  0.264 │  -22.788% │      385 │
+│ ppo_no_regime        │ -11.572 │  -9.397 │  0.573 │  -56.911% │     2061 │
+│ agents_no_regime     │   1.456 │   1.797 │  0.024 │    3.648% │       48 │
+│ ppo_agents_no_regime │ -12.114 │  -9.949 │  0.632 │  -62.915% │     2095 │
+│ marta_full           │  -1.978 │  -2.101 │  0.351 │  -32.002% │     3505 │
+└──────────────────────┴─────────┴─────────┴────────┴───────────┴──────────┘
+            Bootstrap CI — MARTA full vs baseline (Sharpe Δ, 95% CI)            
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ Comparison                    ┃ Δ Sharpe ┃ CI lower ┃ CI upper ┃ Significant ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ marta_full_vs_buy_hold        │   -3.376 │   -6.119 │   -0.620 │     yes     │
+│ marta_full_vs_rsi_strategy    │    0.536 │   -1.800 │    2.712 │     no      │
+│ marta_full_vs_ma_crossover    │   -0.355 │   -2.860 │    2.115 │     no      │
+│ marta_full_vs_ppo_no_regime   │    9.791 │    7.129 │   12.373 │     yes     │
+│ marta_full_vs_agents_no_regi… │   -3.334 │   -6.042 │   -0.694 │     yes     │
+│ marta_full_vs_ppo_agents_no_… │   10.309 │    7.846 │   12.782 │     yes     │
+└───────────────────────────────┴──────────┴──────────┴──────────┴─────────────┘
+Bootstrap CIs use 168-hour blocks (preserves autocorrelation). Standard 
+bootstrap CIs available in ablation_results.json.
+* ppo_no_regime/ppo_agents_no_regime use momentum baseline (PPO collapses
+  on out-of-distribution zero-regime input, confirming regime embedding 
+dependency)
+                  Per-Asset Validation Results                  
+┏━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━┓
+┃ Asset    ┃ Sharpe ┃ Max DD ┃ Trades ┃ Hold % ┃ Avg Trade (h) ┃
+┡━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━┩
+│ BTC_USDT │ -1.978 │  35.1% │   3505 │  43.9% │          13.2 │
+│ ETH_USDT │ -2.166 │  43.0% │   3683 │  42.6% │          12.5 │
+│ BNB_USDT │ -3.617 │  56.4% │   3561 │  44.0% │          11.8 │
+│ LTC_USDT │ -2.136 │  52.6% │   3633 │  40.1% │          12.7 │
+│ XRP_USDT │ -1.579 │  51.5% │   3609 │  39.1% │          13.5 │
+└──────────┴────────┴────────┴────────┴────────┴───────────────┘
+
+IN-SAMPLE Regime Behavior (training-split windows — diagnostic only, NOT a 
+performance claim)
+ March 2020 crash  [2020-02-01 → 
+    2020-04-30]  (IN-SAMPLE)     
+┏━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Regime ┃ Steps ┃ Avg Position ┃
+┡━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━┩
+│     R0 │   124 │       0.2391 │
+│     R1 │   265 │       0.3693 │
+│     R2 │   574 │       0.3400 │
+│     R3 │   478 │       0.3244 │
+│     R4 │   480 │       0.2590 │
+│     R5 │   230 │       0.2165 │
+└────────┴───────┴──────────────┘
+  regime transitions: 128 | mean |Δposition| at boundaries: 0.0600
+ 2018 crypto bear  [2018-11-01 → 
+    2019-01-31]  (IN-SAMPLE)     
+┏━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Regime ┃ Steps ┃ Avg Position ┃
+┡━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━┩
+│     R0 │   291 │       0.3834 │
+│     R1 │   213 │       0.4066 │
+│     R2 │   351 │       0.2957 │
+│     R3 │   580 │       0.3536 │
+│     R4 │   465 │       0.2638 │
+│     R5 │   301 │       0.2982 │
+└────────┴───────┴──────────────┘
+  regime transitions: 108 | mean |Δposition| at boundaries: 0.0481
+
+Phase 1 (BTC) validation Sharpe: -1.978
+MARTA full vs Buy&Hold: ΔSharpe=-3.376 CI=[-6.119, -0.620] significant=True
+Best val Sharpe during training: -1.968
+
+MLflow run: 23c7eaffbde0413881eef73b1d757727
+MLflow UI: http://127.0.0.1:5000  (run `mlflow ui`)

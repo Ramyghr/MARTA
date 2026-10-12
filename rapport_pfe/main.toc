@@ -20,7 +20,7 @@
 \contentsline {subsection}{\numberline {1.6.2}Non-Functional Requirements}{6}{}%
 \contentsline {section}{\numberline {1.7}Project Methodology and Work Planning}{7}{}%
 \contentsline {subsection}{\numberline {1.7.1}Choice of Methodology: CRISP-DM over Sprint-Based Agile}{7}{}%
-\contentsline {subsection}{\numberline {1.7.2}Development Methodology: CRISP-DM}{8}{}%
+\contentsline {subsection}{\numberline {1.7.2}Development Methodology: CRISP-DM}{7}{}%
 \contentsline {subsection}{\numberline {1.7.3}Development Phases}{8}{}%
 \contentsline {subsection}{\numberline {1.7.4}Rationale for the Approach}{9}{}%
 \contentsline {chapter}{\numberline {2}State of the Art}{11}{}%
@@ -84,8 +84,8 @@
 \contentsline {subsection}{\numberline {3.8.2}Ablation Design}{35}{}%
 \contentsline {subsection}{\numberline {3.8.3}Statistical Testing}{35}{}%
 \contentsline {subsection}{\numberline {3.8.4}In-Sample Regime Behavior Diagnostic}{35}{}%
-\contentsline {section}{\numberline {3.9}Dashboard and Live System}{35}{}%
-\contentsline {subsection}{\numberline {3.9.1}Design Objective}{35}{}%
+\contentsline {section}{\numberline {3.9}Dashboard and Live System}{36}{}%
+\contentsline {subsection}{\numberline {3.9.1}Design Objective}{36}{}%
 \contentsline {subsection}{\numberline {3.9.2}Architecture}{36}{}%
 \contentsline {subsection}{\numberline {3.9.3}Live Regime Lookup}{36}{}%
 \contentsline {subsection}{\numberline {3.9.4}Live Feature Bridge}{37}{}%
@@ -102,7 +102,7 @@
 \contentsline {subsection}{\numberline {4.1.6}Synthetic Recovery Summary}{47}{}%
 \contentsline {section}{\numberline {4.2}Multi-Agent Deliberation Results}{48}{}%
 \contentsline {subsection}{\numberline {4.2.1}Validation Battery: What the System Actually Does}{48}{}%
-\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{48}{}%
+\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{49}{}%
 \contentsline {subsection}{\numberline {4.2.3}Relationship to the Reported RL Policy}{50}{}%
 \contentsline {section}{\numberline {4.3}RL Execution Results}{50}{}%
 \contentsline {subsection}{\numberline {4.3.1}Controlled Ablation on the Crypto-Only Panel}{50}{}%

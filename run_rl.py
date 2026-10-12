@@ -861,13 +861,19 @@ def main() -> None:
 
     # Multi-seed path: run each seed independently, aggregate, then exit.
     if args.seeds and not args.eval_only:
-        if len(config["phases"]) > 2:
+        if len(config["phases"]) > 2 and not args.crypto5:
             # Same 2-phase (BTC, BTC+ETH) cap the non-seeds path applies below — a 2026-08
             # gap audit found this branch never had it, so every --seeds sweep ran the
             # full 4-phase curriculum even though Phases 3-4 (EURUSD/GOLD) are documented
             # to collapse on daily-upsampled data. Early stopping usually catches a bad
             # Phase 2 before Phase 3 is reached, but not always — and letting it run
             # further just burns wall-clock and log volume on a known-bad regime.
+            # `not args.crypto5` guard added 2026-10-04: this check only knows about the
+            # OLD 4-asset panel's CURRICULUM_PHASES; crypto5's 5-asset curriculum (BTC/ETH/
+            # BNB/LTC/XRP, extended 2026-09-30) has no forex/commodity daily-upsampling
+            # problem, so capping it at 2 phases here would silently fall back to
+            # CURRICULUM_PHASES[:2] (the wrong panel's phase configs) and Phases 3-5 would
+            # never run at all.
             config["phases"] = CURRICULUM_PHASES[:2]
         _apply_phase_steps_multiplier(config)
         mlflow.set_experiment(_EXPERIMENT)
@@ -947,10 +953,13 @@ def main() -> None:
                 "best_sharpe": float("nan"),
             }
         else:
-            if len(config["phases"]) > 2:
+            if len(config["phases"]) > 2 and not args.crypto5:
                 # Cap curriculum at Phase 2 (BTC+ETH only).
                 # Phases 3-4 add EURUSD/GOLD which have low intraday variance
                 # causing PPO to collapse to always-hold. Documented in CLAUDE.md.
+                # `not args.crypto5` guard added 2026-10-04 — see the matching comment
+                # in the --seeds branch above for why this cap must not apply to the
+                # crypto5 5-phase curriculum.
                 config["phases"] = CURRICULUM_PHASES[:2]
             _apply_phase_steps_multiplier(config)
             train_out = train_ppo(config, pre_train_check=sanity_check_env)

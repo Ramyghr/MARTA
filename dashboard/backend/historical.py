@@ -193,6 +193,25 @@ def _invalidate(asset: str | None = None) -> None:
         _cache.clear()
 
 
+def warm_cache(assets: list[str]) -> None:
+    """Pre-populate `_cache` for `assets` so a real user request never pays `_extend()`'s
+    cost (observed 2-10s per asset: a synchronous ccxt backfill loop, 1000 candles/request,
+    from wherever the static `*_features.parquet` ends up to now).
+
+    Without this, `_cache` only gets filled lazily by whichever request happens to be the
+    first to call `_load()` after a cold start or after `_CACHE_TTL_S` (2h) expires — which
+    in practice was always a real user's dashboard page load / asset switch, not a
+    background job. Call on backend startup and periodically (comfortably under the 2h
+    TTL) so this cost is never user-facing. Per-asset failures are logged and skipped —
+    one bad asset must never block the others from warming.
+    """
+    for asset in assets:
+        try:
+            _load(asset)
+        except Exception as exc:
+            print(f"[historical] warm_cache failed for {asset}: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

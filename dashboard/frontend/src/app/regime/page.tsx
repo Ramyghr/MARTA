@@ -214,70 +214,7 @@ function RegimeStatCard({ id, entry }: { id: number; entry: RegimeSemanticsEntry
   );
 }
 
-// ── Section 3 — t-SNE embedding visualization ─────────────────────────────────
 
-function TsneSection() {
-  const [zoomed, setZoomed] = useState(false);
-  const [error, setError] = useState(false);
-  const src = `${API_URL}/api/plots/tsne`;
-
-  return (
-    <Panel title="Contrastive Embedding — t-SNE Projection">
-      {error ? (
-        <EmptyState title="t-SNE plot not available" description="Run the regime pipeline to generate regime/plots/regime_tsne.png." />
-      ) : (
-        <div className="flex flex-col gap-3">
-          <div
-            className="relative rounded border border-[#1a1a1a] overflow-hidden cursor-zoom-in bg-black flex items-center justify-center"
-            onClick={() => setZoomed(true)}
-            title="Click to zoom"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={src}
-              alt="t-SNE projection of contrastive regime embeddings"
-              className="max-w-full h-auto"
-              onError={() => setError(true)}
-              crossOrigin="use-credentials"
-            />
-          </div>
-          <p className="text-[11px] text-[#666] leading-relaxed max-w-3xl">
-            Each point is one 60-candle window, projected from its 128-dim TFT + InfoNCE embedding down to 2D.
-            Clusters correspond to the regimes the downstream Gaussian HMM discovers — tight, well-separated
-            clusters mean the contrastive pretraining learned a market-state representation the HMM can cleanly
-            partition, rather than a diffuse cloud it has to force boundaries onto.
-          </p>
-          <details className="text-[11px] text-[#555]">
-            <summary className="cursor-pointer text-[#4a9eff] hover:text-[#6db4ff] transition-colors select-none">
-              How this was generated — InfoNCE contrastive learning, in plain English
-            </summary>
-            <p className="mt-2 leading-relaxed text-[#666] max-w-3xl">
-              The encoder is trained to answer one question, over and over: &ldquo;given this market window, which
-              other window came from a nearby, similar moment — and which windows are unrelated?&rdquo; It is shown a
-              window and a true positive (an augmented view of the same window), alongside many negatives
-              (unrelated windows), and the InfoNCE loss pulls the positive pair&apos;s embeddings together while
-              pushing every negative apart. Repeated over millions of windows, the only way to keep satisfying
-              that objective is to encode the underlying market regime — because regime is the latent property
-              that makes two windows genuinely alike. t-SNE then compresses the resulting 128-dim space to 2D
-              purely for visualization; the clustering it reveals was already present in the embedding, not
-              created by t-SNE itself.
-            </p>
-          </details>
-        </div>
-      )}
-
-      {zoomed && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center cursor-zoom-out p-8"
-          onClick={() => setZoomed(false)}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt="t-SNE projection (zoomed)" className="max-w-full max-h-full object-contain" crossOrigin="use-credentials" />
-        </div>
-      )}
-    </Panel>
-  );
-}
 
 // ── Phase 1 leftovers — per-asset current-state explorer ──────────────────────
 
@@ -464,8 +401,7 @@ export default function RegimePage() {
         )}
       </Panel>
 
-      {/* Section 3 */}
-      <TsneSection />
+      
 
       {/* Per-asset current-state explorer (kept from Phase 1) */}
       <div className="grid grid-cols-[1fr_2fr] gap-2" style={{ minHeight: 420 }}>

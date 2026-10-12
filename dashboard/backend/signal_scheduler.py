@@ -94,6 +94,7 @@ async def _run_signal_tick() -> None:
     # reads this hour's data, not last hour's. A failure here must never block the
     # trading loop that follows.
     await _refresh_live_bridges()
+    await _warm_historical_cache()
 
     for asset in _ACTIVE_ASSETS:
         try:
@@ -121,6 +122,24 @@ async def _refresh_live_bridges() -> None:
             await loop.run_in_executor(_tick_executor, _update_live_bridge_sync, asset)
         except Exception as exc:
             logger.warning(f"signal_scheduler: live bridge refresh failed for {asset} — {exc}")
+
+
+async def _warm_historical_cache() -> None:
+    """Keep historical.py's per-asset candle cache (used by /api/data-range,
+    /api/history, /api/history/<asset>/range — the dashboard chart/overview pages) from
+    ever going cold. That cache's TTL is 2h; this tick runs hourly, comfortably inside
+    it, so a real dashboard page load should never again pay the multi-second-to-10s
+    ccxt backfill `historical._extend()` does on a cache miss (see historical.warm_cache's
+    docstring — this is what was actually producing "the dashboard takes forever to
+    load" on the first asset-switch/page-load after any backend restart).
+    """
+    import historical
+
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(_tick_executor, historical.warm_cache, _ACTIVE_ASSETS)
+    except Exception as exc:
+        logger.warning(f"signal_scheduler: historical cache warm failed — {exc}")
 
 
 def _update_live_bridge_sync(asset: str) -> None:

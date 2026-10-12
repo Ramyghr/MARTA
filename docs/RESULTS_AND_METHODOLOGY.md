@@ -558,18 +558,22 @@ plausibly it was closer to the edge of reproducibility than the original write-u
 re-investigated further given the current evidence; if this resurfaces on a larger sample it's
 worth revisiting.
 
-**New finding, not yet fixed: `run_weekly_debates.py` has no incremental persistence.** It
-accumulates all new debate results in memory across the full weekly loop and writes
-`debate_results.json` exactly once, after every week has run — a single crash, timeout, or
-kill partway through a 38-week (or longer) real-LLM run loses 100% of the completed work, not
-just the in-flight debate. Found while running a real 38-week sweep across the 2024 RL
-validation window for BTC_USDT to build debate-cache coverage on the crypto5 panel (this
+**Fixed 2026-09-02 — `run_weekly_debates.py` had no incremental persistence.** It used to
+accumulate all new debate results in memory across the full weekly loop and write
+`debate_results.json` exactly once, after every week had run — a single crash, timeout, or
+kill partway through a 38-week (or longer) real-LLM run would have lost 100% of the completed
+work, not just the in-flight debate. Found while running a real 38-week sweep across the 2024
+RL validation window for BTC_USDT to build debate-cache coverage on the crypto5 panel (this
 session's `agents_no_regime` RL ablation baseline and the RL consensus-slot feature both read
-this cache). Left running rather than interrupted to fix, since killing it to patch the
-incremental-write gap would throw away the real progress already made. Worth fixing
-(write-through after each debate, matching `run_debate.py --date`'s and
-`run_validation_debates.py`'s existing append-per-run behavior) before the next long unattended
-run of this script.
+this cache). At the time, left running rather than interrupted to fix, since killing it to
+patch the incremental-write gap would have thrown away the real progress already made. Fix
+landed the same day (commit `cfc229c`, bundled into an unrelated "Add strategy backtest page"
+commit — which is why this note sat stale for weeks): `_save()` now writes the full cache to
+disk (temp-file + atomic rename, so a kill mid-write can't truncate the file) after every
+single debate, matching `run_debate.py --date`'s and `run_validation_debates.py`'s existing
+append-per-run behavior. Confirmed present in the current `run_weekly_debates.py` (its own
+module docstring documents the fix) — re-verified directly against the code on 2026-09-30
+before citing this as closed, not just trusting this paragraph.
 
 **Full suite regression after this pass:** `pytest tests/` — 83 passed (80 + 3 new
 `test_stage1b_*` cases), same 4 pre-existing, unrelated failures as Section 7.
@@ -1185,3 +1189,79 @@ surfaced as a visible warning banner in the UI. This matters beyond just this on
 without it, anyone (including a defense committee member) poking at the live dashboard
 could reproduce the same misleading impression by picking an intuitive-looking wide date
 range.
+
+## 14. Weekly-grid multi-seed completion, and the crypto5 curriculum extension's Phase-1 gate (2026-10-04)
+
+### 14a. Crypto5 weekly-cadence grid — full 4-seed coverage, confirming the single-seed verdict
+
+Section 10b's crypto5 panel extension (2026-09-01) ran only 1 seed per (asset, condition)
+cell for the 4 non-BTC assets (BTC alone had already been run at 4 seeds in a separate
+pass). That section explicitly flagged this as a limitation and judged further seeds
+"unlikely to change this conclusion" without actually running them. This gap is now
+closed: `rl/train_weekly_crypto5_grid.py --all --seeds 0 1 2 3` was run to completion,
+training the 48 missing (asset, condition, seed) cells for ETH/BNB/LTC/XRP (seeds 1-3;
+seed 0 and all of BTC's 4 seeds already existed and were correctly skipped by the
+script's own on-disk cache check). Reconciled mean ± std across all 4 seeds
+(`data/results/weekly_grid_crypto5/summary.json`):
+
+| Asset | A (raw) | B (raw+vol) | C (raw+regime) | D (raw+placebo) |
+|---|---|---|---|---|
+| BTC_USDT | 1.992 ± 0.253 | 2.055 ± 0.643 | 1.767 ± 0.245 | 2.353 ± 0.247 |
+| ETH_USDT | 2.226 ± 0.391 | 2.553 ± 0.119 | 2.096 ± 0.233 | 2.146 ± 0.259 |
+| BNB_USDT | 1.918 ± 0.229 | 2.216 ± 0.616 | 1.769 ± 0.328 | 1.805 ± 0.166 |
+| LTC_USDT | 1.525 ± 0.589 | 1.557 ± 0.778 | 1.965 ± 0.545 | 1.289 ± 0.795 |
+| XRP_USDT | 1.214 ± 1.279 | 2.054 ± 0.488 | 2.124 ± 0.527 | 2.093 ± 0.265 |
+
+**The prediction holds.** Real regime (C) still does not separate from the
+placebo/noise-control (D) on any of the five assets — on 3 of 5 (BTC, BNB, XRP) D's mean
+is numerically higher than C's, and every condition's seed-to-seed standard deviation
+(0.12–0.80) is large enough relative to the ~0.1–0.6 gaps between conditions that the
+four observation modes are not cleanly separable by eye, let alone with confidence. This
+is now a 4-seed-backed confirmation, not a single-seed judgment call, of Section 10b's
+original verdict: running the additional seeds changed no conclusion in this document.
+
+### 14b. Crypto5 5-phase curriculum extension — code fixed; training still cannot clear Phase 1 under either observation mode
+
+The uncommitted extension to `rl/train.py`'s `CRYPTO5_CURRICULUM_PHASES` (dated
+2026-09-30 in the file's own comments, never run before this session) adds Phases 3-5
+(incrementally adding BNB, LTC, XRP to the BTC+ETH policy from Phases 1-2) to what had
+previously been a 2-phase-only crypto5 curriculum. Running it surfaced one real bug,
+independent of the RL result itself: `run_rl.py`'s `--crypto5` flag was hardcoded to
+`config["phases"] = CRYPTO5_CURRICULUM_PHASES[:2]`, silently truncating the curriculum
+back to 2 phases regardless of how many were actually defined in `rl/train.py` — the
+exact same "module capped at an old phase count" class of staleness bug this project has
+hit before with the original 4-asset panel. Fixed to use the full list.
+
+With that fix in place, the run was launched twice under `obs_mode="raw_regime"` (the
+config this project's core thesis actually tests) to rule out GPU/eval nondeterminism
+before trusting a single-digit-percent early-stop result. **Both runs produced
+bit-identical per-step validation Sharpe** (-2.292 / -1.968 / -3.116 at steps
+10k/20k/30k, both times) — this specific configuration is, in practice, fully
+deterministic, not subject to the GPU-nondeterminism caveat documented elsewhere in this
+file for other checkpoints. Phase 1 (BTC_USDT only) trips the existing
+`sharpe < -0.5` for 3 consecutive evals early-stop gate at step 30,000 every time,
+so Phases 2-5 (which would add ETH, then BNB, then LTC, then XRP) are never reached at
+all. This closely reproduces Section 9's already-documented crypto5 `raw_regime` result
+(Sharpe -2.717, identical 30k-step early-stop) — not a new finding, a second confirmation
+of an existing one, now via the curriculum entrypoint rather than the standalone ablation
+script.
+
+To rule out the regime-probability block itself as the specific cause, the same run was
+repeated with `obs_mode="raw"` (no regime information at all). **This did not help —
+if anything it was slightly worse** (-2.586 / -2.886 / -2.725 at the same three evals),
+tripping the identical gate at the identical step. This is informative beyond "regime
+conditioning doesn't help": it rules out regime conditioning as *the* cause of Phase 1's
+failure specifically, narrowing the explanation to the reward/hyperparameter
+configuration itself (`idle_penalty=0.002`, `sharpe_threshold=0.0`, hourly cadence) rather
+than to what the policy observes. **Conclusion: the crypto5 curriculum extension's own
+code is now correct and was exercised successfully under two independent observation
+modes — the result is that Phase 1 itself cannot be gotten past under the current
+training configuration, which is consistent with, and does not reopen, Section 9's "RL
+execution layer closed" decision.** Phases 2-5's ETH/BNB/LTC/XRP additions were never
+reached under either configuration and remain untested; reaching them would require
+either loosening the early-stop gate (a deliberate departure from this project's existing
+safety convention, not done here) or a different reward/hyperparameter configuration for
+Phase 1, which is a new experiment rather than a continuation of this one.
+Logs: `logs/crypto5_curriculum_extension_20261004_024053.log`,
+`logs/crypto5_curriculum_extension_retry2_20261004_024833.log`,
+`logs/crypto5_curriculum_extension_raw_20261004_142503.log`.

@@ -10,10 +10,15 @@ Faithfully reproduces rl/env.py's MARTATradingEnv step() logic for decision_inte
 min_hold_bars reversal lock, hour-by-hour compounding within a held decision) as a
 plain walk-forward loop — this is inference + bookkeeping over already-computed data,
 not training, so the full Gymnasium env (reset/reward/termination machinery) isn't
-needed. See rl/train_weekly_smoketest.py for how these two checkpoints were trained
-(decision_interval=168, BTC_USDT-only, crypto5 5-asset canonical/portfolio slots) and
-CLAUDE.md's "Dense BTC debate coverage" section for their validated Sharpe (~2.04 raw,
-~1.74 raw_regime).
+needed. Originally wired up BTC_USDT-only (rl/train_weekly_smoketest.py's smoketest pair,
+CLAUDE.md's "Dense BTC debate coverage" section — Sharpe ~2.04 raw, ~1.74 raw_regime).
+The weekly-cadence grid (rl/train_weekly_crypto5_grid.py) was later extended to train
+the same raw/raw_regime pair independently on all 5 crypto5 assets, 4 seeds each
+(CLAUDE.md's "Weekly-cadence PPO grid — full 5-asset coverage" / "full 4-seed coverage"
+sections) — this module just never went back to pick those up until now. Each asset's
+checkpoint was trained with `all_assets=[asset]` (single-asset episodes) but the full
+5-asset `CANONICAL_ASSETS` one-hot slot order, so the inference code below is identical
+per asset; only the checkpoint path and the one-hot index change.
 
 Output position values feed back into strategy_backtest.py's existing turnover/returns/
 trade-extraction/metrics pipeline unchanged (same [-1, 1]-scaled position convention,
@@ -39,13 +44,12 @@ _CRYPTO5_PROCESSED = MARTA_ROOT / "data" / "processed" / "crypto5_multihorizon"
 _CHECKPOINT_DIR = MARTA_ROOT / "rl" / "checkpoints"
 _LIVE_REGIME_LOG = MARTA_ROOT / "data" / "processed" / "regime_live_log.parquet"
 
-# rl/train.py's CRYPTO5_CANONICAL_ASSETS — portfolio/asset-id one-hot slot order the
-# checkpoints were trained with. Only BTC_USDT (index 0) is exposed as a strategy here;
-# the checkpoints were only ever trained/evaluated on BTC_USDT (all_assets=["BTC_USDT"]
-# in build_weekly_config), so the other 4 slots exist in the observation shape but are
-# always zero — not a limitation specific to this backtest.
+# rl/train.py's CRYPTO5_CANONICAL_ASSETS — portfolio/asset-id one-hot slot order every
+# checkpoint was trained with, regardless of which single asset it actually trades
+# (build_weekly_config sets all_assets=[asset] but canonical_assets=the full list, so
+# the one-hot slot for that asset is set and the other 4 are always zero).
 CANONICAL_ASSETS = ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"]
-ASSET = "BTC_USDT"
+DEFAULT_SEED = 0
 
 # regime_service.py's _CRYPTO5_FEATURE_COLS — the exact 22-column order
 # normalize_features_multihorizon() produces and the crypto5 HMM/PPO checkpoints were
@@ -70,42 +74,53 @@ MIN_HOLD_STOP_LOSS_DD = 0.05
 INITIAL_CAPITAL = 10_000.0
 MIN_ROWS_REQUIRED = WINDOW_SIZE + DECISION_INTERVAL  # need >=1 full decision interval
 
-_CHECKPOINTS = {
-    "raw": _CHECKPOINT_DIR / "ppo_best_crypto5_weekly_BTC_USDT_raw_seed0.zip",
-    "raw_regime": _CHECKPOINT_DIR / "ppo_best_crypto5_weekly_BTC_USDT_raw_regime_seed0.zip",
-}
 
-_model_cache: dict[str, object] = {}
+def _checkpoint_path(asset: str, obs_mode: str, seed: int = DEFAULT_SEED) -> Path:
+    return _CHECKPOINT_DIR / f"ppo_best_crypto5_weekly_{asset}_{obs_mode}_seed{seed}.zip"
 
 
-def available() -> dict[str, bool]:
-    """Which obs_mode checkpoints actually exist on disk right now."""
-    return {mode: path.exists() for mode, path in _CHECKPOINTS.items()}
+def checkpoint_exists(asset: str, obs_mode: str) -> bool:
+    return _checkpoint_path(asset, obs_mode).exists()
 
 
-def _load_model(obs_mode: str):
-    if obs_mode not in _CHECKPOINTS:
-        raise ValueError(f"Unknown PPO obs_mode: {obs_mode!r}")
-    if obs_mode not in _model_cache:
+_model_cache: dict[tuple[str, str], object] = {}
+
+
+def available(asset: str | None = None) -> dict[str, bool]:
+    """Which obs_mode checkpoints actually exist on disk right now for `asset` (default
+    seed only — that's all the Strategy Tester ever selects). `asset=None` checks every
+    CANONICAL_ASSETS entry and requires all of them to have a given obs_mode so the
+    generic (asset-unaware) caller in list_strategies keeps working."""
+    modes = ["raw", "raw_regime"]
+    assets = [asset] if asset else CANONICAL_ASSETS
+    return {
+        mode: all(_checkpoint_path(a, mode).exists() for a in assets)
+        for mode in modes
+    }
+
+
+def _load_model(asset: str, obs_mode: str):
+    key = (asset, obs_mode)
+    if key not in _model_cache:
         from stable_baselines3 import PPO
         from rl.policy import MARTAActorCriticPolicy
-        path = _CHECKPOINTS[obs_mode]
+        path = _checkpoint_path(asset, obs_mode)
         if not path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {path}")
-        _model_cache[obs_mode] = PPO.load(
+        _model_cache[key] = PPO.load(
             str(path), device="cpu", custom_objects={"policy_class": MARTAActorCriticPolicy}
         )
-    return _model_cache[obs_mode]
+    return _model_cache[key]
 
 
-def _load_feature_df() -> pd.DataFrame:
-    """{ASSET}_normalized_live.parquet — the same real, live-bridge-extended 22-column
+def _load_feature_df(asset: str) -> pd.DataFrame:
+    """{asset}_normalized_live.parquet — the same real, live-bridge-extended 22-column
     panel the crypto5 live regime HMM reads (dashboard/backend/live_feature_bridge.py),
     reaching today rather than stopping at the training-time static file's boundary.
     """
-    path = _CRYPTO5_PROCESSED / f"{ASSET}_normalized_live.parquet"
+    path = _CRYPTO5_PROCESSED / f"{asset}_normalized_live.parquet"
     if not path.exists():
-        raise FileNotFoundError(f"No live-bridge feature file for {ASSET}: {path}")
+        raise FileNotFoundError(f"No live-bridge feature file for {asset}: {path}")
     df = pd.read_parquet(path, engine="pyarrow")
     missing = [c for c in FEATURE_COLS if c not in df.columns]
     if missing:
@@ -113,7 +128,7 @@ def _load_feature_df() -> pd.DataFrame:
     return df[FEATURE_COLS].astype(np.float32)
 
 
-def _load_regime_probs(index: pd.DatetimeIndex) -> np.ndarray:
+def _load_regime_probs(asset: str, index: pd.DatetimeIndex) -> np.ndarray:
     """Regime probability vector per row of `index`, forward-fill-only (never a future
     value) — regime_stream_causal.parquet for history up to its frozen 2025-12-31
     boundary, regime_live_log.parquet for the gap since (see CLAUDE.md's "EURUSD/GOLD
@@ -136,16 +151,16 @@ def _load_regime_probs(index: pd.DatetimeIndex) -> np.ndarray:
     if not frames:
         return np.zeros((len(index), N_REGIME_STATES), dtype=np.float32)
     combined = pd.concat(frames, ignore_index=True)
-    combined = combined[combined["asset"] == ASSET]
-    return obs_builder.build_regime_prob_series(combined, prob_cols, ASSET, index)
+    combined = combined[combined["asset"] == asset]
+    return obs_builder.build_regime_prob_series(combined, prob_cols, asset, index)
 
 
-def _vol_forecast(df: pd.DataFrame) -> np.ndarray:
+def _vol_forecast(df: pd.DataFrame, asset: str) -> np.ndarray:
     """GARCH(1,1) volatility forecast, same formula/cache as training/eval
     (rl.env.precompute_vol_forecast) — reused directly rather than reimplemented, so a
     live-reaching window transparently extends (not bypasses) the existing cache."""
     from rl.env import precompute_vol_forecast
-    return precompute_vol_forecast(df, ASSET)
+    return precompute_vol_forecast(df, asset)
 
 
 def _direction_sign(direction: int) -> float:
@@ -157,9 +172,10 @@ def _risk_cap_from_vol(vol: float) -> float:
     return risk_cap_from_vol(vol)
 
 
-def run(obs_mode: str, index: pd.DatetimeIndex) -> pd.Series:
+def run(obs_mode: str, index: pd.DatetimeIndex, asset: str = "BTC_USDT") -> pd.Series:
     """Walk-forward PPO position series aligned to `index` (an hourly DatetimeIndex,
-    already restricted to the requested backtest window by strategy_backtest.py).
+    already restricted to the requested backtest window by strategy_backtest.py), using
+    the checkpoint trained for `asset`.
 
     Needs WINDOW_SIZE bars of lookback before `index[0]` for the raw feature window —
     those are pulled from the full feature file (not just `index`'s own range), exactly
@@ -169,31 +185,40 @@ def run(obs_mode: str, index: pd.DatetimeIndex) -> pd.Series:
     except at the bar a new decision actually changes it, so strategy_backtest.py's
     existing per-bar transaction-cost computation already charges cost once per
     decision "for free", with no special-casing needed there.
+
+    `index` may reach earlier/later than the feature file actually covers (e.g. a user
+    picks a start date before the asset's history begins) — rather than erroring on that,
+    the window is clamped to the intersection with the feature file's real range, and
+    rows of `index` outside that intersection come back flat (position 0) via the
+    reindex/fillna at the end, same as a hole in the middle would.
     """
     from rl import obs_builder
 
-    model = _load_model(obs_mode)
-    full_df = _load_feature_df()
+    model = _load_model(asset, obs_mode)
+    full_df = _load_feature_df(asset)
 
-    start_pos = full_df.index.searchsorted(index[0])
+    requested_start = max(index[0], full_df.index[0])
+    requested_end = min(index[-1], full_df.index[-1])
+    start_pos = full_df.index.searchsorted(requested_start)
     lookback_start = max(0, start_pos - WINDOW_SIZE + 1)
-    end_pos = full_df.index.searchsorted(index[-1], side="right")
+    end_pos = full_df.index.searchsorted(requested_end, side="right")
     window_df = full_df.iloc[lookback_start:end_pos]
 
     if len(window_df) < MIN_ROWS_REQUIRED:
         raise ValueError(
-            f"Only {len(window_df)} feature rows available for the PPO strategy "
-            f"(need >= {MIN_ROWS_REQUIRED} = window_size + one decision interval) — "
-            f"pick a longer date range."
+            f"Only {len(window_df)} feature rows available for {asset} in the "
+            f"requested range (need >= {MIN_ROWS_REQUIRED} = window_size + one decision "
+            f"interval) — {asset}'s data runs {full_df.index[0].date()} to "
+            f"{full_df.index[-1].date()}; pick a longer or more recent date range."
         )
 
     arr = window_df[FEATURE_COLS].to_numpy(dtype=np.float32)
     returns = window_df["close_return"].to_numpy(dtype=np.float64)
-    vol = _vol_forecast(window_df)
-    regime_probs = _load_regime_probs(window_df.index) if obs_mode == "raw_regime" else None
+    vol = _vol_forecast(window_df, asset)
+    regime_probs = _load_regime_probs(asset, window_df.index) if obs_mode == "raw_regime" else None
 
     asset_id_vec = np.zeros(len(CANONICAL_ASSETS), dtype=np.float32)
-    asset_id_vec[CANONICAL_ASSETS.index(ASSET)] = 1.0
+    asset_id_vec[CANONICAL_ASSETS.index(asset)] = 1.0
     consensus_vec = np.zeros(CONSENSUS_DIM, dtype=np.float32)  # no debate cache for arbitrary backtest dates
 
     n = len(window_df)
@@ -210,7 +235,7 @@ def run(obs_mode: str, index: pd.DatetimeIndex) -> pd.Series:
     while t < n:
         portfolio_dim = len(CANONICAL_ASSETS) + 4
         port_vec = np.zeros(portfolio_dim, dtype=np.float32)
-        port_vec[CANONICAL_ASSETS.index(ASSET)] = signed_position
+        port_vec[CANONICAL_ASSETS.index(asset)] = signed_position
         base = len(CANONICAL_ASSETS)
         port_vec[base] = portfolio_value / INITIAL_CAPITAL - 1.0
         port_vec[base + 1] = max(0.0, (peak_value - portfolio_value) / max(peak_value, 1e-8))

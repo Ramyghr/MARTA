@@ -69,11 +69,13 @@ Table~\ref{tab:regime-characterization} reports the fitted per-state statistics 
 \begin{table}[h]
 \centering
 \small
+\setlength{\tabcolsep}{4.5pt}
+\renewcommand{\arraystretch}{1.3}
 \caption{Per-regime fitted statistics, six-state five-asset 22-column configuration (pooled 2018--2025 training data). Sharpe, annualized return, and annualized volatility are historical population averages conditional on regime membership, not forward-looking predictions --- see Section~\ref{subsec:regime-zigzag}.}
 \label{tab:regime-characterization}
-\begin{tabular}{|c|p{4.0cm}|c|c|c|c|c|}
+\begin{tabular}{|c|p{3.3cm}|c|c|c|c|c|}
 \hline
-\textbf{Regime} & \textbf{Label} & \textbf{Sharpe} & \textbf{Ann.\ Return} & \textbf{Ann.\ Vol} & \textbf{Time Share} & \textbf{Dominant Asset} \\
+\textbf{Regime} & \textbf{Label} & \textbf{Sharpe} & \textbf{Return} & \textbf{Vol} & \textbf{Share} & \textbf{Asset} \\
 \hline
 R0 & Very Low Volatility / Range-bound & $-1.04$ & $-34.8\%$ & $33.5\%$ & $15.2\%$ & BTC \\
 \hline
@@ -88,6 +90,7 @@ R4 & Elevated Volatility / Trending & $+1.39$ & $+140.6\%$ & $101.5\%$ & $19.4\%
 R5 & Extreme Volatility / Trending & $-0.44$ & $-82.7\%$ & $189.8\%$ & $9.0\%$ & XRP \\
 \hline
 \end{tabular}
+\renewcommand{\arraystretch}{1.0}
 \normalsize
 \end{table}
 
@@ -230,9 +233,11 @@ The multi-agent layer (Section~\ref{sec:multi-agent-methodology}) was audited en
 \begin{table}[h]
 \centering
 \small
+\setlength{\tabcolsep}{4.5pt}
+\renewcommand{\arraystretch}{1.3}
 \caption{Multi-agent layer validation battery (20 real Mistral 7B calls, \texttt{BTC\_USDT} 2024-03-01).}
 \label{tab:agent-validation-battery}
-\begin{tabular}{|p{4.3cm}|p{6.8cm}|c|}
+\begin{tabular}{|p{3.2cm}|p{6.0cm}|p{3.3cm}|}
 \hline
 \textbf{Test} & \textbf{What it checks} & \textbf{Result} \\
 \hline
@@ -243,6 +248,7 @@ Null-regime & Swapping the real regime for a random one measurably changes outpu
 Aggregator-usage & Flipping one agent's thesis (no new LLM call) changes the Fund Manager's conviction and dissent list & Pass (0.81 $\to$ 0.51 conviction shift observed) \\
 \hline
 \end{tabular}
+\renewcommand{\arraystretch}{1.0}
 \normalsize
 \end{table}
 
@@ -283,7 +289,7 @@ Following the panel migration of the RL environment itself (asset sizing and por
 \scriptsize
 \caption{Controlled ablation, crypto-only panel, BTC(+ETH) validation window. $\Delta$ vs.\ buy-hold with 95\% block-bootstrap CI (Section~\ref{subsec:eval-bootstrap}).}
 \label{tab:rl-ablation-crypto5}
-\begin{tabular}{|c|p{3.4cm}|c|p{2.5cm}|p{1.5cm}|c|}
+\begin{tabular}{|c|p{3.2cm}|c|p{2.5cm}|>{\centering\arraybackslash}p{1.7cm}|c|}
 \hline
 \textbf{\#} & \textbf{Configuration} & \textbf{Sharpe} & \textbf{$\Delta$ (95\% CI)} & \textbf{Sig.} & \textbf{Trades} \\
 \hline
@@ -295,7 +301,7 @@ Following the panel migration of the RL environment itself (asset sizing and por
 \hline
 4 & (3) + behavior-cloning warm-start from a buy-hold teacher & \textbf{+1.461} & --0.035 $[-0.140,0.070]$ & no & 181 (10 mean.) \\
 \hline
-5 & \texttt{raw} + discrete 5-action space, \texttt{min\_hold\_bars=168} & --0.034 & --1.643 $[-3.714,0.548]$ & incon- clusive & 1{,}028 \\
+5 & \texttt{raw} + discrete 5-action space, \texttt{min\_hold\_bars=168} & --0.034 & --1.643 $[-3.714,0.548]$ & inconclusive & 1{,}028 \\
 \hline
 \end{tabular}
 \normalsize

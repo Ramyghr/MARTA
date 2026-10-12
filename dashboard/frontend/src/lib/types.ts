@@ -441,5 +441,4 @@ export const REGIME_NAMES: Record<number, string> = {
   3: "Elevated Volatility / Trending",
   4: "Low Volatility / Range-bound",
   5: "Trending Forex A",
-  6: "Trending Forex B",
 };

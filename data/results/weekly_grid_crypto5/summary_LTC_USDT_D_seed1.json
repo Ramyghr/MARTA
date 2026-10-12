@@ -1,0 +1,11 @@
+{
+  "asset": "LTC_USDT",
+  "label": "D",
+  "obs_mode": "raw_regime",
+  "seed": 1,
+  "sharpe": 1.3093434777359734,
+  "total_return": 0.5885915106148927,
+  "max_drawdown": 0.18937302846973592,
+  "n_meaningful_trades": 42,
+  "train_wall_seconds": 151.37864542007446
+}

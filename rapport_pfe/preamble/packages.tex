@@ -13,3 +13,14 @@
 \usepackage{graphicx}
 \graphicspath{{images/}}
 \raggedbottom
+
+% No word-breaking anywhere in the report: disable automatic hyphenation
+% entirely (no more "ES-PRIT" / "con-tainerization" style line-end breaks).
+% Words that don't fit are pushed to the next line and the inter-word
+% spacing is stretched instead (microtype + high tolerance + emergencystretch
+% absorb that extra space smoothly rather than throwing overfull-box warnings).
+\usepackage{microtype}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\tolerance=10000
+\emergencystretch=3em

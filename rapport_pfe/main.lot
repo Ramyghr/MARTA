@@ -8,7 +8,7 @@
 \contentsline {table}{\numberline {3.2}{\ignorespaces Regime encoder architecture (\texttt {TFTRegimeEncoder})}}{39}{}%
 \contentsline {table}{\numberline {3.3}{\ignorespaces Encoder training hyperparameters}}{39}{}%
 \contentsline {table}{\numberline {3.4}{\ignorespaces The six agents of Layer 3 (five LLM-based deliberation agents plus one deterministic risk-limit agent)}}{40}{}%
-\contentsline {table}{\numberline {3.5}{\ignorespaces PPO training configuration}}{40}{}%
+\contentsline {table}{\numberline {3.5}{\ignorespaces PPO training configuration}}{41}{}%
 \contentsline {table}{\numberline {3.6}{\ignorespaces Ablation variants}}{41}{}%
 \addvspace {10\p@ }
 \contentsline {table}{\numberline {4.1}{\ignorespaces Seed stability and distinctness across all six configurations tested. Seed ARI is the mean pairwise Adjusted Rand Index across five independent EM restarts (Section~\ref {subsec:regime-engine-audit}). \texttt {close\_return} / \texttt {realized\_vol\_raw} distinctness report the outcome of a per-asset ANOVA across states on that quantity.}}{43}{}%
@@ -19,7 +19,7 @@
 \contentsline {table}{\numberline {4.6}{\ignorespaces Regime-label dominance by leg direction, five-asset panel, 2021 (111 legs total, zigzag threshold 15\%).}}{46}{}%
 \contentsline {table}{\numberline {4.7}{\ignorespaces Synthetic ground-truth recovery (Adjusted Rand Index) across every mechanism tested (Section~\ref {subsec:regime-synthetic-validation}).}}{48}{}%
 \contentsline {table}{\numberline {4.8}{\ignorespaces Multi-agent layer validation battery (20 real Mistral 7B calls, \texttt {BTC\_USDT} 2024-03-01).}}{48}{}%
-\contentsline {table}{\numberline {4.9}{\ignorespaces Controlled ablation, crypto-only panel, BTC(+ETH) validation window. $\Delta $ vs.\ buy-hold with 95\% block-bootstrap CI (Section~\ref {subsec:eval-bootstrap}).}}{50}{}%
+\contentsline {table}{\numberline {4.9}{\ignorespaces Controlled ablation, crypto-only panel, BTC(+ETH) validation window. $\Delta $ vs.\ buy-hold with 95\% block-bootstrap CI (Section~\ref {subsec:eval-bootstrap}).}}{51}{}%
 \contentsline {table}{\numberline {4.10}{\ignorespaces Native weekly-cadence grid, BTC-only, validation year 2024. Sharpe recomputed with buy-and-hold aggregated to the identical weekly cadence (52 weekly observations); $\Delta $ from a block bootstrap (block size 4 weeks, 1000 resamples). Recomputed buy-hold reference: Sharpe 1.571. Full detail: \texttt {data/results/weekly\_grid\_reconciled.json}.}}{53}{}%
 \contentsline {table}{\numberline {4.11}{\ignorespaces 2025 test-set pass, pre-registered checkpoints, one per condition. $\Delta $ vs.\ buy-hold; recomputed buy-hold weekly Sharpe on 2025 is $-0.291$ ($-15.9\%$ return), against $+1.571$ on 2024 --- a materially different market year.}}{54}{}%
 \contentsline {table}{\numberline {4.12}{\ignorespaces 2025-only $\Delta $ vs.\ buy-hold, extracted from a single continuous 2024--2025 walk-forward pass per checkpoint, crypto5 panel, 1 seed. 0 of 20 cells significant.}}{55}{}%
