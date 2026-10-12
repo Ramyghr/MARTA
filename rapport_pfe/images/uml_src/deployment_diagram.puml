@@ -1,0 +1,36 @@
+@startuml deployment_diagram
+skinparam backgroundColor white
+node "Client Browser" as Browser
+
+node "Host Machine (Docker)" {
+  node "backend container\n<<FastAPI / Uvicorn>>" as Backend {
+    component "APScheduler\n(hourly tick)" as Sched
+    component "REST + WebSocket API" as API
+  }
+  node "frontend container\n<<Next.js>>" as Frontend
+
+  database "paper_trading_db\n(SQLite volume)" as DB
+  folder "data/ mlruns/\n(mounted volumes)" as Vol
+
+  component "Ollama\n(Mistral 7B, host process)" as Ollama
+}
+
+cloud "External Services" {
+  [Binance / CCXT] as Binance
+  [Twelve Data API] as TwelveData
+  [Alpaca Paper API] as Alpaca
+  [Telegram Bot API] as Telegram
+  [NewsAPI / RSS /\nStockTwits / Fear&Greed] as News
+}
+
+Browser --> Frontend : HTTPS :3001
+Frontend --> Backend : REST + WS :8001
+Backend --> DB
+Backend --> Vol
+Backend --> Ollama : HTTP (host.docker.internal:11434)
+Backend --> Binance : HTTPS
+Backend --> TwelveData : HTTPS
+Backend --> Alpaca : HTTPS
+Backend --> Telegram : HTTPS
+Backend --> News : HTTPS
+@enduml

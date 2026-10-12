@@ -1,0 +1,121 @@
+@startuml class_diagram
+hide empty members
+skinparam classAttributeIconSize 0
+skinparam backgroundColor white
+
+class RegimeContext {
+  + asset: str
+  + timestamp: datetime
+  + regime_label: int
+  + regime_probabilities: float[]
+  + vol_level: str
+  + market_features: dict
+}
+
+abstract class BaseAgent {
+  + model: str
+  + temperature: float
+  + post_thesis(ctx: RegimeContext): AgentThesis
+  + post_rebuttal(ctx, theses): AgentRebuttal
+  # _call_llm(prompt: str): str
+  # _parse_json(response: str): dict
+}
+
+class MacroAgent
+class TechnicalAgent
+class SentimentAgent
+class RiskAgent {
+  + garch_forecast(returns): float
+}
+class ContrarianAgent {
+  + activation_threshold: float = 0.60
+}
+class FundManagerAgent {
+  + synthesize(debate: DebateResult): FundManagerDecision
+}
+
+BaseAgent <|-- MacroAgent
+BaseAgent <|-- TechnicalAgent
+BaseAgent <|-- SentimentAgent
+BaseAgent <|-- RiskAgent
+BaseAgent <|-- ContrarianAgent
+BaseAgent <|-- FundManagerAgent
+
+class AgentThesis {
+  + agent_name: str
+  + round: int
+  + directional_bias: str
+  + confidence: float
+  + reasoning: str
+  + key_factors: str[]
+  + regime_alignment: str
+}
+
+class AgentRebuttal {
+  + agent_name: str
+  + target_agent: str
+  + rebuttal_point: str
+  + maintains_bias: bool
+  + updated_confidence: float
+}
+
+class RiskLimits {
+  + max_position_size: float
+  + leverage_cap: float
+  + var_95: float
+  + cvar_95: float
+  + volatility_forecast: float
+  + risk_regime: str
+}
+
+class FundManagerDecision {
+  + final_action: str
+  + position_size: float
+  + conviction: float
+  + consensus_direction: str
+  + dissenting_agents: str[]
+  + rationale: str
+  + regime_override: bool
+}
+
+class DebateResult {
+  + timestamp: str
+  + asset: str
+  + regime_label: int
+  + round1_theses: AgentThesis[]
+  + round2_rebuttals: AgentRebuttal[]
+  + risk_limits: RiskLimits
+  + fund_manager_decision: FundManagerDecision
+}
+
+class DebateGraph {
+  + agents: BaseAgent[]
+  + run(ctx: RegimeContext): DebateResult
+}
+
+DebateGraph "1" o-- "6" BaseAgent : orchestrates
+DebateGraph ..> DebateResult : produces
+DebateResult *-- AgentThesis
+DebateResult *-- AgentRebuttal
+DebateResult *-- RiskLimits
+DebateResult *-- FundManagerDecision
+RiskAgent ..> RiskLimits : computes
+FundManagerAgent ..> FundManagerDecision : produces
+BaseAgent ..> RegimeContext : reads
+
+class MARTATradingEnv {
+  + observation_space
+  + action_space
+  + reset(): obs
+  + step(action): obs, reward, done, info
+}
+
+class MARTAActorCriticPolicy {
+  + forward(obs): action, value, log_prob
+  + predict_values(obs): value
+}
+
+MARTATradingEnv ..> DebateResult : consensus slot
+MARTATradingEnv ..> RegimeContext : regime slot
+MARTAActorCriticPolicy --> MARTATradingEnv : acts in
+@enduml

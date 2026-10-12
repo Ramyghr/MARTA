@@ -1,0 +1,56 @@
+@startuml use_case_diagram
+left to right direction
+skinparam packageStyle rectangle
+skinparam backgroundColor white
+skinparam actorStyle awesome
+
+actor "Trader /\nPortfolio Manager" as Trader
+actor "ML / Research\nEngineer" as Engineer
+
+actor "Binance (CCXT)" as Binance
+actor "Ollama\n(Mistral 7B)" as Ollama
+actor "Alpaca\nPaper API" as Alpaca
+actor "Telegram" as Telegram
+actor "News / Sentiment\nProviders" as News
+
+rectangle "MARTA" {
+  usecase "UC1: Ingest & normalize\nOHLCV data" as UC1
+  usecase "UC2: Engineer technical/\nstatistical indicators" as UC2
+  usecase "UC3: Detect market regimes\n(HMM)" as UC3
+  usecase "UC4: Run multi-agent debate" as UC4
+  usecase "UC5: Compute risk limits\n(VaR/CVaR)" as UC5
+  usecase "UC6: Train / serve RL policy" as UC6
+  usecase "UC7: Execute paper trades" as UC7
+  usecase "UC8: Stream live state\nto dashboard" as UC8
+  usecase "UC9: Send alerts" as UC9
+  usecase "UC10: Query system\nvia chat" as UC10
+  usecase "UC11: Log decisions\nfor audit" as UC11
+  usecase "UC12: Run backtests\n& ablations" as UC12
+  usecase "UC13: Toggle RL\nexecution on/off" as UC13
+  usecase "UC14: Retrain / redeploy\ncheckpoints" as UC14
+}
+
+Trader --> UC8
+Trader --> UC9
+Trader --> UC10
+Trader --> UC13
+
+Engineer --> UC1
+Engineer --> UC2
+Engineer --> UC3
+Engineer --> UC6
+Engineer --> UC12
+Engineer --> UC14
+Engineer --> UC11
+
+UC1 ..> Binance : <<uses>>
+UC4 ..> Ollama : <<uses>>
+UC4 ..> News : <<uses>>
+UC7 ..> Alpaca : <<uses>>
+UC9 ..> Telegram : <<uses>>
+
+UC4 .> UC3 : <<include>>
+UC6 .> UC5 : <<include>>
+UC7 .> UC6 : <<include>>
+UC8 .> UC4 : <<include>>
+@enduml

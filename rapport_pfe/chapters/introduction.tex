@@ -83,6 +83,13 @@ MARTA addresses this gap through a five-layer pipeline, each layer directly targ
 
 This layered design directly mirrors the two-part problem statement: layers 1--2 solve the regime representation learning problem, and layers 3--4 solve the regime-conditioned decision making problem. Layer 5 is a supporting component providing interpretability rather than a decision-making stage in its own right. The empirical contribution of regime-awareness across layers 1--4 is evaluated through dedicated ablation studies, presented in Chapter~\ref{chap:results}.
 
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{images/pipeline_diagram.png}
+    \caption{MARTA's five-layer pipeline, grouped according to the two-part problem statement of Section~\ref{subsec:formal-problem}. Each layer is detailed in Chapter~\ref{chap:methodology}.}
+    \label{fig:pipeline}
+\end{figure}
+
 \section{Project Objectives and Scope}
 \label{sec:objectives-scope}
 
@@ -121,28 +128,61 @@ A secondary, supporting objective is to expose the full pipeline through a monit
 
 This scope reflects the project's nature as an applied research contribution demonstrating the value of regime-awareness, rather than a production-ready trading product.
 
+\section{Requirements Specification}
+\label{sec:requirements-specification}
+
+The objectives of Section~\ref{sec:objectives-scope} state \emph{what} the project set out to demonstrate; this section restates the same commitments as concrete, individually checkable requirements, in the functional/non-functional form expected of an engineering deliverable, and points each one to the chapter and section where it is actually discharged and evidenced, rather than only asserted here.
+
+\subsection{Functional Requirements}
+\label{subsec:functional-requirements}
+
+\begin{itemize}
+    \item \textbf{FR1 --- Regime representation.} The system shall derive a market-state representation from multi-asset OHLCV data without relying on hand-labeled regimes. \emph{Discharged by:} Section~\ref{sec:data-feature-engineering} (feature engineering) and Section~\ref{sec:regime-encoder-methodology} (the superseded learned-encoder variant).
+    \item \textbf{FR2 --- Regime detection.} The system shall discretize market state into a small number of statistically distinct regimes with explicit transition dynamics, and that distinctness shall be verified, not assumed. \emph{Discharged by:} Section~\ref{sec:regime-detection-methodology}; verified in Section~\ref{subsec:regime-results-preview} (volatility distinctness, $p\approx0$ across every configuration tested).
+    \item \textbf{FR3 --- Regime-conditioned multi-agent reasoning.} The system shall produce a directional trading recommendation from multiple specialized perspectives, each explicitly conditioned on the detected regime rather than reasoning over price alone. \emph{Discharged by:} Section~\ref{sec:multi-agent-methodology}; verified in Section~\ref{subsec:agent-validation-battery} (the null-regime test, confirming regime context is not silently discarded).
+    \item \textbf{FR4 --- Learned execution policy.} The system shall translate agent consensus and portfolio state into position-sizing decisions via a trained policy rather than a fixed rule. \emph{Discharged by:} Section~\ref{sec:rl-execution-methodology}.
+    \item \textbf{FR5 --- Live monitoring.} The system shall expose regime detection, agent reasoning, and execution decisions through a real-time interface. \emph{Discharged by:} Section~\ref{sec:dashboard-methodology}.
+    \item \textbf{FR6 --- Decision auditability.} Every displayed decision (action, position size, conviction) shall be traceable to the specific inputs --- regime, consensus, risk limits --- that produced it, and every quantity shown alongside a decision shall originate from the same evaluation run as that decision. \emph{Discharged by:} Section~\ref{subsec:dashboard-auditability}.
+\end{itemize}
+
+\subsection{Non-Functional Requirements}
+\label{subsec:non-functional-requirements}
+
+\begin{itemize}
+    \item \textbf{NFR1 --- Evaluation determinism.} Repeated evaluation of an identical checkpoint under an identical configuration shall return bit-identical metrics, so that a reported result is attributable to the checkpoint and configuration rather than to run-to-run noise. \emph{Discharged by:} Section~\ref{subsec:rl-determinism}.
+    \item \textbf{NFR2 --- Data integrity / no leakage.} No training, model-selection, or hyperparameter decision shall read data from the test split; this boundary shall be asserted in code, not only documented. \emph{Discharged by:} Section~\ref{subsec:train-val-test-split}.
+    \item \textbf{NFR3 --- Statistical rigor.} Every headline performance comparison shall be reported with a significance test or an explicit noise control, not as an isolated point estimate. \emph{Discharged by:} Section~\ref{subsec:eval-bootstrap}; applied throughout Chapter~\ref{chap:results}.
+    \item \textbf{NFR4 --- Modularity and maintainability.} The five architectural layers shall be independently revisable --- a change to one layer (e.g.\ the regime detector's asset panel) shall not require redesigning the layers downstream of it. \emph{Discharged by:} the layered design of Section~\ref{sec:proposed-solution}; exercised in practice when the asset-panel revision of Section~\ref{subsec:regime-asset-panel-revision} and the encoder's retirement (Section~\ref{subsec:encoder-refinement}) were both absorbed without a redesign of the multi-agent or dashboard layers.
+    \item \textbf{NFR5 --- Operational responsiveness.} The live system shall produce one regime/consensus/execution decision per asset per hour, matching the pipeline's native data resolution. \emph{Discharged by:} Section~\ref{subsec:dashboard-architecture} (the APScheduler-driven hourly signal tick).
+\end{itemize}
+
 \section{Project Methodology and Work Planning}
 \label{sec:methodology-planning}
 
 Given the exploratory, research-oriented nature of MARTA, a rigid upfront specification was not appropriate: each architectural layer's design depended on empirical results from the layer built before it (e.g., the number and structure of latent regimes discovered by the HMM directly shaped how agent prompts were engineered). The project therefore followed an \textbf{iterative, layer-by-layer methodology}, where each phase produced a working, evaluable component before the next was started, rather than a big-bang integration at the end.
 
+\subsection{Choice of Methodology: CRISP-DM over Sprint-Based Agile}
+\label{subsec:methodology-comparison}
+
+Sprint-based Agile frameworks (Scrum, Kanban) were considered and set aside. Both assume a backlog of comparatively independent, estimable units of work that can be committed to a fixed-length iteration; MARTA's work plan did not have that shape. The content of a given phase's deliverable --- how many regimes the HMM would discover, whether the learned encoder would outperform raw features, which architectural lever (if any) would close the RL layer's gap to buy-and-hold --- was not knowable until the previous phase's empirical results were in hand, so committing a sprint's scope in advance would have meant committing to work that later evidence twice required reopening (Section~\ref{subsec:regime-asset-panel-revision}'s panel revision and Section~\ref{subsec:encoder-refinement}'s encoder retirement, both triggered by evaluation outcomes rather than schedule). CRISP-DM was adopted instead specifically because its Evaluation phase is a first-class, named step that can route back to Data Preparation or Modeling, giving this evidence-driven revision pattern an explicit place in the methodology rather than treating every such revision as an exception to a Scrum backlog planned before the evidence existed.
+
 \subsection{Development Methodology: CRISP-DM}
 \label{subsec:crispdm-methodology}
 
-MARTA's process follows CRISP-DM (Cross-Industry Standard Process for Data Mining) \cite{crispdm2000}, whose six canonical phases --- Business Understanding, Data Understanding, Data Preparation, Modeling, Evaluation, and Deployment --- structure both the project's actual work and this report's own chapter layout (Table~\ref{tab:crispdm-mapping}).
+MARTA's process follows CRISP-DM (Cross-Industry Standard Process for Data Mining) \cite{crispdm2000}, whose six canonical phases --- Business Understanding, Data Understanding, Data Preparation, Modeling, Evaluation, and Deployment.
 
 CRISP-DM's defining property is that it is not a one-way pipeline: it explicitly allows evaluation in one phase to send the project back to an earlier one, and MARTA's own revision history is a direct instance of this rather than a deviation from a plan. Three examples recur throughout Chapter~\ref{chap:methodology}: evaluating the regime encoder against a raw-feature baseline (Evaluation) found it underperforming and sent the design back to Modeling, where the HMM was refit directly on engineered features instead (Section~\ref{subsec:encoder-refinement}); evaluating the resulting model against the original four-asset panel (Evaluation) found it had collapsed onto asset identity rather than market regime, sending the project back to Data Preparation to redefine the asset panel itself (Section~\ref{subsec:regime-asset-panel-revision}); and evaluating the RL execution layer's ablation (Evaluation) found no configuration beat buy-and-hold, changing the Deployment phase's default signal source accordingly (Section~\ref{subsec:rl-final-decision}). Table~\ref{tab:phases}'s nine work-plan phases are this same six-phase cycle instantiated concretely for MARTA, several of them spanning more than one CRISP-DM phase where a revision folded two stages back together.
 
 \begin{table}[h]
 \centering
 \small
-\caption{CRISP-DM phases mapped to where each is documented in this report}
+\caption{CRISP-DM phases}
 \label{tab:crispdm-mapping}
 \begin{tabular}{|l|p{9.5cm}|}
 \hline
 \textbf{CRISP-DM Phase} & \textbf{Report Section(s)} \\
 \hline
-Business Understanding & Section~\ref{sec:problem-statement} (Problem Statement), Section~\ref{sec:proposed-solution} (Proposed Solution), Section~\ref{sec:objectives-scope} (Objectives and Scope) \\
+Business Understanding & Section~\ref{sec:problem-statement} (Problem Statement), Section~\ref{sec:proposed-solution} (Proposed Solution), Section~\ref{sec:objectives-scope} (Objectives and Scope), Section~\ref{sec:requirements-specification} (Requirements Specification) \\
 \hline
 Data Understanding & Section~\ref{subsec:data-sources} (Data Sources and Coverage); Section~\ref{subsec:regime-asset-panel-revision} (Asset Panel Revision) \\
 \hline

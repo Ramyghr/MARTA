@@ -1,0 +1,62 @@
+@startuml sequence_diagram
+autonumber
+skinparam backgroundColor white
+actor "Binance\n(CCXT)" as Exchange
+participant "Data Pipeline" as Pipe
+participant "Feature Window" as Feat
+participant "Gaussian HMM" as HMM
+participant "DebateGraph\n(5 Agents)" as Debate
+participant "RiskAgent" as Risk
+participant "FundManagerAgent" as FM
+participant "MARTATradingEnv" as Env
+participant "PPO Policy" as PPO
+participant "Alpaca /\nTelegram" as Out
+
+Exchange -> Pipe : new hourly OHLCV bar
+activate Pipe
+Pipe -> Pipe : features.py (RSI/ATR/MACD/...)
+Pipe -> Pipe : normalize.py (720h rolling z-score)
+Pipe -> Feat : 60-candle normalized window
+deactivate Pipe
+
+activate Feat
+Feat -> HMM : feature window
+deactivate Feat
+
+activate HMM
+HMM -> HMM : predict_proba() -> regime_label, regime_probs
+HMM -> Debate : RegimeContext
+HMM -> Env : regime_label, regime_probs (state slot 1)
+deactivate HMM
+
+activate Debate
+Debate -> Debate : Macro / Technical / Sentiment post_thesis() (R1)
+Debate -> Risk : compute risk limits
+activate Risk
+Risk -> Risk : GARCH(1,1) -> CVaR
+Risk --> Debate : RiskLimits
+deactivate Risk
+Debate -> Debate : ContrarianAgent (if avg_conf >= 0.60)
+Debate -> Debate : Round 2 rebuttals (if opposition)
+Debate -> FM : theses, rebuttals, risk limits
+activate FM
+FM -> FM : synthesize()
+FM --> Debate : FundManagerDecision
+deactivate FM
+Debate -> Env : DebateResult (consensus, state slot 2)
+deactivate Debate
+
+activate Env
+Env -> Env : assemble state (regime + consensus + portfolio)
+Env -> PPO : state
+activate PPO
+PPO -> PPO : Categorical(direction) x Beta(position_fraction)
+PPO --> Env : action
+deactivate PPO
+Env -> Out : direction, position_size
+deactivate Env
+
+activate Out
+Out -> Out : Alpaca paper order + Telegram alert
+deactivate Out
+@enduml

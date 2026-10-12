@@ -1,3 +1,7 @@
+\contentsline {chapter}{Acknowledgments}{ii}{}%
+\contentsline {chapter}{List of Figures}{vi}{}%
+\contentsline {chapter}{List of Tables}{viii}{}%
+\contentsline {chapter}{List of Abbreviations}{xi}{}%
 \contentsline {chapter}{\numberline {1}General Introduction}{1}{}%
 \contentsline {section}{\numberline {1.1}General Context}{1}{}%
 \contentsline {section}{\numberline {1.2}Host Organization}{1}{}%
@@ -11,98 +15,112 @@
 \contentsline {section}{\numberline {1.5}Project Objectives and Scope}{4}{}%
 \contentsline {subsection}{\numberline {1.5.1}Objectives}{4}{}%
 \contentsline {subsection}{\numberline {1.5.2}Scope}{5}{}%
-\contentsline {section}{\numberline {1.6}Project Methodology and Work Planning}{5}{}%
-\contentsline {subsection}{\numberline {1.6.1}Development Methodology: CRISP-DM}{6}{}%
-\contentsline {subsection}{\numberline {1.6.2}Development Phases}{6}{}%
-\contentsline {subsection}{\numberline {1.6.3}Rationale for the Approach}{7}{}%
-\contentsline {chapter}{\numberline {2}State of the Art}{9}{}%
-\contentsline {section}{\numberline {2.1}Introduction}{9}{}%
-\contentsline {section}{\numberline {2.2}Algorithmic Trading: Evolution and Challenges}{9}{}%
-\contentsline {section}{\numberline {2.3}Market Regime Detection}{9}{}%
-\contentsline {subsection}{\numberline {2.3.1}Rule-Based Approaches}{9}{}%
-\contentsline {subsection}{\numberline {2.3.2}Statistical Approaches: Hidden Markov Models and Clustering}{10}{}%
-\contentsline {subsection}{\numberline {2.3.3}Deep Learning Approaches}{10}{}%
-\contentsline {section}{\numberline {2.4}LLM Agents in Finance}{10}{}%
-\contentsline {subsection}{\numberline {2.4.1}Single- and Multi-Agent LLM Trading Systems}{10}{}%
-\contentsline {subsection}{\numberline {2.4.2}Multi-Agent Debate as a Design Pattern}{11}{}%
-\contentsline {subsection}{\numberline {2.4.3}Limitations of Existing Approaches}{11}{}%
-\contentsline {section}{\numberline {2.5}Reinforcement Learning for Trading}{11}{}%
-\contentsline {subsection}{\numberline {2.5.1}Early Approaches: DQN and Discrete Action Spaces}{11}{}%
-\contentsline {subsection}{\numberline {2.5.2}PPO and Continuous Action Spaces}{11}{}%
-\contentsline {subsection}{\numberline {2.5.3}Curriculum Learning in Finance}{12}{}%
-\contentsline {section}{\numberline {2.6}Positioning of MARTA}{12}{}%
-\contentsline {section}{\numberline {2.7}Summary}{13}{}%
-\contentsline {chapter}{\numberline {3}Methodology}{14}{}%
-\contentsline {section}{\numberline {3.1}Overview}{14}{}%
-\contentsline {section}{\numberline {3.2}Data and Feature Engineering}{14}{}%
-\contentsline {subsection}{\numberline {3.2.1}Data Sources and Coverage}{14}{}%
-\contentsline {subsection}{\numberline {3.2.2}Pipeline Stages}{15}{}%
-\contentsline {subsection}{\numberline {3.2.3}Train / Validation / Test Split}{16}{}%
-\contentsline {section}{\numberline {3.3}Regime Encoder}{17}{}%
-\contentsline {subsection}{\numberline {3.3.1}Design Objective}{17}{}%
-\contentsline {subsection}{\numberline {3.3.2}Architecture}{17}{}%
-\contentsline {subsection}{\numberline {3.3.3}Contrastive Training}{17}{}%
-\contentsline {subsection}{\numberline {3.3.4}Ongoing Refinement: Pooling and Pair Construction}{18}{}%
-\contentsline {section}{\numberline {3.4}Regime Detection}{18}{}%
-\contentsline {subsection}{\numberline {3.4.1}Design Objective}{18}{}%
-\contentsline {subsection}{\numberline {3.4.2}Dimensionality Reduction}{18}{}%
-\contentsline {subsection}{\numberline {3.4.3}Model Selection}{18}{}%
-\contentsline {subsection}{\numberline {3.4.4}Final Fit and Regime Stream Generation}{19}{}%
-\contentsline {subsection}{\numberline {3.4.5}Engine Correctness Audit}{19}{}%
-\contentsline {subsection}{\numberline {3.4.6}Asset Panel Revision}{20}{}%
-\contentsline {subsection}{\numberline {3.4.7}Empirical State-Count Validation at Scale}{21}{}%
-\contentsline {subsection}{\numberline {3.4.8}Synthetic Ground-Truth Validation}{22}{}%
-\contentsline {section}{\numberline {3.5}Multi-Agent Deliberation System}{24}{}%
+\contentsline {section}{\numberline {1.6}Requirements Specification}{6}{}%
+\contentsline {subsection}{\numberline {1.6.1}Functional Requirements}{6}{}%
+\contentsline {subsection}{\numberline {1.6.2}Non-Functional Requirements}{6}{}%
+\contentsline {section}{\numberline {1.7}Project Methodology and Work Planning}{7}{}%
+\contentsline {subsection}{\numberline {1.7.1}Choice of Methodology: CRISP-DM over Sprint-Based Agile}{7}{}%
+\contentsline {subsection}{\numberline {1.7.2}Development Methodology: CRISP-DM}{8}{}%
+\contentsline {subsection}{\numberline {1.7.3}Development Phases}{8}{}%
+\contentsline {subsection}{\numberline {1.7.4}Rationale for the Approach}{9}{}%
+\contentsline {chapter}{\numberline {2}State of the Art}{11}{}%
+\contentsline {section}{\numberline {2.1}Introduction}{11}{}%
+\contentsline {section}{\numberline {2.2}Algorithmic Trading: Evolution and Challenges}{11}{}%
+\contentsline {section}{\numberline {2.3}Market Regime Detection}{11}{}%
+\contentsline {subsection}{\numberline {2.3.1}Rule-Based Approaches}{11}{}%
+\contentsline {subsection}{\numberline {2.3.2}Statistical Approaches: Hidden Markov Models and Clustering}{12}{}%
+\contentsline {subsection}{\numberline {2.3.3}Deep Learning Approaches}{12}{}%
+\contentsline {section}{\numberline {2.4}LLM Agents in Finance}{12}{}%
+\contentsline {subsection}{\numberline {2.4.1}Single- and Multi-Agent LLM Trading Systems}{12}{}%
+\contentsline {subsection}{\numberline {2.4.2}Multi-Agent Debate as a Design Pattern}{13}{}%
+\contentsline {subsection}{\numberline {2.4.3}Limitations of Existing Approaches}{13}{}%
+\contentsline {section}{\numberline {2.5}Reinforcement Learning for Trading}{13}{}%
+\contentsline {subsection}{\numberline {2.5.1}Early Approaches: DQN and Discrete Action Spaces}{13}{}%
+\contentsline {subsection}{\numberline {2.5.2}PPO and Continuous Action Spaces}{13}{}%
+\contentsline {subsection}{\numberline {2.5.3}Curriculum Learning in Finance}{14}{}%
+\contentsline {section}{\numberline {2.6}Positioning of MARTA}{14}{}%
+\contentsline {section}{\numberline {2.7}Summary}{15}{}%
+\contentsline {chapter}{\numberline {3}Methodology}{16}{}%
+\contentsline {section}{\numberline {3.1}Overview}{16}{}%
+\contentsline {section}{\numberline {3.2}System Design and UML Models}{16}{}%
+\contentsline {subsection}{\numberline {3.2.1}Use Case Model}{16}{}%
+\contentsline {subsection}{\numberline {3.2.2}Class Model}{18}{}%
+\contentsline {subsection}{\numberline {3.2.3}Sequence Model}{18}{}%
+\contentsline {subsection}{\numberline {3.2.4}Deployment Model}{19}{}%
+\contentsline {section}{\numberline {3.3}Data and Feature Engineering}{20}{}%
+\contentsline {subsection}{\numberline {3.3.1}Data Sources and Coverage}{20}{}%
+\contentsline {subsection}{\numberline {3.3.2}Pipeline Stages}{21}{}%
+\contentsline {subsection}{\numberline {3.3.3}Train / Validation / Test Split}{21}{}%
+\contentsline {section}{\numberline {3.4}Regime Encoder}{22}{}%
+\contentsline {subsection}{\numberline {3.4.1}Design Objective}{22}{}%
+\contentsline {subsection}{\numberline {3.4.2}Architecture}{23}{}%
+\contentsline {subsection}{\numberline {3.4.3}Contrastive Training}{23}{}%
+\contentsline {subsection}{\numberline {3.4.4}Ongoing Refinement: Pooling and Pair Construction}{24}{}%
+\contentsline {section}{\numberline {3.5}Regime Detection}{24}{}%
 \contentsline {subsection}{\numberline {3.5.1}Design Objective}{24}{}%
-\contentsline {subsection}{\numberline {3.5.2}Orchestration and LLM Backend}{24}{}%
-\contentsline {subsection}{\numberline {3.5.3}Regime Context}{24}{}%
-\contentsline {subsection}{\numberline {3.5.4}Agent Roster}{24}{}%
-\contentsline {subsection}{\numberline {3.5.5}Debate Flow}{24}{}%
-\contentsline {subsection}{\numberline {3.5.6}Risk Limit Computation}{25}{}%
-\contentsline {subsection}{\numberline {3.5.7}Fund Manager Synthesis}{25}{}%
-\contentsline {section}{\numberline {3.6}RL Execution Agent}{26}{}%
-\contentsline {subsection}{\numberline {3.6.1}Design Objective}{26}{}%
-\contentsline {subsection}{\numberline {3.6.2}MDP Formulation}{26}{}%
-\contentsline {subsection}{\numberline {3.6.3}Policy Network}{27}{}%
-\contentsline {subsection}{\numberline {3.6.4}Curriculum Training}{27}{}%
-\contentsline {subsection}{\numberline {3.6.5}Evaluation Determinism}{28}{}%
-\contentsline {section}{\numberline {3.7}Evaluation Methodology}{28}{}%
-\contentsline {subsection}{\numberline {3.7.1}Metrics}{28}{}%
-\contentsline {subsection}{\numberline {3.7.2}Ablation Design}{28}{}%
-\contentsline {subsection}{\numberline {3.7.3}Statistical Testing}{28}{}%
-\contentsline {subsection}{\numberline {3.7.4}In-Sample Regime Behavior Diagnostic}{29}{}%
-\contentsline {section}{\numberline {3.8}Dashboard and Live System}{29}{}%
-\contentsline {subsection}{\numberline {3.8.1}Design Objective}{29}{}%
-\contentsline {subsection}{\numberline {3.8.2}Architecture}{29}{}%
-\contentsline {subsection}{\numberline {3.8.3}Live Regime Lookup}{29}{}%
-\contentsline {subsection}{\numberline {3.8.4}Live Feature Bridge}{30}{}%
-\contentsline {subsection}{\numberline {3.8.5}Multi-Asset Debate Coverage}{30}{}%
-\contentsline {subsection}{\numberline {3.8.6}User-Configurable Strategy Backtesting}{31}{}%
-\contentsline {subsection}{\numberline {3.8.7}Auditability}{31}{}%
-\contentsline {chapter}{\numberline {4}Results}{35}{}%
-\contentsline {section}{\numberline {4.1}Regime Detection Results}{35}{}%
-\contentsline {subsection}{\numberline {4.1.1}Statistical Validity Across Candidate Configurations}{35}{}%
-\contentsline {subsection}{\numberline {4.1.2}Regime Characterization}{36}{}%
-\contentsline {subsection}{\numberline {4.1.3}Downstream Value: Position Sizing and Directional Conditioning}{37}{}%
-\contentsline {subsection}{\numberline {4.1.4}Regime Label Directional Fidelity: A Leg-Level Check}{38}{}%
-\contentsline {subsection}{\numberline {4.1.5}Consequence: Removing Directional Language from Regime Descriptions (2026-09-01)}{39}{}%
-\contentsline {subsection}{\numberline {4.1.6}Synthetic Recovery Summary}{40}{}%
-\contentsline {section}{\numberline {4.2}Multi-Agent Deliberation Results}{40}{}%
-\contentsline {subsection}{\numberline {4.2.1}Validation Battery: What the System Actually Does}{41}{}%
-\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{41}{}%
-\contentsline {subsection}{\numberline {4.2.3}Relationship to the Reported RL Policy}{42}{}%
-\contentsline {section}{\numberline {4.3}RL Execution Results}{43}{}%
-\contentsline {subsection}{\numberline {4.3.1}Controlled Ablation on the Crypto-Only Panel}{43}{}%
-\contentsline {subsection}{\numberline {4.3.2}Predictability Ceiling Check}{44}{}%
-\contentsline {subsection}{\numberline {4.3.3}Final Decision on the RL Layer}{44}{}%
-\contentsline {subsection}{\numberline {4.3.4}Native Weekly-Decision-Cadence Follow-Up (2026-08-31)}{44}{}%
-\contentsline {subsubsection}{2025 Test-Set Confirmation: the Lead Does Not Replicate}{45}{}%
-\contentsline {subsubsection}{Crypto5 Panel Extension: the Null Result Generalizes (2026-09-01)}{46}{}%
-\contentsline {chapter}{\numberline {5}Conclusion}{48}{}%
-\contentsline {section}{\numberline {5.1}Regime Detection: Findings}{48}{}%
-\contentsline {subsection}{\numberline {5.1.1}What Was Found}{48}{}%
-\contentsline {subsection}{\numberline {5.1.2}Interpretation}{49}{}%
-\contentsline {section}{\numberline {5.2}Multi-Agent Deliberation: Findings}{49}{}%
-\contentsline {section}{\numberline {5.3}RL Execution: Findings}{50}{}%
-\contentsline {section}{\numberline {5.4}Overall Verdict}{51}{}%
-\contentsline {section}{\numberline {5.5}Limitations and Open Items}{52}{}%
+\contentsline {subsection}{\numberline {3.5.2}Dimensionality Reduction}{24}{}%
+\contentsline {subsection}{\numberline {3.5.3}Model Selection}{25}{}%
+\contentsline {subsection}{\numberline {3.5.4}Final Fit and Regime Stream Generation}{25}{}%
+\contentsline {subsection}{\numberline {3.5.5}Engine Correctness Audit}{26}{}%
+\contentsline {subsection}{\numberline {3.5.6}Asset Panel Revision}{27}{}%
+\contentsline {subsection}{\numberline {3.5.7}Empirical State-Count Validation at Scale}{28}{}%
+\contentsline {subsection}{\numberline {3.5.8}Synthetic Ground-Truth Validation}{28}{}%
+\contentsline {section}{\numberline {3.6}Multi-Agent Deliberation System}{29}{}%
+\contentsline {subsection}{\numberline {3.6.1}Design Objective}{29}{}%
+\contentsline {subsection}{\numberline {3.6.2}Orchestration and LLM Backend}{29}{}%
+\contentsline {subsection}{\numberline {3.6.3}Regime Context}{30}{}%
+\contentsline {subsection}{\numberline {3.6.4}Agent Roster}{30}{}%
+\contentsline {subsection}{\numberline {3.6.5}Debate Flow}{30}{}%
+\contentsline {subsection}{\numberline {3.6.6}Risk Limit Computation}{30}{}%
+\contentsline {subsection}{\numberline {3.6.7}Fund Manager Synthesis}{31}{}%
+\contentsline {section}{\numberline {3.7}RL Execution Agent}{32}{}%
+\contentsline {subsection}{\numberline {3.7.1}Design Objective}{32}{}%
+\contentsline {subsection}{\numberline {3.7.2}MDP Formulation}{32}{}%
+\contentsline {subsection}{\numberline {3.7.3}Policy Network}{33}{}%
+\contentsline {subsection}{\numberline {3.7.4}Curriculum Training}{34}{}%
+\contentsline {subsection}{\numberline {3.7.5}Evaluation Determinism}{34}{}%
+\contentsline {section}{\numberline {3.8}Evaluation Methodology}{35}{}%
+\contentsline {subsection}{\numberline {3.8.1}Metrics}{35}{}%
+\contentsline {subsection}{\numberline {3.8.2}Ablation Design}{35}{}%
+\contentsline {subsection}{\numberline {3.8.3}Statistical Testing}{35}{}%
+\contentsline {subsection}{\numberline {3.8.4}In-Sample Regime Behavior Diagnostic}{35}{}%
+\contentsline {section}{\numberline {3.9}Dashboard and Live System}{35}{}%
+\contentsline {subsection}{\numberline {3.9.1}Design Objective}{35}{}%
+\contentsline {subsection}{\numberline {3.9.2}Architecture}{36}{}%
+\contentsline {subsection}{\numberline {3.9.3}Live Regime Lookup}{36}{}%
+\contentsline {subsection}{\numberline {3.9.4}Live Feature Bridge}{37}{}%
+\contentsline {subsection}{\numberline {3.9.5}Multi-Asset Debate Coverage}{37}{}%
+\contentsline {subsection}{\numberline {3.9.6}User-Configurable Strategy Backtesting}{37}{}%
+\contentsline {subsection}{\numberline {3.9.7}Auditability}{38}{}%
+\contentsline {chapter}{\numberline {4}Results}{42}{}%
+\contentsline {section}{\numberline {4.1}Regime Detection Results}{42}{}%
+\contentsline {subsection}{\numberline {4.1.1}Statistical Validity Across Candidate Configurations}{42}{}%
+\contentsline {subsection}{\numberline {4.1.2}Regime Characterization}{43}{}%
+\contentsline {subsection}{\numberline {4.1.3}Downstream Value: Position Sizing and Directional Conditioning}{44}{}%
+\contentsline {subsection}{\numberline {4.1.4}Regime Label Directional Fidelity: A Leg-Level Check}{45}{}%
+\contentsline {subsection}{\numberline {4.1.5}Consequence: Removing Directional Language from Regime Descriptions (2026-09-01)}{46}{}%
+\contentsline {subsection}{\numberline {4.1.6}Synthetic Recovery Summary}{47}{}%
+\contentsline {section}{\numberline {4.2}Multi-Agent Deliberation Results}{48}{}%
+\contentsline {subsection}{\numberline {4.2.1}Validation Battery: What the System Actually Does}{48}{}%
+\contentsline {subsection}{\numberline {4.2.2}Failure Modes Found, and Their Resolution}{48}{}%
+\contentsline {subsection}{\numberline {4.2.3}Relationship to the Reported RL Policy}{50}{}%
+\contentsline {section}{\numberline {4.3}RL Execution Results}{50}{}%
+\contentsline {subsection}{\numberline {4.3.1}Controlled Ablation on the Crypto-Only Panel}{50}{}%
+\contentsline {subsection}{\numberline {4.3.2}Predictability Ceiling Check}{51}{}%
+\contentsline {subsection}{\numberline {4.3.3}Final Decision on the RL Layer}{52}{}%
+\contentsline {subsection}{\numberline {4.3.4}Native Weekly-Decision-Cadence Follow-Up (2026-08-31)}{52}{}%
+\contentsline {subsubsection}{2025 Test-Set Confirmation: the Lead Does Not Replicate}{54}{}%
+\contentsline {subsubsection}{Crypto5 Panel Extension: the Null Result Generalizes (2026-09-01)}{54}{}%
+\contentsline {chapter}{\numberline {5}Conclusion}{57}{}%
+\contentsline {section}{\numberline {5.1}Regime Detection: Findings}{57}{}%
+\contentsline {subsection}{\numberline {5.1.1}What Was Found}{57}{}%
+\contentsline {subsection}{\numberline {5.1.2}Interpretation}{58}{}%
+\contentsline {section}{\numberline {5.2}Multi-Agent Deliberation: Findings}{58}{}%
+\contentsline {section}{\numberline {5.3}RL Execution: Findings}{59}{}%
+\contentsline {section}{\numberline {5.4}Overall Verdict}{60}{}%
+\contentsline {section}{\numberline {5.5}Limitations and Open Items}{61}{}%
+\contentsline {chapter}{\numberline {A}Appendix}{62}{}%
+\contentsline {section}{\numberline {A.1}Synthetic Regime Ground-Truth Validation: Full Derivation}{62}{}%
+\contentsline {section}{\numberline {A.2}Implementation Note: A Multiprocessing Deadlock}{64}{}%
+\contentsline {chapter}{Résumé}{66}{}%
+\contentsline {chapter}{Abstract}{67}{}%
