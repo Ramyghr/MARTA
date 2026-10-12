@@ -377,9 +377,11 @@ function StrategyTesterPanel() {
   useEffect(() => {
     api.getBacktestStrategies(selectedAsset).then((d) => {
       setStrategies(d.strategies);
-      // e.g. weekly_ppo_raw is BTC_USDT-only — if the asset just switched away from BTC
-      // while one of those was selected, it'd otherwise stay selected-but-disabled and
-      // still submit on Run, hitting the backend's 400 instead of being caught here.
+      // weekly_ppo_* strategies are only unlocked for assets with a trained checkpoint
+      // (backend-reported per-asset) — if the asset just switched to one without a
+      // checkpoint while one of those was selected, it'd otherwise stay
+      // selected-but-disabled and still submit on Run, hitting the backend's 400
+      // instead of being caught here.
       setStrategy((current) => {
         const entry = d.strategies.find((s) => s.id === current);
         return entry && !entry.locked ? current : "ma_crossover";

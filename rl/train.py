@@ -102,15 +102,15 @@ CURRICULUM_PHASES: list[dict] = [
     },
 ]
 
-# Crypto-only curriculum (2026-08-24) — same 2-phase step budgets/idle_penalty as the old
-# panel's CURRICULUM_PHASES[:2] (BTC, then BTC+ETH) so the crypto5 result is a controlled,
-# apples-to-apples comparison against that existing baseline with panel/regime-stream as
-# close to the only changed variable as practical. Unlike the old panel, crypto5 has no
-# forex/commodity daily-upsampling problem (every asset here is native-hourly crypto), so
-# the historical "Phase 3-4 collapse" reason for capping at 2 phases doesn't automatically
-# apply — CRYPTO5_CURRICULUM_PHASES is deliberately kept short for this first run's
-# wall-clock budget, not because a longer crypto5 curriculum is expected to collapse the
-# way the old panel's forex/commodity phases did.
+# Crypto-only curriculum (2026-08-24, extended to full 5-asset panel 2026-09-30) — same
+# step budgets/idle_penalty as the old panel's CURRICULUM_PHASES[:2] (BTC, then BTC+ETH)
+# for Phases 1-2 so the crypto5 result stays a controlled, apples-to-apples comparison
+# against that existing baseline with panel/regime-stream as close to the only changed
+# variable as practical. Unlike the old panel, crypto5 has no forex/commodity
+# daily-upsampling problem (every asset here is native-hourly crypto), so the historical
+# "Phase 3-4 collapse" reason the old panel capped at 2 phases doesn't automatically
+# apply — Phases 1-2 were run first and validated before Phases 3-5 (BNB, LTC, XRP) were
+# added to actually use the rest of CRYPTO5_CANONICAL_ASSETS.
 #
 # Thresholds lowered 2026-08-24 (0.5->0.0, 0.8->0.3) alongside rl/callbacks.py's new hard
 # phase gate (CurriculumCallback._on_step): with the gate now actually stopping training
@@ -118,6 +118,14 @@ CURRICULUM_PHASES: list[dict] = [
 # obs_mode/reward setup) would almost certainly gate-fail Phase 1 immediately regardless
 # of whether the fixes actually helped. 0.0 is the real bar this run needs to clear
 # (non-negative risk-adjusted return, not "beats buy-and-hold") before Phase 2 is trusted.
+#
+# Phases 3-5 thresholds step down (0.3 -> 0.2 -> 0.15 -> 0.1) rather than holding flat at
+# 0.3: each phase asks the shared policy to generalise to one more asset's price dynamics
+# without forgetting the prior ones, so the bar is deliberately relaxed a bit each time —
+# same rationale the old 4-asset panel used for its Phase 3/4 thresholds (0.2/0.1), just
+# less steep since these are all native-hourly crypto rather than the old panel's
+# daily-upsampled forex/commodities. Not yet empirically tuned — first run's val Sharpe
+# per phase should inform whether these need adjusting.
 CRYPTO5_CURRICULUM_PHASES: list[dict] = [
     {
         "assets": ["BTC_USDT"],
@@ -131,6 +139,27 @@ CRYPTO5_CURRICULUM_PHASES: list[dict] = [
         "sharpe_threshold": 0.3,
         "max_steps": 300_000,
         "label": "Phase2_BTC_ETH",
+        "idle_penalty": 0.002,
+    },
+    {
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT"],
+        "sharpe_threshold": 0.2,
+        "max_steps": 300_000,
+        "label": "Phase3_add_BNB",
+        "idle_penalty": 0.002,
+    },
+    {
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT"],
+        "sharpe_threshold": 0.15,
+        "max_steps": 300_000,
+        "label": "Phase4_add_LTC",
+        "idle_penalty": 0.002,
+    },
+    {
+        "assets": ["BTC_USDT", "ETH_USDT", "BNB_USDT", "LTC_USDT", "XRP_USDT"],
+        "sharpe_threshold": 0.1,
+        "max_steps": 300_000,
+        "label": "Phase5_add_XRP",
         "idle_penalty": 0.002,
     },
 ]

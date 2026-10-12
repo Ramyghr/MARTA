@@ -1,0 +1,110 @@
+\documentclass[9pt]{extarticle}
+\usepackage[margin=1.1cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{multicol}
+\usepackage{tcolorbox}
+\usepackage{noto}
+\pagestyle{empty}
+
+\titleformat{\section}{\normalfont\bfseries\color{blue!50!black}}{}{0em}{}[\vspace{-0.3em}\hrule]
+\titlespacing{\section}{0pt}{0.6em}{0.3em}
+\setlist[itemize]{leftmargin=1.1em, itemsep=1pt, topsep=1pt, parsep=0pt}
+
+\newcommand{\N}{\mathcal{N}}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries Gaussian HMM Regime Model --- Cheat Sheet}\\[2pt]
+{\small MARTA --- Layer 1: Regime Discovery (\texttt{regime/hmm.py})}
+\end{center}
+\vspace{2pt}
+
+\begin{multicols}{2}
+
+\section{1. Model definition}
+Hidden regime $z_t \in \{1,\dots,K\}$, observed feature vector $x_t \in \mathbb{R}^d$
+($d=14$: ATR, ADX, RSI, BB width, MACD hist., OBV, vol z-score, realized vol
+(z-scored \& raw), vol ratio, return skew/kurtosis, autocorr(1), close return).
+
+\begin{itemize}
+\item \textbf{Initial dist.:} $\pi_k = P(z_1=k)$
+\item \textbf{Transition matrix:} $A_{jk} = P(z_{t+1}=k \mid z_t=j)$
+\item \textbf{Emission (Gaussian, diag.\ cov.):}
+$$P(x_t \mid z_t=k) = \N(x_t;\mu_k,\Sigma_k)$$
+$$= \prod_{i=1}^{d} \frac{1}{\sqrt{2\pi\sigma_{k,i}^2}}\exp\!\left(-\frac{(x_{t,i}-\mu_{k,i})^2}{2\sigma_{k,i}^2}\right)$$
+\end{itemize}
+\textit{Diagonal $\Sigma_k$: features independent within a state --- avoids one
+state's full covariance ``running away'' unconstrained during EM.}
+
+\section{2. E-step --- Forward--Backward}
+\textbf{Forward} (probability of the past \& current state):
+$$\alpha_1(k)=\pi_k\N(x_1;\mu_k,\Sigma_k)$$
+$$\alpha_t(k)=\Big[\textstyle\sum_j \alpha_{t-1}(j)A_{jk}\Big]\N(x_t;\mu_k,\Sigma_k)$$
+
+\textbf{Backward} (probability of the future given current state):
+$$\beta_T(k)=1$$
+$$\beta_t(k)=\sum_j A_{kj}\N(x_{t+1};\mu_j,\Sigma_j)\beta_{t+1}(j)$$
+
+\textbf{State posterior} (soft belief --- \emph{this is the } \texttt{regime\_prob} \emph{ vector fed downstream}):
+$$\gamma_t(k)=P(z_t=k\mid x_{1:T})=\frac{\alpha_t(k)\,\beta_t(k)}{\sum_j \alpha_t(j)\beta_t(j)}$$
+
+\textbf{Pairwise transition posterior:}
+$$\xi_t(j,k)=\frac{\alpha_t(j)A_{jk}\,\N(x_{t+1};\mu_k,\Sigma_k)\,\beta_{t+1}(k)}{P(x_{1:T})}$$
+
+\section{3. M-step --- parameter re-estimation}
+$$\pi_k=\gamma_1(k),\qquad
+A_{jk}=\frac{\sum_t \xi_t(j,k)}{\sum_t \gamma_t(j)}$$
+$$\mu_k=\frac{\sum_t \gamma_t(k)\,x_t}{\sum_t \gamma_t(k)},\qquad
+\sigma_{k,i}^2=\frac{\sum_t \gamma_t(k)(x_{t,i}-\mu_{k,i})^2}{\sum_t \gamma_t(k)}$$
+
+E-step then M-step $=$ one \textbf{Baum--Welch / EM} iteration. Log-likelihood
+is non-decreasing every iteration (EM guarantee); stop at \texttt{tol=1e-4} or
+\texttt{max\_iter=200}. Best-of-\textbf{5 seeds} kept (EM finds only a local
+optimum --- multi-restart guards against a bad init).
+
+\columnbreak
+
+\section{4. Model selection --- BIC}
+$$\text{BIC}(K) = -2\ln \hat L_K \;+\; p_K \ln n,\qquad
+p_K \approx K^2 + 2Kd$$
+\begin{itemize}
+\item $K^2$: transition matrix free params; $2Kd$: per-state mean ($d$) + diagonal variance ($d$), for $K$ states.
+\item Grid search $K \in \{2,\dots,8\}$, diagonal cov, \texttt{tol=1e-3}, 100 iters.
+\item Pick $\arg\min_K \text{BIC}(K)$; \textbf{flat-curve guard} --- if a larger
+$K$ improves BIC by $<5\%$ of the best value, keep the smaller $K$.
+\item Result on the crypto5 panel: $K=6$.
+\end{itemize}
+
+\section{5. Decoding (after fitting)}
+\begin{itemize}
+\item \textbf{Viterbi:} $\displaystyle\arg\max_{z_{1:T}} P(z_{1:T}\mid x_{1:T})$
+--- single most likely \emph{whole path} $\to$ \texttt{regime\_label}.
+\item \textbf{Marginal posterior} $\gamma_t(k)$ at each $t$ $\to$
+\texttt{regime\_prob\_0..K-1} --- the vector actually consumed by the agents
+/ RL observation. \emph{Prefer this over the hard label.}
+\end{itemize}
+
+\section{6. Project-specific numbers to cite}
+\begin{itemize}
+\item $d=14$ features; 720h rolling z-score, \texttt{min\_periods=168}
+(except \texttt{realized\_vol\_raw}, \texttt{close\_return} --- kept unnormalized to preserve absolute crash magnitude).
+\item Sequence boundaries: \texttt{lengths=} passed to hmmlearn so multi-asset
+concatenated training data isn't treated as one continuous chain.
+\item Semantic validation: pass iff $\text{std}_k(\mu_{k,\text{realized\_vol}}) > 0.001$
+--- regimes must differ in average volatility, not just be arbitrary clusters.
+\end{itemize}
+
+\begin{tcolorbox}[colback=red!5,colframe=red!40!black,boxrule=0.5pt,arc=1pt,left=4pt,right=4pt,top=3pt,bottom=3pt]
+\textbf{Honest limitation (state proactively):} regime label vs.\ forward
+price direction agreement $\approx 49\%$ (coin flip, zigzag-leg test, 111
+legs). Regimes cluster on \emph{volatility/trend-magnitude}, not directional
+bias --- expected, since the HMM clusters the joint feature distribution, not
+forward return sign.
+\end{tcolorbox}
+
+\end{multicols}
+\end{document}

@@ -7,9 +7,72 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **MARTA** — Multi-Agent Regime-Aware Trading Architecture. A Final Year Engineering Project (PFE) combining contrastive pretraining, LLM multi-agent deliberation, and PPO reinforcement learning for cross-asset algorithmic trading.
 
-**Research claim:** Conditioning a multi-agent LLM trading system on latent regime embeddings (via TFT + InfoNCE pretraining) produces statistically significant improvements in risk-adjusted returns over regime-agnostic baselines across crypto, forex, and commodity markets.
+**Research claim (original, as proposed):** Conditioning a multi-agent LLM trading system on latent regime embeddings (via TFT + InfoNCE pretraining) produces statistically significant improvements in risk-adjusted returns over regime-agnostic baselines across crypto, forex, and commodity markets. **Status: not validated — see "Current state" immediately below.**
 
 **Python 3.11 — conda environment: `marta`**
+
+## Current state (2026-09-30) — read this before anything else in this file
+
+Everything from here down to "## NOTE: root CLAUDE.md staleness" describes the **original**
+architecture (Months 1-3): a 4-asset panel (BTC/ETH/EURUSD/GOLD), a TFT+InfoNCE contrastive
+encoder, and a forward-backward-smoothed (leaky) regime stream. That architecture was
+**superseded** by a crypto-only pivot (`BTC_USDT, ETH_USDT, BNB_USDT, LTC_USDT, XRP_USDT`,
+`data/processed/crypto5_multihorizon`) that happened in a burst of work this file was never
+updated to reflect in real time. Kept below as historical engineering record — genuinely useful
+for *how* problems were found and fixed — not as a current architecture reference.
+
+**What actually backs the system today:**
+- **No TFT/contrastive encoder.** A dedicated diagnostic (`docs/RESULTS_AND_METHODOLOGY.md`
+  Section 2) found the learned 128-dim embedding scored at chance (AUC ~0.50) predicting
+  return direction, while the raw 14 engineered features scored above chance (AUC 0.547). Four
+  retraining variants (different pooling, augmentation, positive-pair construction, negative
+  sampling) were each tried and none beat the raw-feature baseline. The encoder was abandoned;
+  **raw features now back both the HMM and the RL observation directly.**
+- **Regime detection:** Gaussian HMM fit directly on raw features (no encoder), n=6 states,
+  validated against balanced occupancy / dynamic transitions / interpretable statistics — all
+  three passed, a healthier detector than any encoder-based version tried. The stream is
+  **causal** (`regime_stream_causal.parquet`) — the original `regime_stream.parquet` used
+  hmmlearn's `predict_proba()` over the full concatenated sequence, which leaks future data into
+  past regime labels via forward-backward smoothing (confirmed: dropping the leaky regime block
+  improved RL Sharpe by 1.5 points on its own). The causal replacement is what any new
+  `obs_mode="raw_regime"` work should read.
+- **Asset panel:** `BTC_USDT, ETH_USDT, BNB_USDT, LTC_USDT, XRP_USDT` (crypto5,
+  `CRYPTO5_CANONICAL_ASSETS` in `rl/train.py`) is the actively-developed panel. The old 4-asset
+  panel (BTC/ETH/EURUSD/GOLD) still exists and is what production dashboard defaults
+  (`dashboard/backend/ppo_inference.py`, `rl.env.CANONICAL_ASSETS`) depend on — module-level
+  defaults were deliberately left untouched during the migration so the live dashboard keeps
+  working; crypto5-aware code opts in via explicit constructor parameters.
+
+**Is the core research claim validated? No — and this has been tested rigorously, not just
+once:**
+| Layer / test | Finding | Source |
+|---|---|---|
+| RL execution, hourly cadence, crypto5, 5 independent architectural levers (regime conditioning, reward shaping, BC warm-start, discrete actions) | None produced a confirmed, statistically defensible edge over buy-and-hold. **Treated as the RL layer's final result**, not a configuration still being searched. | `docs/RESULTS_AND_METHODOLOGY.md` Section 9 |
+| RL execution, native weekly cadence (`decision_interval=168`) | 12/12 runs beat buy-hold at the *point estimate* on 2024 val (the most consistent positive pattern found anywhere in the project) but 0/12 individually significant; did not replicate on a pre-registered 2025 test pass (2/4 conditions flipped to underperforming). **Closed as not-confirmed.** | Section 10, 10a |
+| Same weekly experiment, extended to all 5 crypto5 assets | Same null pattern — 18/20 cells positive on 2024 val, only 1/20 significant (the placebo condition); 2025 out-of-window check weakens to near coin-flip. | Section 10b |
+| Regime trading-instructions A/B test (agent layer: passive description vs. prescriptive instructions vs. none) | No directional-accuracy effect (0.55-0.57 across all 3 variants); the hypothesis that explicit instructions shrink high-vol position size was **inverted** — position size rose monotonically with how much regime text was in the prompt. | Section 11 |
+| LLM-agents-only rule-based backtest (no RL), all 5 crypto5 assets, real regime-conditioned prompts throughout | Genuinely mixed: 2/5 assets (BNB, LTC) show a significant Sharpe improvement over buy-hold; 3/5 don't. Wins are driven by tightly risk-capped small positions (1-3% max DD) vs. buy-hold's full exposure, not by discovering a clean directional edge — and 2/5 significant out of 5 independent tests is roughly what chance alone predicts. | Section 12 |
+| Dashboard-reported "regime-aware RL wins" (Strategy Tester, 2022-08→2026-09 window) | Traced to in-sample contamination — the apparent edge lived entirely in the segment overlapping the model's own training window. On both genuinely held-out segments (2025 test, 2026 live), raw and regime-aware checkpoints are statistically indistinguishable and both lose money. | Section 13 |
+
+**What is defensible:** a complete, working, end-to-end 4-layer system; a rigorous methodology
+(every hypothesis pre-specified, isolated, compared against fixed baselines, negative results
+kept and documented rather than discarded); several genuine engineering findings independent of
+the trading result (nondeterministic GPU eval, train/val reward leakage, artifact staleness
+drift — each a real "how multi-stage ML pipelines fail silently" contribution); a clean,
+empirically-grounded negative result on contrastive pretraining for this task.
+
+**What is not:** the core research claim itself. No tested configuration, across RL execution,
+weekly cadence, or the LLM-agent-only rule-based layer, is a statistically-confirmed edge over
+buy-and-hold. Where a lead type looks promising in-sample or at the point estimate, it has
+consistently failed to replicate out-of-sample every time it's been checked.
+
+**Where the current, maintained detail lives (this file is the historical log, not the primary
+source for research findings going forward):**
+- `docs/RESULTS_AND_METHODOLOGY.md` — actively maintained, the document to read first; has the
+  full derivation behind every row in the table above.
+- `docs/ARCHITECTURE.md` — current system design, one section per layer.
+- `docs/REGIME_LAYER_AUDIT_REPORT.{html,pdf}` — the regime-layer + agent-layer audit that
+  triggered the crypto5 pivot.
 
 ## Running the pipeline
 
@@ -668,17 +731,13 @@ Asymmetric cause, and the exact boundary differs per asset:
 - BTC/ETH: same frozen-window mechanism, a different (much smaller — weeks, not months)
   gap, and no live bridge built for them yet — not addressed by this work.
 
-## NOTE: root CLAUDE.md staleness — read this before trusting anything above on regime/RL/agent architecture
+---
 
-Everything above this section predates a full regime-layer + agent-layer audit and a
-crypto-only 5-asset panel pivot (`BTC_USDT, ETH_USDT, BNB_USDT, LTC_USDT, XRP_USDT`,
-"crypto5_multihorizon") that happened in a burst of work this file was never updated to
-reflect — including the contrastive encoder being fully abandoned (raw 14-feature input
-now backs RL/regime, not TFT embeddings) and a leaky forward-backward-smoothed regime
-stream being replaced by a causal one. **The real current state lives in
-`docs/RESULTS_AND_METHODOLOGY.md`** (actively maintained) and `docs/REGIME_LAYER_AUDIT_REPORT.{html,pdf}`.
-Treat this file as directionally useful engineering history, not a current architecture
-reference, until it gets a full pass.
+**Everything above this line (Months 1-3 through the live-data sections just above) is the
+pre-pivot historical record — see "Current state" near the top of this file.** Everything
+below this line reflects the crypto5-pivot-era system and is current as of its own dated entry.
+
+---
 
 ## Dense BTC debate coverage + RL re-eval (2026-09-02)
 
@@ -738,6 +797,44 @@ appears at eval time. This is a real, cross-validated confirmation that the RL l
 "closed" conclusion (Section 9 of the results doc) wasn't an artifact of thin debate-cache
 coverage — the trained checkpoints' behavior is essentially bit-identical with 10x more
 real data behind the consensus signal.
+
+## Weekly-cadence PPO grid — full 5-asset coverage (correction to "BTC_USDT pilot" framing)
+
+The weekly-cadence grid (`rl/train_weekly_crypto5_grid.py`, `decision_interval=168`) referenced
+above as "Section 10b's crypto5 BTC_USDT pilot" is stale framing — the grid was actually run
+across **all 5 crypto5 assets**, not just BTC. Results: `data/results/weekly_grid_crypto5/summary.json`
+(per-asset/variant/seed detail) and `data/results/weekly_grid_crypto5_reconciled.json` (block
+bootstrap significance, n=1000, same method as `rl/ablation.py:bootstrap_sharpe_ci`). BTC_USDT
+has 4 seeds (0-3, added 2026-09-28); ETH/BNB/LTC/XRP currently have only seed 0.
+
+Four variants per asset, 53 weekly steps each:
+- **A** = `raw` obs (no vol, no regime)
+- **B** = `raw_vol`
+- **C** = `raw_regime` (real HMM regime probabilities)
+- **D** = `raw_regime` **placebo** (regime slot present but fed shuffled/fake values — the control
+  for "does a regime-shaped input help even when it's noise")
+
+| Asset | Buy-hold Sharpe | A (raw) | B (raw_vol) | C (raw_regime) | D (placebo) |
+|---|---|---|---|---|---|
+| BTC_USDT (4-seed mean) | 1.571 | 1.992 | 2.055 | 1.767 | 2.353 |
+| ETH_USDT | 0.697 | 1.608 | 2.348 | 2.279 | 1.911 |
+| BNB_USDT | 1.378 | 1.639 | 2.276 | 1.382 | 2.033 |
+| LTC_USDT | 0.537 | 1.827 | 1.804 | 1.745 | -0.006 |
+| XRP_USDT | 1.260 | -0.982 | 2.440 | 1.886 | 1.834 |
+
+**Verdict: no evidence the real regime signal (C) adds value over the placebo (D) — the same
+"regime conditioning doesn't beat a noise control" conclusion as Section 10's other findings.**
+Across the 20 (asset × variant) cells, only one is statistically significant via block bootstrap
+(95% CI excludes 0): **ETH_USDT variant D (placebo)**, Δ Sharpe vs buy-hold +1.392, CI
+[0.085, 2.914]. The real-regime variant (C) is never significant anywhere, and on 4 of 5 assets
+(BTC, BNB, LTC, XRP) the placebo (D) matches or beats the real regime variant (C) outright — on
+LTC, D actually collapses to Sharpe -0.006 (a real regression, not noise: n_meaningful_trades=44,
+same as A/B/C, so it's not an abstention artifact). This is consistent with — not a reversal of —
+the hourly-cadence dense-debate re-eval directly above and Section 9/10 of
+`docs/RESULTS_AND_METHODOLOGY.md`: every regime-conditioning test run in this project so far has
+failed to clear a noise-control bar. Not yet done: seeds 1-3 for ETH/BNB/LTC/XRP (only BTC has
+multi-seed variance here), which would be needed before treating the single ETH-D significant
+result as more than one of 20 cells expected to cross a 95% threshold by chance.
 
 ## Strategy Tester — user-configurable backtest page (2026-09-02)
 
@@ -1204,3 +1301,135 @@ daemon restart, the next step is stopping docker, deleting that specific contain
 directory under `/var/lib/docker/containers/<id>`, then starting docker again. Nothing else
 was running under Docker on this host at the time, so the restart's blast radius was
 confirmed limited to the dashboard stack before doing it.
+
+## Audit follow-through: auth test gap, chart redeploy, multi-seed grid, curriculum extension (2026-10-04)
+
+Four items picked up from a prior full-repo audit (research claim, backend, frontend, results
+integrity) and `docs/KNOWN_BUGS.md`.
+
+**`tests/test_api_contracts.py` auth-mocking gap, fixed.** The module patches a long list of
+backend modules via `patch.dict(sys.modules, {...})` before importing `main`, but `auth_db`
+(used by `session_auth.py`'s middleware, which gates nearly every `/api/` route) was never in
+that list — every request from the shared `TestClient` was hitting the real session-cookie
+check and 401ing before reaching the mocked handlers. Fixed by monkeypatching
+`auth_db.get_session_user` directly on the already-imported module object (not via
+`sys.modules`, since `session_auth.py` does `import auth_db` and looks the function up by
+attribute at call time, so a post-import reassignment still takes effect) and setting a
+dummy session cookie on `client`. `pytest tests/` now passes without any route tripping the
+auth gate that the test suite was never meant to exercise.
+
+**Asset-switch chart bug (`docs/KNOWN_BUGS.md` #5) — redeployed, not fully re-verified.**
+That doc's own prior session already confirmed the fix doesn't reproduce against current
+source (a live WebSocket-spy test); the remaining step was making sure the actual running
+docker images reflect that source rather than a stale build. No docker stack was running at
+all when checked this session (`docker compose ps` empty) — rebuilt both `dashboard-backend`
+and `dashboard-frontend` images fresh and brought the stack up. Did not get a full
+browser-based re-confirmation this pass (preview-harness launch issue); worth a quick
+`/backtest` + asset-switch click-through next time the dashboard is up, since that's cheap
+and this is the one item in this entry not independently re-verified end-to-end.
+
+**Crypto5 weekly-cadence grid — full 4-seed coverage, confirms the single-seed verdict.**
+Section 10b of `docs/RESULTS_AND_METHODOLOGY.md` (2026-09-01) ran ETH/BNB/LTC/XRP at only 1
+seed each and explicitly flagged more seeds as unlikely-but-unverified to change the
+conclusion. Ran `rl/train_weekly_crypto5_grid.py --all --seeds 0 1 2 3` to fill in the 48
+missing cells (seeds 1-3 × 4 assets × 4 conditions; BTC and seed-0 cells already existed and
+were correctly skipped). Real regime (C) still does not separate from the placebo/noise
+control (D) on any of the 5 assets with 4-seed variance now in hand — full table and detail
+in `docs/RESULTS_AND_METHODOLOGY.md` Section 14a.
+
+**Crypto5 5-phase curriculum extension (uncommitted `rl/train.py` change, `CRYPTO5_CURRICULUM_PHASES`
+Phases 3-5 adding BNB/LTC/XRP) — ran for the first time, one real bug found and fixed, training
+itself still can't clear Phase 1.** `run_rl.py --crypto5` was hardcoding
+`config["phases"] = CRYPTO5_CURRICULUM_PHASES[:2]` regardless of how many phases `rl/train.py`
+actually defined — fixed to use the full list. With that fixed, Phase 1 (BTC_USDT,
+hourly-cadence) deterministically trips the existing `val_sharpe < -0.5 for 3 evals` early-stop
+gate at step 30,000 under **both** `obs_mode="raw_regime"` (two runs, bit-identical per-step
+Sharpe — this config is fully deterministic in practice, not GPU noise) and `obs_mode="raw"`
+(slightly worse, not better — rules out the regime block as *the* cause). Phases 2-5 are never
+reached either way. Reproduces Section 9's already-documented crypto5 `raw_regime` result
+(-2.717, same 30k-step early-stop) via a second code path; does not reopen Section 9's "RL
+execution layer closed" decision. Full detail: `docs/RESULTS_AND_METHODOLOGY.md` Section 14b.
+
+## Dashboard latency — `/api/data-range` cold-cache ccxt backfill, fixed (2026-10-05)
+
+User report: "dashboard takes so much time to load." Measured every endpoint directly against
+the running docker backend with timed curl calls (auth via a real signup+session cookie, since
+`session_auth.py`'s middleware 401s anything else) — `/api/rl/live-signal`'s previously-documented
+cold-start (~2.9s → ~0.5s warm, `main.py`/`live_signal.py`, already mitigated in the 2026-09-03
+session) was NOT the dominant cost. **The real one: `/api/data-range/{asset}`** — called by
+`app/dashboard/page.tsx` on every mount and every asset switch — took **2.9–9.9s per asset** on
+first call (BTC 8.2s, ETH 7.3s, BNB 6.4s, LTC 9.4s, XRP 9.9s in the measurement run).
+
+**Root cause:** `historical.py`'s `_load()` → `_extend()`, called synchronously inside the
+request path. If the static `*_features.parquet` the dashboard reads for chart/history data is
+more than 2h stale (`_STALE_THRESHOLD_H`), `_extend()` backfills via `ccxt.binance().fetch_ohlcv()`
+in a blocking `while` loop, 1000 candles/request — however many thousand hours of gap exist,
+paid live, on whichever request happens to be first. `historical._cache`'s TTL is 2h
+(`_CACHE_TTL_S`), so this wasn't just a one-time cold-start cost: it recurred every 2 hours of
+backend uptime, on whatever real user's request happened to land first after expiry — and
+nothing pre-warmed it, since the existing hourly `signal_scheduler` tick reads an entirely
+separate pipeline (`live_feature_bridge.py`'s `{asset}_normalized_live.parquet`, used by
+`ppo_inference`/`live_signal`/`get_live_regime` — not `historical.py`'s `*_features.parquet`
+cache at all).
+
+**Fixed:** `historical.py` gained `warm_cache(assets)`, calling `_load()` per asset with
+per-asset exception isolation. Wired in two places: `main.py`'s `lifespan()` fires it once via
+`asyncio.create_task(asyncio.to_thread(...))` immediately on boot (so a fresh restart doesn't
+leave the first real user to pay the cost), and `signal_scheduler.py`'s existing hourly
+`_run_signal_tick()` now also calls it (`_warm_historical_cache()`, via the tick's existing
+`_tick_executor` thread pool) — hourly is comfortably inside the 2h TTL, so the cache should
+never go cold again during normal operation. Verified end-to-end against the real redeployed
+docker backend: all 5 crypto5 assets dropped from 2.9–9.9s to ~3ms on `/api/data-range` after
+the startup warm task completed.
+
+**Also checked and ruled out as the dominant cost, left alone:** no shared frontend fetch/cache
+layer still exists (`lib/websocket.ts`'s `fetchApi()` is bare `fetch`, no SWR/React Query,
+per the 2026-09-03 session's diagnosis) — real but secondary, spun off as a separate background
+task rather than fixed in this pass. Debate endpoints (`/api/debates`, now 1,855 cached debates)
+measured at 27-40ms, not a factor. `/api/system/status`, `/api/ablation`, `/api/portfolio`,
+`/api/rl/positions`, `/api/indicators/*/latest` all <150ms.
+
+## Strategy Tester weekly PPO strategies generalized to all 5 crypto5 assets (2026-10-05)
+
+`weekly_ppo_raw`/`weekly_ppo_raw_regime` (`dashboard/backend/ppo_strategy_backtest.py`,
+`strategy_backtest.py`) were still hardcoded BTC_USDT-only — a 2026-09-03 wiring-era
+limitation that was never revisited after `rl/train_weekly_crypto5_grid.py` was later
+extended to train the same raw/raw_regime pair independently on **all 5 crypto5 assets**,
+4 seeds each (checkpoints `ppo_best_crypto5_weekly_{ASSET}_{raw,raw_regime}_seed{0-3}.zip`
+already existed on disk under `rl/checkpoints/` — this was a dashboard-side staleness gap,
+not a missing-training gap). Each asset's checkpoint was trained with `all_assets=[asset]`
+but the full 5-asset `CANONICAL_ASSETS` one-hot slot, so generalizing only required
+parametrizing the hardcoded `ASSET = "BTC_USDT"` module constant by an `asset` argument
+threaded through `_load_model`/`_load_feature_df`/`_load_regime_probs`/`_vol_forecast`/
+`run()`, and picking the seed-0 checkpoint per asset (`_checkpoint_path(asset, obs_mode)`).
+`strategy_backtest.py`'s `list_strategies()`/`run_backtest()` now gate "locked" per-asset on
+whether that asset's seed-0 checkpoint file actually exists, instead of a bare
+`asset == "BTC_USDT"` check.
+
+Also fixed in the same pass: `ppo_strategy_backtest.run()` previously raised a bare
+`ValueError` ("pick a longer date range") whenever a user-requested backtest window fell
+partly or entirely outside the feature file's real history (e.g. a start date before
+crypto5's 2018-05-13 feature-file floor) — now clamps the window to the intersection with
+`full_df.index[0]`/`[-1]` before running, so a too-early start just means the out-of-range
+portion of `index` comes back flat (position 0, same as any other data hole) rather than
+erroring, as long as the *clamped* window still has `>= WINDOW_SIZE + DECISION_INTERVAL`
+rows. Verified end-to-end through the real browser preview (not just curl): signed up a
+fresh account, confirmed `weekly_ppo_raw`/`weekly_ppo_raw_regime` render unlocked for all 5
+assets in the Strategy Tester's own asset `<select>`, ran ETH_USDT regime-aware live
+(Sharpe -0.26, 2025-10-05→2026-10-05 window), and ran the same strategy/asset with a
+2017-06-01 start (predates ETH's 2018-01-02 price history) — returned 200 OK, clamped to
+1/2/2018 onward, and correctly still rendered the existing in-sample
+`data_leakage_warning` banner (start before `TEST_START`=2025-01-01).
+
+**Found, not fixed (needs the user's sudo password, out of scope for this session):**
+`data/auth.db` is owned by `root:root` on disk (`ls -la` confirmed) while every other file
+in `data/` is `ramy:ramy` — almost certainly a leftover from a previous `docker compose`
+run that wrote into this bind-mounted path as root. This makes the **real**
+`marta-backend`/`marta-frontend` launch.json configs (not just the `-preview` ones used for
+this session's verification) crash on startup: `telegram_bot.start()`'s
+`_refresh_session()` calls `auth_db.create_session()`, which fails with
+`sqlite3.OperationalError: attempt to write a readonly database`, and FastAPI's lifespan
+treats that as a fatal startup error (`Application startup failed. Exiting.`) — so the
+non-docker dev backend currently cannot start at all. Worked around for this session only
+by pointing the `-preview` config's `AUTH_DB_PATH` at a throwaway `/tmp` copy (reverted
+before finishing). Real fix is `sudo chown ramy:ramy data/auth.db`.

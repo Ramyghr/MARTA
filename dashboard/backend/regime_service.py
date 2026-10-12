@@ -21,7 +21,6 @@ _FALLBACK_DESCRIPTIONS = {
     3: "Elevated Volatility / Trending",
     4: "Low Volatility / Range-bound",
     5: "Trending Forex A",
-    6: "Trending Forex B",
 }
 
 _descriptions_cache: dict[int, str] | None = None

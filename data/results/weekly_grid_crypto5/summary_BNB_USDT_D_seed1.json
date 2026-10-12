@@ -1,0 +1,11 @@
+{
+  "asset": "BNB_USDT",
+  "label": "D",
+  "obs_mode": "raw_regime",
+  "seed": 1,
+  "sharpe": 1.8423965618794789,
+  "total_return": 0.6040733198797017,
+  "max_drawdown": 0.130472358326225,
+  "n_meaningful_trades": 34,
+  "train_wall_seconds": 151.4003574848175
+}

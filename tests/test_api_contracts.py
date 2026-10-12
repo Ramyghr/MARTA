@@ -124,6 +124,28 @@ with (
     import main as app_module
     client = TestClient(app_module.app, raise_server_exceptions=True)
 
+# main.py's SessionAuthMiddleware (dashboard/backend/session_auth.py) gates every /api/
+# path behind a valid `marta_session` cookie as of commit 48cc88d ("Add auth..."). These
+# contract tests only check endpoint shape/status, not auth itself, so bypass the gate by
+# monkeypatching auth_db.get_session_user and giving the shared client a session cookie.
+#
+# Must patch via app_module.auth_db, NOT a fresh top-level `import auth_db` here: the
+# `patch.dict(sys.modules, {...})` block above unconditionally clears sys.modules back to
+# its pre-`with` snapshot on exit (mock.patch.dict's documented behavior, regardless of
+# `clear=`), which silently drops every module imported as a side effect inside the block
+# -- including the real `session_auth`/`auth_db` instances `main` actually wired up. A
+# fresh `import auth_db` after the block re-imports a disconnected second copy that
+# `session_auth.py`'s own `auth_db` reference never sees, so patching it is a no-op
+# against the live app (confirmed: `app_module.auth_db is auth_db-reimported` is False).
+# `app_module.auth_db` is the one `main.py` (and transitively session_auth.py) actually
+# hold a reference to.
+app_module.auth_db.get_session_user = lambda token: {
+    "id": 1,
+    "email": "test@example.com",
+    "display_name": "Test User",
+}
+client.cookies.set(app_module.auth_db.SESSION_COOKIE_NAME, "test-session-token")
+
 
 # ---------------------------------------------------------------------------
 # /api/assets
