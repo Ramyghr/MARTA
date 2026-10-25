@@ -1,7 +1,10 @@
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
 \usepackage{pdfpages}
 \usepackage{natbib}
 \usepackage{amsmath}
 \usepackage{array}
+\usepackage{longtable}
 \usepackage{geometry}
 \geometry{
     a4paper,
@@ -14,6 +17,16 @@
 \graphicspath{{images/}}
 \raggedbottom
 
+% Float placement: tables use [H] (from the float package) so each one stays
+% directly under the heading/sentence that introduces it, instead of drifting
+% to the end of the chapter. Figures use [!htbp]; placeins adds a barrier at
+% every \section (and \subsection, see below) so no float can cross into a
+% later section.
+\usepackage{float}
+\usepackage[section]{placeins}
+\let\oldsubsection\subsection
+\renewcommand{\subsection}{\FloatBarrier\oldsubsection}
+
 % No word-breaking anywhere in the report: disable automatic hyphenation
 % entirely (no more "ES-PRIT" / "con-tainerization" style line-end breaks).
 % Words that don't fit are pushed to the next line and the inter-word
@@ -24,3 +37,9 @@
 \exhyphenpenalty=10000
 \tolerance=10000
 \emergencystretch=3em
+
+% Code identifiers (function names, file names, config values) set in
+% typewriter type and allowed to break after underscores, since hyphenation
+% is disabled above and long identifiers would otherwise overflow the margin.
+\newcommand{\code}[1]{\texttt{#1}}
+\DeclareRobustCommand{\_}{\ifmmode\text{\textunderscore}\else\textunderscore\allowbreak\fi}

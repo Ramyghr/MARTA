@@ -9,8 +9,8 @@ from matplotlib.lines import Line2D
 LAYERS = [
     ("1. Feature\nEngineering", "Engineered volatility,\nmomentum, trend\nindicators (5 assets)", "#1f77d4"),
     ("2. Regime\nDetection", "Gaussian HMM fit on\nthe engineered\nfeature space", "#f0a000"),
-    ("3. Multi-Agent\nDeliberation", "5 LLM agents debate\na regime-aware\ntrading stance", "#e06ba0"),
-    ("4. RL Execution\nSupervisor", "PPO agent translates\ndeliberation into\nposition sizing", "#0a7a1e"),
+    ("3. Multi-Agent\nDeliberation", "3 LLM agents + contrarian\n+ GARCH risk; deterministic\nfund-manager consensus", "#e06ba0"),
+    ("4. RL Execution\nAgent", "PPO position sizing\n(evaluated separately\nfrom the debate)", "#0a7a1e"),
     ("5. Monitoring\nDashboard", "Next.js interface,\nregime + reasoning +\nexecution, real time", "#3d2f8f"),
 ]
 

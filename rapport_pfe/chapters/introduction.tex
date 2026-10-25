@@ -8,7 +8,7 @@ Financial markets process trillions of dollars in transactions daily across equi
 
 The core appeal is clear: algorithms process data at speeds no human can match and are immune to emotional bias. Yet building a consistently profitable system remains one of the hardest problems in applied machine learning. Markets are non-stationary --- their statistical properties shift over time. A strategy that excels during a trending bull market may fail entirely in a volatile, mean-reverting environment. This sensitivity to changing market conditions is not a minor detail; it is the central challenge of the field.
 
-Early rule-based systems lacked adaptability. Machine learning, and reinforcement learning in particular, offered a path forward by framing trading as a sequential decision problem. More recently, large language models introduced the ability to reason over unstructured data --- news, macroeconomic commentary, sentiment --- opening a new dimension in trading research. However, existing systems that combine these approaches share a critical blind spot: none condition their decisions on a \emph{learned} representation of the current market regime. This gap defines the motivation for MARTA.
+Early rule-based systems lacked adaptability. Machine learning, and reinforcement learning in particular, offered a path forward by framing trading as a sequential decision problem. More recently, large language models introduced the ability to reason over unstructured data --- news, macroeconomic commentary, sentiment --- opening a new dimension in trading research. However, existing systems that combine these approaches share a critical blind spot: none condition their decisions on an \emph{explicit}, statistically estimated representation of the current market regime shared across their reasoning and execution components, and few test whether such conditioning actually helps against a proper noise control. This gap defines the motivation for MARTA.
 
 \section{Host Organization}
 \label{sec:host-organization}
@@ -16,7 +16,7 @@ Early rule-based systems lacked adaptability. Machine learning, and reinforcemen
 \subsection{Presentation of Coral-io}
 \label{subsec:coral-io-presentation}
 
-Coral-io is a technology consulting firm specializing in digital transformation and IT solutions across multiple industries. The company provides comprehensive services that bridge technical expertise with business objectives, helping clients navigate complex technological challenges. Its activity spans five main areas:
+Coral-io (registered as Coralio Software, Les Berges du Lac, Tunis) is a technology consulting firm specializing in digital transformation and IT solutions across multiple industries. The company provides comprehensive services that bridge technical expertise with business objectives, helping clients navigate complex technological challenges. Its activity spans five main areas:
 
 \begin{itemize}
     \item \textbf{DevOps Services}: CI/CD pipeline implementation, Infrastructure as Code, containerization and orchestration (Docker, Kubernetes), and test automation.
@@ -49,12 +49,12 @@ Three broad families of automated trading systems exist today, each with a disti
 
 \textbf{Pure reinforcement learning agents} address this rigidity by learning a policy directly from historical price action, allowing some adaptation to changing dynamics. However, standard RL formulations treat the market as a single, undifferentiated environment: the agent is not explicitly told which regime it is currently operating in, and must infer this implicitly through its state representation. In practice, this means the policy tends to average its behavior across regimes rather than specializing for each one, and offers no human-interpretable explanation for why a given action was chosen.
 
-\textbf{LLM-based trading agents}, a more recent development, exploit large language models' ability to reason over unstructured text --- news headlines, macroeconomic reports, analyst commentary --- to produce qualitative market assessments. This adds a reasoning layer absent from purely numerical approaches, and can in principle justify its decisions in natural language. However, existing systems in this category typically condition the LLM's reasoning only on recent price statistics or raw text, without any structured, learned signal describing the broader statistical regime the market is currently in.
+\textbf{LLM-based trading agents}, a more recent development, exploit large language models' ability to reason over unstructured text --- news headlines, macroeconomic reports, analyst commentary --- to produce qualitative market assessments. This adds a reasoning layer absent from purely numerical approaches, and can in principle justify its decisions in natural language. However, existing systems in this category typically condition the LLM's reasoning only on recent price statistics or raw text, without any structured, explicit signal describing the broader statistical regime the market is currently in.
 
 \subsection{The Core Gap}
 \label{subsec:core-gap}
 
-Across all three families, no system combines (i) an explicit, learned representation of market regime, (ii) multi-perspective reasoning informed by that representation, and (iii) an execution layer that adapts its risk behavior according to regime and reasoning confidence. Regime is either ignored entirely, treated as a hidden variable an RL agent must discover implicitly, or left to ad hoc heuristics (e.g., a simple volatility threshold) rather than learned from data.
+Across all three families, no system combines (i) an explicit, probabilistic regime signal estimated from data, (ii) multi-perspective reasoning conditioned on that same signal, and (iii) an execution layer able to adapt its risk behavior to it --- and, just as importantly, prior work rarely tests whether regime conditioning helps by comparing it against a matched noise control rather than against a weak baseline. Regime is either ignored entirely, treated as a hidden variable an RL agent must discover implicitly, or left to ad hoc heuristics (e.g., a simple volatility threshold) rather than estimated from data.
 
 \subsection{Formal Problem Statement}
 \label{subsec:formal-problem}
@@ -62,8 +62,8 @@ Across all three families, no system combines (i) an explicit, learned represent
 Given a multi-asset time series of market data, the problem addressed by this work is twofold:
 
 \begin{enumerate}
-    \item \textbf{Regime representation learning}: learn a low-dimensional, temporally-aware embedding of market state that captures latent structure predictive of near-term dynamics, without relying on hand-crafted regime labels.
-    \item \textbf{Regime-conditioned decision making}: use this learned representation to condition both a multi-perspective reasoning process and a downstream execution policy, such that trading behavior adapts to the identified regime rather than applying a single fixed strategy across all market conditions.
+    \item \textbf{Regime representation}: derive an explicit, probabilistic representation of market regime from data, with interpretable transition dynamics, without relying on hand-labeled regimes.
+    \item \textbf{Regime-conditioned decision making}: use this representation to condition both a multi-perspective reasoning process and a downstream execution policy, such that trading behavior adapts to the identified regime rather than applying a single fixed strategy across all market conditions.
 \end{enumerate}
 
 Success is measured not only by trading performance (risk-adjusted returns, drawdown) but by whether regime conditioning demonstrably improves outcomes relative to regime-agnostic baselines --- the central empirical question this report answers in Chapter~\ref{chap:results}.
@@ -74,16 +74,16 @@ Success is measured not only by trading performance (risk-adjusted returns, draw
 MARTA addresses this gap through a five-layer pipeline, each layer directly targeting one part of the problem statement above.
 
 \begin{enumerate}
-    \item \textbf{Feature Engineering}: a set of engineered technical and statistical indicators (volatility, momentum, trend, and higher-moment statistics) is computed per asset from hourly multi-asset crypto data (BTC, ETH, BNB, LTC, XRP), providing the market-state representation regime detection operates on directly, without requiring hand-labeled regimes. Two aspects of this layer's initial design were later revised (Chapter~\ref{chap:methodology}), both driven by the same finding: the representation was originally learned via a Temporal Fusion Transformer trained with an InfoNCE contrastive objective rather than engineered directly, and the initial data panel paired two crypto assets with two traditional-finance instruments (BTC, ETH, EUR/USD, XAU/USD) rather than the crypto-only panel above --- a raw-feature HMM fit on that mixed panel was found to collapse onto asset identity rather than market regime, motivating both revisions together.
+    \item \textbf{Feature Engineering}: a set of engineered technical and statistical indicators (volatility, momentum, trend, and higher-moment statistics) is computed per asset from hourly multi-asset crypto data (BTC, ETH, BNB, LTC, XRP), providing the market-state representation regime detection operates on directly, without requiring hand-labeled regimes. A learned alternative (a Temporal Fusion Transformer encoder trained with an InfoNCE contrastive objective) and an initial mixed crypto/traditional-finance panel were both evaluated and replaced, for reasons given in Chapter~\ref{chap:methodology}.
     \item \textbf{Regime Detection}: a Gaussian Hidden Markov Model is fitted directly on the engineered feature space, discretizing market state into a small number of interpretable, statistically distinct regimes with associated transition dynamics.
-    \item \textbf{Multi-Agent Deliberation}: five specialized LLM agents debate the appropriate trading stance given the current regime, each contributing a different analytical perspective (e.g., trend, risk, contrarian), producing a reasoned, regime-aware recommendation rather than a black-box signal.
-    \item \textbf{RL Execution Supervisor}: a PPO-trained agent translates the agents' deliberation output into concrete position sizing and execution decisions, learning to modulate risk exposure according to regime and the confidence of the upstream reasoning.
+    \item \textbf{Multi-Agent Deliberation}: five specialist agents --- three LLM agents forming directional views (macro, technical, sentiment), a contrarian agent whose opposing direction is fixed in code, and a non-LLM GARCH risk agent --- feed a Fund Manager agent that aggregates them deterministically into a regime-aware, risk-capped recommendation with a natural-language rationale, rather than a black-box signal.
+    \item \textbf{RL Execution Agent}: a PPO-trained agent designed to translate market state, regime, and agent consensus into position sizing. In the evaluated checkpoints it operates on engineered features and is trained and evaluated as a separate component that does not consume the debate output (Section~\ref{subsec:agent-rl-disconnect}).
     \item \textbf{Monitoring Dashboard}: a Next.js interface exposes regime detection, agent reasoning, and execution decisions in real time, making the system's behavior auditable rather than opaque.
 \end{enumerate}
 
-This layered design directly mirrors the two-part problem statement: layers 1--2 solve the regime representation learning problem, and layers 3--4 solve the regime-conditioned decision making problem. Layer 5 is a supporting component providing interpretability rather than a decision-making stage in its own right. The empirical contribution of regime-awareness across layers 1--4 is evaluated through dedicated ablation studies, presented in Chapter~\ref{chap:results}.
+This layered design directly mirrors the two-part problem statement: layers 1--2 address the regime representation problem, and layers 3--4 solve the regime-conditioned decision making problem. Layer 5 is a supporting component providing interpretability rather than a decision-making stage in its own right. The empirical contribution of regime-awareness across layers 1--4 is evaluated through dedicated ablation studies, presented in Chapter~\ref{chap:results}.
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
     \centering
     \includegraphics[width=\textwidth]{images/pipeline_diagram.png}
     \caption{MARTA's five-layer pipeline, grouped according to the two-part problem statement of Section~\ref{subsec:formal-problem}. Each layer is detailed in Chapter~\ref{chap:methodology}.}
@@ -99,10 +99,10 @@ This layered design directly mirrors the two-part problem statement: layers 1--2
 The project pursues four concrete objectives, each corresponding to a layer of the proposed solution:
 
 \begin{enumerate}
-    \item \textbf{Learn a meaningful regime representation}: engineer a multi-asset hourly feature set (volatility, momentum, trend, and higher-moment statistics) that captures structure relevant to near-term market dynamics, validated through downstream regime separability once clustered by the HMM.
+    \item \textbf{Build a meaningful regime representation}: engineer a multi-asset hourly feature set (volatility, momentum, trend, and higher-moment statistics) that captures structure relevant to near-term market dynamics, validated through downstream regime separability once clustered by the HMM.
     \item \textbf{Discover interpretable, statistically distinct regimes}: fit a Gaussian HMM directly over the engineered feature space and verify that the resulting regimes are stable, distinguishable, and align with intuitive market conditions (e.g., trending vs.\ ranging, high vs.\ low volatility) upon inspection.
-    \item \textbf{Build a regime-aware multi-agent reasoning layer}: design and implement a five-agent LLM deliberation system whose recommendations are conditioned on detected regime, and evaluate whether this conditioning improves recommendation quality over a regime-agnostic baseline.
-    \item \textbf{Train an adaptive execution policy}: implement a PPO-based execution supervisor that translates agent deliberation into position-sizing decisions, and evaluate --- via ablation --- whether regime-awareness measurably improves risk-adjusted trading performance relative to an equivalent regime-agnostic system.
+    \item \textbf{Build a regime-aware multi-agent reasoning layer}: design and implement a multi-agent LLM deliberation system whose recommendations are conditioned on detected regime, and evaluate whether this conditioning improves recommendation quality over a regime-agnostic baseline.
+    \item \textbf{Train an adaptive execution policy}: implement a PPO-based execution agent that produces position-sizing decisions, and evaluate --- via ablation --- whether regime-awareness measurably improves risk-adjusted trading performance relative to an equivalent regime-agnostic system.
 \end{enumerate}
 
 A secondary, supporting objective is to expose the full pipeline through a monitoring dashboard, so that regime detection, agent reasoning, and execution decisions remain auditable rather than opaque --- a property largely absent from prior work in this space (Section~\ref{subsec:limitations-existing}).
@@ -169,11 +169,11 @@ Sprint-based Agile frameworks (Scrum, Kanban) were considered and set aside. Bot
 \subsection{Development Methodology: CRISP-DM}
 \label{subsec:crispdm-methodology}
 
-MARTA's process follows CRISP-DM (Cross-Industry Standard Process for Data Mining) \cite{crispdm2000}, whose six canonical phases --- Business Understanding, Data Understanding, Data Preparation, Modeling, Evaluation, and Deployment.
+MARTA's process follows CRISP-DM (Cross-Industry Standard Process for Data Mining) \cite{crispdm2000}, which organizes a data-mining project into six canonical phases: Business Understanding, Data Understanding, Data Preparation, Modeling, Evaluation, and Deployment. Table~\ref{tab:crispdm-mapping} maps each phase to the sections of this report that cover it.
 
 CRISP-DM's defining property is that it is not a one-way pipeline: it explicitly allows evaluation in one phase to send the project back to an earlier one, and MARTA's own revision history is a direct instance of this rather than a deviation from a plan. Three examples recur throughout Chapter~\ref{chap:methodology}: evaluating the regime encoder against a raw-feature baseline (Evaluation) found it underperforming and sent the design back to Modeling, where the HMM was refit directly on engineered features instead (Section~\ref{subsec:encoder-refinement}); evaluating the resulting model against the original four-asset panel (Evaluation) found it had collapsed onto asset identity rather than market regime, sending the project back to Data Preparation to redefine the asset panel itself (Section~\ref{subsec:regime-asset-panel-revision}); and evaluating the RL execution layer's ablation (Evaluation) found no configuration beat buy-and-hold, changing the Deployment phase's default signal source accordingly (Section~\ref{subsec:rl-final-decision}). Table~\ref{tab:phases}'s nine work-plan phases are this same six-phase cycle instantiated concretely for MARTA, several of them spanning more than one CRISP-DM phase where a revision folded two stages back together.
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \caption{CRISP-DM phases}
@@ -198,14 +198,14 @@ Deployment & Section~\ref{sec:dashboard-methodology} (Dashboard and Live System)
 \normalsize
 \end{table}
 
-This mapping tracks Chapter~\ref{chap:methodology}'s own section order, which follows the same Data $\to$ Modeling $\to$ Evaluation $\to$ Deployment sequence without having been deliberately arranged to do so.
+Chapter~\ref{chap:methodology}'s section order follows the same Data $\to$ Modeling $\to$ Evaluation $\to$ Deployment sequence.
 
 \subsection{Development Phases}
 \label{subsec:development-phases}
 
 The work was organized into nine phases, summarized in Table~\ref{tab:phases} and Figure~\ref{fig:gantt}. The first five ran sequentially: literature review and architecture design, then one phase per architectural layer through the multi-agent system, each producing a working, evaluable component before the next began. The final four phases (RL execution, dashboard/live integration, encoder diagnostics, and the raw-feature pivot) overlapped rather than running strictly in sequence --- a genuine reflection of the project's last two months, during which RL training, dashboard development, and a systematic audit of the encoder were pursued concurrently, converging in the decision to drop the learned encoder in favor of engineered features (Chapter~\ref{chap:methodology}).
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
 \caption{MARTA development phases}
@@ -222,7 +222,7 @@ The work was organized into nine phases, summarized in Table~\ref{tab:phases} an
 \hline
 4. Regime Detection (HMM) & Gaussian HMM over encoder embeddings (later refit on raw features, Ch.~\ref{chap:methodology}) & 2 wk (Jun 15 -- Jun 28) & Modeling \\
 \hline
-5. Multi-Agent System & 5-agent LLM debate pipeline & 3 wk (Jun 29 -- Jul 19) & Modeling \\
+5. Multi-Agent System & Multi-agent LLM debate pipeline & 3 wk (Jun 29 -- Jul 19) & Modeling \\
 \hline
 6. RL Execution Agent \& Evaluation Fixes & PPO supervisor trained on agent outputs; eval-determinism and reward-scaling fixes & 6 wk (Jul 20 -- Aug 30) & Modeling, Evaluation \\
 \hline
@@ -236,7 +236,7 @@ The work was organized into nine phases, summarized in Table~\ref{tab:phases} an
 \normalsize
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[!htbp]
     \centering
     \includegraphics[width=0.85\textwidth]{images/gantt_chart.png}
     \caption{Project planning Gantt chart}
