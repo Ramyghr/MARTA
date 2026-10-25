@@ -35,8 +35,8 @@ def arrow(p1, p2, color="#444444", style="-|>", lw=1.6, ls="solid", connectionst
 y_mid = 0.0
 x_obs, x_trunk, x_heads, x_act, x_env, x_rew = 0.9, 3.7, 6.7, 9.5, 11.9, 14.3
 
-box(x_obs, y_mid, 2.0, 1.9, "Observation", "regime + consensus\n+ portfolio +\nasset one-hot", "#333333")
-box(x_trunk, y_mid, 2.6, 1.3, "Policy Trunk", "shared MLP\n156$\\to$256$\\to$128$\\to$64", "#1f77d4")
+box(x_obs, y_mid, 2.0, 1.9, "Observation", "features (+ regime)\n+ consensus +\nportfolio + one-hot", "#333333")
+box(x_trunk, y_mid, 2.6, 1.3, "Policy Trunk", "shared MLP\nD$\\to$256$\\to$128$\\to$64", "#1f77d4")
 
 box(x_heads, 1.1, 2.2, 1.1, "Categorical", "direction\n(long/short/hold)", "#3d2f8f", )
 box(x_heads, -1.1, 2.2, 1.1, "Beta($\\alpha,\\beta$)", "position\nfraction $\\in(0,1)$", "#3d2f8f")

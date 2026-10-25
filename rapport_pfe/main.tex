@@ -3,7 +3,17 @@
 
 \begin{document}
 
-\includepdf[pages={3,1}]{PDFs/Page_Garde.pdf}
+% Cover page: garde-1.pdf is a 612x1009.5 bp page with white bands above
+% (0-28) and below (893-1009.5) the artwork; trim them and scale the artwork
+% (aspect 0.7075, i.e. A4's) to fill the A4 page edge to edge.
+\includepdf[pages=1,trim=0 116.5 0 28,clip,width=\paperwidth,height=\paperheight]{PDFs/garde-1.pdf}
+% Signed validation form. The scan already carries both supervisors' names
+% and signatures; only the student name is printed onto the first
+% "Nom & Prénom" line. Adjust the \put coordinates (in bp from the
+% bottom-left corner of the page) if it lands off the line.
+\includepdf[pages=1,picturecommand={%
+  \put(335,688){\sffamily\large Gharbi Ramy}%
+}]{PDFs/page_2.pdf}
 
 \newpage
 \pagenumbering{roman}
@@ -29,6 +39,8 @@
 \appendix
 \include{chapters/appendix}
 
+\clearpage
+\addcontentsline{toc}{chapter}{Bibliography}
 \bibliographystyle{unsrt}
 \bibliography{bibliography/references}
 

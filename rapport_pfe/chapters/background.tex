@@ -22,14 +22,14 @@ The simplest regime-detection methods rely on hand-crafted thresholds over indic
 \subsection{Statistical Approaches: Hidden Markov Models and Clustering}
 \label{subsec:regime-statistical}
 
-Hidden Markov Models (HMMs) have long served as the primary statistical tool for regime detection in finance, following the foundational regime-switching framework introduced by Hamilton for modeling business-cycle turning points in macroeconomic time series \cite{hamilton1989}. Applied to financial returns, an HMM treats the market regime as an unobserved latent state that generates observable return and volatility patterns, with transition probabilities between states estimated directly from data rather than imposed by rule. Gaussian HMMs fitted over hand-engineered feature sets (returns, realized volatility) have been shown to recover interpretable bull/bear/consolidation regimes on major equity indices, and have been used as risk-managing filters that suppress trading during predicted high-volatility states. K-means and Gaussian Mixture clustering offer a simpler, non-sequential alternative, but typically yield only two well-separated clusters (bullish/bearish) and lack the transition-probability structure that makes HMMs useful for characterizing regime persistence and switching dynamics.
+Hidden Markov Models (HMMs) have long served as the primary statistical tool for regime detection in finance, following the foundational regime-switching framework introduced by Hamilton for modeling business-cycle turning points in macroeconomic time series \cite{hamilton1989}. Applied to financial returns, an HMM treats the market regime as an unobserved latent state that generates observable return and volatility patterns, with transition probabilities between states estimated directly from data (via the Baum--Welch expectation-maximization algorithm \cite{baum1970,rabiner1989}) rather than imposed by rule; regime-switching models of this kind have also been applied directly to asset allocation \cite{angbekaert2002}. Gaussian HMMs fitted over hand-engineered feature sets (returns, realized volatility) have been shown to recover interpretable bull/bear/consolidation regimes on major equity indices, and have been used as risk-managing filters that suppress trading during predicted high-volatility states. K-means and Gaussian Mixture clustering offer a simpler, non-sequential alternative, but typically yield only two well-separated clusters (bullish/bearish) and lack the transition-probability structure that makes HMMs useful for characterizing regime persistence and switching dynamics.
 
-The central limitation of this family, for MARTA's purposes, is the feature representation the HMM operates on: virtually all published work fits the HMM directly over hand-selected statistical features (returns, volatility, sometimes volume), rather than over a representation learned to capture broader temporal structure. This caps the ceiling of what the HMM can discover --- it can only find regimes expressible in terms of the features it was given.
+The central limitation of this family, for MARTA's purposes, is not the HMM itself but how its output is used: in most published work the regime label serves as a standalone filter or a feature for a single downstream model, and is rarely shared across several decision components or tested against a matched noise control. A second, open question is whether a learned representation (e.g.\ a contrastive time-series encoder) would let the HMM find structure that hand-selected statistical features cannot express; MARTA tested this directly (Section~\ref{sec:regime-encoder-methodology}) and found that, on its data, it did not.
 
 \subsection{Deep Learning Approaches}
 \label{subsec:regime-deep-learning}
 
-More recent work combines regime detection with deep reinforcement learning rather than treating it as a standalone preprocessing step. A 2025 study integrating an HMM-based regime filter directly into the FinRL reinforcement learning framework found that regime-aware hybrid agents outperformed standard regime-agnostic FinRL baselines on risk-adjusted return metrics across a 30-stock portfolio, providing direct empirical support for the core hypothesis underlying MARTA: that explicit regime conditioning improves trading outcomes relative to regime-agnostic learning. However, this and comparable work still fits the HMM over hand-engineered statistical features rather than a learned temporal representation, and pairs regime detection only with an RL execution layer --- it does not incorporate any reasoning layer capable of explaining *why* a regime implies a particular stance, which is precisely the gap MARTA's multi-agent layer is designed to fill.
+More recent work combines regime detection with deep reinforcement learning rather than treating it as a standalone preprocessing step. A 2025 study integrating an HMM-based regime filter directly into the FinRL reinforcement learning framework \cite{hmm-finrl-2025} found that regime-aware hybrid agents outperformed standard regime-agnostic FinRL baselines on risk-adjusted return metrics across a 30-stock portfolio, providing direct empirical support for the core hypothesis underlying MARTA: that explicit regime conditioning improves trading outcomes relative to regime-agnostic learning. However, this work compares the regime-aware agent against regime-agnostic baselines rather than against a noise-controlled regime signal, and pairs regime detection only with an RL execution layer --- it does not incorporate any reasoning layer capable of explaining \emph{why} a regime implies a particular stance, which is the gap MARTA's multi-agent layer is designed to fill.
 
 \section{LLM Agents in Finance}
 \label{sec:llm-agents-finance}
@@ -37,17 +37,17 @@ More recent work combines regime detection with deep reinforcement learning rath
 \subsection{Single- and Multi-Agent LLM Trading Systems}
 \label{subsec:llm-trading-systems}
 
-TradingGPT \cite{tradinggpt2023}, an early multi-agent system, assigns LLM agents layered memory and distinct behavioral characters to simulate diverse trader personas contributing to a shared decision. FinAgent, presented at KDD 2024, is a multimodal foundation agent that fuses textual news, numerical price data, and visual chart information through a dual-level reflection module, allowing the agent to adapt its strategy based on recent market feedback; evaluated across six financial datasets spanning equities and crypto, it substantially outperformed prior single-modality baselines. TradingAgents, proposed shortly after, more directly mirrors the organizational structure of a real trading firm: specialized analyst agents (fundamental, sentiment, technical) feed a research team of Bull and Bear debaters, whose output passes through a risk management team before a trader agent commits to a decision, and the resulting framework outperformed several classical baselines (Buy-and-Hold, MACD, RSI) on cumulative return and Sharpe ratio in simulated equity trading.
+TradingGPT \cite{tradinggpt2023}, an early multi-agent system, assigns LLM agents layered memory and distinct behavioral characters to simulate diverse trader personas contributing to a shared decision. FinAgent \cite{finagent2024}, presented at KDD 2024, is a multimodal foundation agent that fuses textual news, numerical price data, and visual chart information through a dual-level reflection module, allowing the agent to adapt its strategy based on recent market feedback; evaluated across six financial datasets spanning equities and crypto, it substantially outperformed prior single-modality baselines. TradingAgents \cite{tradingagents2024}, proposed shortly after, more directly mirrors the organizational structure of a real trading firm: specialized analyst agents (fundamental, sentiment, technical) feed a research team of Bull and Bear debaters, whose output passes through a risk management team before a trader agent commits to a decision, and the resulting framework outperformed several classical baselines (Buy-and-Hold, MACD, RSI) on cumulative return and Sharpe ratio in simulated equity trading.
 
 \subsection{Multi-Agent Debate as a Design Pattern}
 \label{subsec:multi-agent-debate}
 
-The common thread across TradingGPT, FinAgent, and TradingAgents is the use of multiple specialized agents whose outputs are synthesized rather than a single monolithic LLM call --- a design pattern motivated by the observation that decomposing analysis into distinct perspectives (technical, sentiment, risk) produces more robust recommendations than asking one model to reason about all of them simultaneously. MARTA's five-agent deliberation layer adopts this same debate pattern.
+The common thread across TradingGPT, FinAgent, and TradingAgents is the use of multiple specialized agents whose outputs are synthesized rather than a single monolithic LLM call --- a design pattern motivated by the observation that decomposing analysis into distinct perspectives (technical, sentiment, risk) produces more robust recommendations than asking one model to reason about all of them simultaneously, in line with general findings that debate between several LLM instances improves factual and reasoning accuracy \cite{du2023debate}. MARTA's multi-agent deliberation layer adopts this same debate pattern.
 
 \subsection{Limitations of Existing Approaches}
 \label{subsec:llm-limitations}
 
-None of the systems reviewed above condition their agents' reasoning on a learned, structured representation of market regime. TradingAgents' agents reason over recent price statistics and text directly; FinAgent's reflection module adapts based on recent performance feedback rather than an explicit regime signal; TradingGPT's characters are fixed personas rather than regime-conditioned roles. In each case, if the notion of "market regime" appears at all, it is implicit in whatever the LLM infers from raw inputs at inference time, not an explicit, pretrained signal shared across agents. This is the specific gap MARTA's regime encoder and HMM layer are designed to fill upstream of the agent debate.
+None of the systems reviewed above condition their agents' reasoning on an explicit, structured representation of market regime. TradingAgents' agents reason over recent price statistics and text directly; FinAgent's reflection module adapts based on recent performance feedback rather than an explicit regime signal; TradingGPT's characters are fixed personas rather than regime-conditioned roles. In each case, if the notion of ``market regime'' appears at all, it is implicit in whatever the LLM infers from raw inputs at inference time, not an explicit signal shared across agents. This is the specific gap MARTA's HMM regime layer is designed to fill upstream of the agent debate.
 
 \section{Reinforcement Learning for Trading}
 \label{sec:rl-trading}
@@ -55,53 +55,55 @@ None of the systems reviewed above condition their agents' reasoning on a learne
 \subsection{Early Approaches: DQN and Discrete Action Spaces}
 \label{subsec:rl-dqn}
 
-Early applications of deep RL to trading adapted Deep Q-Networks (DQN) to discrete action spaces (buy/sell/hold), following the broader deep RL literature. FinRL, an open-source framework from Columbia University and NYU Shanghai, standardized this line of work by providing a full pipeline --- market environments, fine-tuned implementations of DQN, DDPG, PPO, SAC, A2C, and TD3, and common reward functions --- specifically to lower the engineering barrier for applying deep RL to quantitative trading. DQN-based agents are conceptually simple but constrained to discrete position sizes, limiting their ability to express graduated risk exposure.
+Reinforcement learning was applied to trading well before deep RL, notably through direct policy optimization of risk-adjusted performance measures \cite{moody2001}. Early applications of deep RL to trading adapted Deep Q-Networks (DQN) \cite{mnih2015} to discrete action spaces (buy/sell/hold), following the broader deep RL literature. FinRL \cite{finrl2020}, an open-source framework from Columbia University and NYU Shanghai, standardized this line of work by providing a full pipeline --- market environments, fine-tuned implementations of DQN, DDPG, PPO, SAC, A2C, and TD3, and common reward functions --- specifically to lower the engineering barrier for applying deep RL to quantitative trading. DQN-based agents are conceptually simple but constrained to discrete position sizes, limiting their ability to express graduated risk exposure.
 
 \subsection{PPO and Continuous Action Spaces}
 \label{subsec:rl-ppo}
 
-Proximal Policy Optimization (PPO), introduced by Schulman et al., addresses the instability of earlier policy gradient methods through a clipped surrogate objective that constrains the size of each policy update, achieving much of the stability of Trust Region Policy Optimization while being substantially simpler to implement. Its compatibility with continuous action spaces makes it well suited to position-sizing tasks, where the agent must output a continuous fraction of capital to allocate rather than a discrete action, and it is the algorithm implemented for MARTA's execution supervisor for exactly this reason.
+Proximal Policy Optimization (PPO), introduced by Schulman et al.\ \cite{ppo2017}, addresses the instability of earlier policy gradient methods through a clipped surrogate objective that constrains the size of each policy update, achieving much of the stability of Trust Region Policy Optimization \cite{trpo2015} while being substantially simpler to implement. Its compatibility with continuous action spaces makes it well suited to position-sizing tasks, where the agent must output a continuous fraction of capital to allocate rather than a discrete action, and it is the algorithm implemented for MARTA's execution agent for exactly this reason, using the Stable-Baselines3 implementation \cite{sb3}.
 
 \subsection{Curriculum Learning in Finance}
 \label{subsec:rl-curriculum}
 
-Curriculum learning --- structuring training so an agent first masters a simpler version of a task before progressing to a harder one --- is comparatively underused in financial RL relative to other RL application domains, though the general principle (start with a single, liquid, well-behaved asset before extending to a more volatile or lower-liquidity one) aligns with standard practice in curriculum design more broadly. MARTA's own BTC-to-BTC+ETH curriculum training, detailed in Chapter~\ref{chap:methodology}, follows this logic.
+Curriculum learning \cite{bengio2009} --- structuring training so an agent first masters a simpler version of a task before progressing to a harder one --- is comparatively underused in financial RL relative to other RL application domains, though the general principle (start with a single, liquid, well-behaved asset before extending to a more volatile or lower-liquidity one) aligns with standard practice in curriculum design more broadly. MARTA's own BTC-to-BTC+ETH curriculum training, detailed in Chapter~\ref{chap:methodology}, follows this logic.
 
 \section{Positioning of MARTA}
 \label{sec:positioning-marta}
 
 Table~\ref{tab:gap-comparison} consolidates the gaps identified across the three families reviewed above.
 
-\begin{table}[h]
+\begin{table}[H]
 \centering
 \small
-\caption{Comparison of MARTA against representative prior systems}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\caption{Comparison of MARTA against representative prior systems (``---'': not applicable, the system has no regime signal to test)}
 \label{tab:gap-comparison}
-\begin{tabular}{|p{2.6cm}|>{\centering\arraybackslash}p{2.8cm}|>{\centering\arraybackslash}p{2.5cm}|>{\centering\arraybackslash}p{2.1cm}|>{\centering\arraybackslash}p{2.6cm}|}
+\begin{tabular}{|>{\raggedright\arraybackslash}p{2.4cm}|>{\centering\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}p{2.3cm}|>{\centering\arraybackslash}p{2.4cm}|>{\centering\arraybackslash}p{2.2cm}|}
 \hline
-\textbf{System} & \textbf{Learned regime repr.} & \textbf{Multi-agent reasoning} & \textbf{Adaptive execution} & \textbf{Interpretable} \\
+\textbf{System} & \textbf{Explicit regime signal} & \textbf{Multi-agent reasoning} & \textbf{Adaptive execution} & \textbf{Interpretable} & \textbf{Regime tested vs.\ noise control} \\
 \hline
-HMM regime filters \cite{questdb-hmm} & Partial (hand-features) & No & No & Yes \\
+HMM regime filters \cite{hamilton1989,angbekaert2002} & Yes (HMM) & No & No & Yes & No \\
 \hline
-FinRL \cite{finrl2020} & No & No & Yes (RL) & Partial \\
+FinRL \cite{finrl2020} & No & No & Yes (RL) & Partial & --- \\
 \hline
-HMM + FinRL \cite{hmm-finrl-2025} & Partial (hand-features) & No & Yes (RL) & Partial \\
+HMM + FinRL \cite{hmm-finrl-2025} & Yes (HMM) & No & Yes (RL) & Partial & No \\
 \hline
-TradingGPT \cite{tradinggpt2023} & No & Yes & No & Partial \\
+TradingGPT \cite{tradinggpt2023} & No & Yes & No & Partial & --- \\
 \hline
-FinAgent \cite{finagent2024} & No & Partial (single agent) & No & Yes \\
+FinAgent \cite{finagent2024} & No & Partial (single agent) & No & Yes & --- \\
 \hline
-TradingAgents \cite{tradingagents2024} & No & Yes & No & Yes \\
+TradingAgents \cite{tradingagents2024} & No & Yes & No & Yes & --- \\
 \hline
-\textbf{MARTA (this work)} & \textbf{Yes (Gaussian HMM, engineered feats.)} & \textbf{Yes (5 agents)} & \textbf{Yes (PPO)} & \textbf{Yes} \\
+\textbf{MARTA (this work)} & \textbf{Yes (HMM on engineered features)} & \textbf{Yes (regime in prompts)} & \textbf{Partial (PPO, evaluated separately)} & \textbf{Yes} & \textbf{Yes} \\
 \hline
 \end{tabular}
 \normalsize
 \end{table}
 
-No system reviewed combines a learned regime representation, multi-agent reasoning conditioned on that representation, and an adaptive execution layer in a single pipeline. This is precisely the combination MARTA proposes: a Gaussian Hidden Markov Model fit directly on engineered market features learns the regime representation, producing an explicit probabilistic regime posterior rather than the hand-tuned volatility thresholds that ad hoc regime filters rely on; this representation conditions the multi-agent debate that LLM trading systems otherwise perform without any explicit regime signal; and a PPO-based execution supervisor \cite{ppo2017} translates the resulting recommendation into position sizing, closing the loop that regime-detection-only systems leave open.
+Two points separate MARTA from the systems in Table~\ref{tab:gap-comparison}. The first is architectural: a single, explicit regime signal --- the posterior of a Gaussian Hidden Markov Model fit on engineered market features, rather than a hand-tuned volatility threshold --- is shared by the multi-agent debate, which LLM trading systems otherwise run without any regime signal, and is available to a PPO execution agent \cite{ppo2017}. MARTA's regime representation is, like the HMM literature it builds on, estimated over engineered features; a learned contrastive representation was built and tested as an alternative and did not improve on them (Section~\ref{subsec:encoder-refinement}). The second point, and the one this report's results rest on, is methodological: every test of regime conditioning is run against an explicit noise control (a regime signal with identical persistence but no information about prices) and reported with block-bootstrap confidence intervals and out-of-sample replication, rather than against regime-agnostic baselines alone. The execution layer is marked ``Partial'' because, as Section~\ref{subsec:agent-rl-disconnect} reports, the evaluated PPO checkpoints are trained and tested separately from the debate layer rather than as one integrated loop.
 
 \section{Summary}
 \label{sec:background-summary}
 
-This chapter reviewed market regime detection, LLM-based trading agents, and reinforcement learning for trading as three largely separate research threads, each addressing part of the problem MARTA targets while leaving a specific gap: regime detection methods rely on hand-crafted features rather than learned representations; LLM agent systems reason without any explicit regime conditioning; and RL execution methods, even when regime-aware, lack an interpretable reasoning layer. Chapter~\ref{chap:methodology} now turns to how MARTA's five-layer architecture, introduced in Section~\ref{sec:proposed-solution}, is designed and implemented to close these gaps jointly.
+This chapter reviewed market regime detection, LLM-based trading agents, and reinforcement learning for trading as three largely separate research threads, each addressing part of the problem MARTA targets while leaving a specific gap: regime detection methods use the regime label as an isolated filter and rarely test it against a noise control; LLM agent systems reason without any explicit regime conditioning; and RL execution methods, even when regime-aware, lack an interpretable reasoning layer. Chapter~\ref{chap:methodology} now turns to how MARTA's five-layer architecture, introduced in Section~\ref{sec:proposed-solution}, is designed and implemented to close these gaps jointly.
